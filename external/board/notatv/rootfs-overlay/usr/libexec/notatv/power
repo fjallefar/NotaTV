@@ -1,0 +1,24 @@
+#!/bin/sh
+# power: sleep | reboot | poweroff
+. /usr/libexec/notatv/lib.sh
+case "$1" in
+sleep)
+	[ -f $RUN/sleeping ] && exit 0
+	touch $RUN/sleeping
+	log "dvale"
+	[ -z "$CEC_NO_TV_OFF" ] && [ "$(cfg_get cec_tv_off 1)" = 1 ] && $H/cec tv-off >/dev/null 2>&1
+	$H/music pause
+	sync
+	# allow wakeup from USB (keyboard, remote, CEC adapter)
+	for w in /sys/bus/usb/devices/*/power/wakeup; do echo enabled > $w 2>/dev/null; done
+	echo mem > /sys/power/state 2>/dev/null || echo freeze > /sys/power/state 2>/dev/null
+	# --- woke up ---
+	log "vågnet"
+	rm -f $RUN/sleeping
+	$H/cec wake >/dev/null 2>&1 &
+	for p in /run/udhcpc.*.pid; do [ -f "$p" ] && kill -USR1 $(cat $p) 2>/dev/null; done
+	$H/music resume
+	;;
+reboot) sync; reboot ;;
+poweroff) [ "$(cfg_get cec_tv_off 1)" = 1 ] && $H/cec tv-off >/dev/null 2>&1; sync; poweroff ;;
+esac

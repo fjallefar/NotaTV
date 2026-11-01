@@ -1,0 +1,6 @@
+#!/bin/sh
+. /usr/libexec/notatv/lib.sh
+log "fabriksnulstilling"
+rm -rf /data/notatv
+sync
+reboot

@@ -1,0 +1,97 @@
+#!/bin/sh
+# audio: setup | list | test
+. /usr/libexec/notatv/lib.sh
+
+# print lines: id<TAB>name<TAB>card<TAB>device<TAB>connected(0/1)
+devices() {
+	for c in /proc/asound/card[0-9]*; do
+		[ -d "$c" ] || continue
+		n=${c##*card}
+		id=$(cat $c/id 2>/dev/null)
+		hdmi_idx=0
+		case "$id" in
+		vc4hdmi*)
+			# Raspberry Pi: each HDMI port is its own card and needs the IEC958 format (alsa's "hdmi:" device)
+			port=$(( ${id#vc4hdmi} + 1 ))
+			present=0
+			grep -qx connected /sys/class/drm/card*-HDMI-A-$port/status 2>/dev/null && present=1
+			printf 'alsa/hdmi:CARD=%s,DEV=0\tHDMI %s\t%s\t0\t%s\n' "$id" "$port" "$n" "$present"
+			continue
+			;;
+		esac
+		for p in $c/pcm*p; do
+			[ -d "$p" ] || continue
+			d=${p##*/pcm}; d=${d%p}
+			name=$(sed -n 's/^name: //p' $p/info 2>/dev/null)
+			case "$name" in
+			*HDMI*|*DP*|*hdmi*)
+				mon=""; present=0
+				for e in $c/eld#*; do
+					[ -f "$e" ] || continue
+					# the ELD files match the HDMI ports in the same order
+					idx=${e##*.}
+					[ "$idx" = "$hdmi_idx" ] || continue
+					present=$(sed -n 's/^monitor_present[[:space:]]*//p' $e)
+					mon=$(sed -n 's/^monitor_name[[:space:]]*//p' $e)
+				done
+				label="HDMI $((hdmi_idx+1))"
+				[ -n "$mon" ] && label="$label - $mon"
+				printf 'alsa/hdmi:CARD=%s,DEV=%s\t%s\t%s\t%s\t%s\n' "$id" "$hdmi_idx" "$label" "$n" "$d" "${present:-0}"
+				hdmi_idx=$((hdmi_idx+1))
+				;;
+			*)
+				printf 'alsa/plughw:CARD=%s,DEV=%s\t%s (%s)\t%s\t%s\t1\n' "$id" "$d" "Analog/USB" "$name" "$n" "$d"
+				;;
+			esac
+		done
+	done
+}
+
+case "$1" in
+list)
+	devices | cut -f1,2
+	;;
+setup)
+	mkdir -p $RUN
+	# choose HDMI with a connected TV, otherwise the first HDMI, otherwise the first device
+	best=$(devices | awk -F'\t' '$1 ~ /hdmi/ && $5 == 1 {print; exit}')
+	[ -z "$best" ] && best=$(devices | awk -F'\t' '$1 ~ /hdmi/ {print; exit}')
+	[ -z "$best" ] && best=$(devices | head -1)
+	[ -z "$best" ] && exit 0
+	card=$(echo "$best" | cut -f3); dev=$(echo "$best" | cut -f4); mid=$(echo "$best" | cut -f1)
+	case "$mid" in
+	*vc4hdmi*)
+		# vc4-HDMI cannot use dmix directly (IEC958 subframes); go through alsa's hdmi device
+		cat > $RUN/asound.conf <<EOC
+pcm.!default { type plug slave.pcm "${mid#alsa/}" }
+ctl.!default { type hw card $card }
+EOC
+		;;
+	*)
+		cat > $RUN/asound.conf <<EOC
+pcm.!default { type plug slave.pcm "tvmix" }
+pcm.tvmix { type dmix ipc_key 5150 ipc_perm 0666 slave { pcm "hw:$card,$dev" rate 48000 channels 2 period_size 1024 buffer_size 8192 } }
+ctl.!default { type hw card $card }
+EOC
+		;;
+	esac
+	echo "audio-device=$mid" > $RUN/mpv-local.conf
+	# unmute all cards
+	for c in /proc/asound/card[0-9]*; do
+		n=${c##*card}
+		for ctl in Master PCM Speaker Headphone 'IEC958' 'IEC958,1' 'IEC958,2'; do
+			amixer -q -c $n sset "$ctl" unmute 2>/dev/null
+			amixer -q -c $n sset "$ctl" 100% 2>/dev/null
+		done
+	done
+	log "lyd: standard $mid (kort $card enhed $dev)"
+	;;
+test)
+	dev=$(cfg_get audio_device "")
+	dev=${dev#alsa/}
+	[ -z "$dev" ] && dev=default
+	$H/music pause
+	speaker-test -D "$dev" -c 2 -t wav -l 1 >/dev/null 2>&1
+	$H/music resume
+	;;
+esac

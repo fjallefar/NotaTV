@@ -1,0 +1,69 @@
+#!/bin/sh
+# Wi-Fi: start | scan | connect <ssid> <password> | forget
+. /usr/libexec/notatv/lib.sh
+W=""
+for d in /sys/class/net/*; do [ -d $d/wireless ] && { W=${d##*/}; break; }; done
+CONFW=/data/notatv/wpa_supplicant.conf
+
+ensure() {
+	[ -n "$W" ] || { echo "No Wi-Fi adapter found"; exit 1; }
+	[ -f $CONFW ] || printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=1\ncountry=DK\n' > $CONFW
+	if ! wpa_cli -i $W ping >/dev/null 2>&1; then
+		ip link set $W up
+		wpa_supplicant -B -i $W -c $CONFW -D nl80211 >/dev/null 2>&1
+		sleep 1
+		udhcpc -b -i $W -x hostname:$(hostname) -s $H/dhcp-script -p /run/udhcpc.$W.pid >/dev/null 2>&1
+	fi
+}
+
+case "$1" in
+start)
+	[ -n "$W" ] && [ -f $CONFW ] && grep -q network= $CONFW && ensure
+	;;
+scan)
+	ensure
+	wpa_cli -i $W scan >/dev/null
+	sleep 4
+	wpa_cli -i $W scan_results | tail -n +2 | awk -F'\t' '
+		$5 != "" {
+			sig = 2 * ($3 + 100); if (sig > 100) sig = 100; if (sig < 0) sig = 0
+			sec = ($4 ~ /WPA|WEP|SAE/) ? "secured" : "open"
+			if (!($5 in best) || sig > best[$5]) { best[$5] = sig; s[$5] = sec }
+		}
+		END { for (n in best) printf "%s\t%d\t%s\n", n, best[n], s[n] }' | sort -t"$(printf '\t')" -k2 -nr
+	;;
+connect)
+	ensure
+	ssid=$2; psk=$3
+	wpa_cli -i $W remove_network all >/dev/null
+	id=$(wpa_cli -i $W add_network | tail -1)
+	wpa_cli -i $W set_network $id ssid "\"$ssid\"" >/dev/null
+	if [ -n "$psk" ]; then
+		wpa_cli -i $W set_network $id psk "\"$psk\"" >/dev/null || { echo "Invalid password"; exit 1; }
+		wpa_cli -i $W set_network $id key_mgmt "WPA-PSK SAE" >/dev/null
+		wpa_cli -i $W set_network $id ieee80211w 1 >/dev/null
+	else
+		wpa_cli -i $W set_network $id key_mgmt NONE >/dev/null
+	fi
+	wpa_cli -i $W enable_network $id >/dev/null
+	wpa_cli -i $W save_config >/dev/null
+	for i in $(seq 1 20); do
+		st=$(wpa_cli -i $W status | grep '^wpa_state=' | cut -d= -f2)
+		[ "$st" = COMPLETED ] && break
+		sleep 1
+	done
+	[ "$st" = COMPLETED ] || { msg "Could not connect to %s (wrong password?)" "$ssid"; exit 1; }
+	kill -USR1 $(cat /run/udhcpc.$W.pid 2>/dev/null) 2>/dev/null || \
+		udhcpc -b -i $W -s $H/dhcp-script -p /run/udhcpc.$W.pid >/dev/null 2>&1
+	for i in $(seq 1 15); do
+		ip -4 addr show $W | grep -q inet && { msg "Connected to %s" "$ssid"; exit 0; }
+		sleep 1
+	done
+	msg "Connected to %s, but got no IP address" "$ssid"
+	;;
+forget)
+	[ -n "$W" ] && wpa_cli -i $W remove_network all >/dev/null 2>&1 && wpa_cli -i $W save_config >/dev/null 2>&1
+	rm -f $CONFW
+	echo "Wi-Fi forgotten"
+	;;
+esac

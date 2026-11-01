@@ -1,0 +1,31 @@
+From: NotaTV
+Subject: [PATCH] drm: higher max bpc for HDR; optionally keep HDR on exit
+
+HDR10 over an 8 bpc link bands visibly. Ask for up to 12 bpc when
+signalling BT.2020/HDR and go back to 8 for SDR.
+With NOTATV_KEEP_HDR set, do not restore SDR on exit (the UI keeps HDR).
+---
+--- a/video/out/drm_common.c
++++ b/video/out/drm_common.c
+@@ -519,6 +519,10 @@
+     struct drm_atomic_context *atomic_ctx = drm->atomic_context;
+     if (!atomic_ctx)
+         return;
++    // NotaTV: with "always HDR" the UI keeps the same HDR signal, so leaving it
++    // untouched avoids a mode change (black screen) on the TV.
++    if (getenv("NOTATV_KEEP_HDR"))
++        return;
+ 
+     vo_drm_set_hdr_metadata(drm->vo, true);
+     int ret = drmModeAtomicCommit(drm->fd, atomic_ctx->request, DRM_MODE_ATOMIC_ALLOW_MODESET, drm);
+@@ -1373,6 +1377,10 @@
+     int colorspace = !use_sdr && pl_color_space_is_hdr(&drm->target_params.color) ?
+                      DRM_MODE_COLORIMETRY_BT2020_RGB : DRM_MODE_COLORIMETRY_DEFAULT;
+     drm_object_set_property(atomic_ctx->request, atomic_ctx->connector, "Colorspace", colorspace);
++    // HDR needs more than 8 bits per component on the wire; the driver lowers
++    // it again if the link bandwidth does not allow it.
++    drm_object_set_property(atomic_ctx->request, atomic_ctx->connector, "max bpc",
++                            colorspace == DRM_MODE_COLORIMETRY_BT2020_RGB ? 12 : 8);
+ 
+     const struct pl_hdr_metadata *hdr = &target_params.color.hdr;
+     struct hdr_output_metadata metadata = {

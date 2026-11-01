@@ -1,0 +1,66 @@
+#!/bin/sh
+# display info: read from the kernel's current display mode and the HDMI packets being sent (not from settings)
+D=/sys/kernel/debug/dri
+mountpoint -q /sys/kernel/debug || mount -t debugfs none /sys/kernel/debug 2>/dev/null
+mon=$(sed -n 's/^monitor_name[[:space:]]*//p' /proc/asound/card*/eld#* 2>/dev/null | head -1)
+for st in $D/*/state; do
+	[ -r "$st" ] || continue
+	out=$(awk -v mon="$mon" '
+		/^connector\[/ { split($0, a, ": "); cname = a[2]; incon = 1; incrtc = 0; next }
+		/^crtc\[/      { split($0, a, ": "); crname = a[2]; incrtc = 1; incon = 0; next }
+		/^[a-z]/       { incon = 0; incrtc = 0 }
+		incon && /^\tcrtc=/          { sub(/^\tcrtc=/, ""); if ($0 != "(null)") { use[cname] = $0 } }
+		incon && /^\tcolorspace=/    { sub(/^\tcolorspace=/, ""); cs[cname] = $0 }
+		incon && /^\toutput_bpc=/    { sub(/^\toutput_bpc=/, ""); bpc[cname] = $0 }
+		incon && /^\toutput_format=/ { sub(/^\toutput_format=/, ""); fmt[cname] = $0 }
+		incrtc && /^\tmode: "/ {
+			# mode: "NAME": vrefresh clock hdisp hss hse htotal vdisp vss vse vtotal ...
+			n = split($0, f, " ")
+			clock = f[4]; ht = f[8]; vt = f[12]
+			hz = (ht > 0 && vt > 0) ? clock * 1000.0 / (ht * vt) : f[3]
+			res[crname] = f[5] "x" f[9]; rate[crname] = sprintf("%.3f", hz)
+		}
+		END {
+			for (c in use) {
+				r = use[c]
+				sub(/0+$/, "", rate[r]); sub(/\.$/, "", rate[r])
+				line = c
+				if (mon != "") line = line " · " mon
+				if (res[r] != "") line = line " · " res[r] " @ " rate[r] " Hz"
+				print line "|" cs[c] "|" bpc[c] "|" fmt[c] "|" c
+				exit
+			}
+		}' "$st")
+	[ -n "$out" ] || continue
+	line=${out%%|*}; rest=${out#*|}
+	cs=${rest%%|*}; rest=${rest#*|}
+	bpc=${rest%%|*}; rest=${rest#*|}
+	fmt=${rest%%|*}; conn=${rest#*|}
+	# HDR: EOTF in the HDR packet (infoframe) that is actually sent to the TV
+	hdr=""
+	f="${st%/state}/$conn/infoframes/hdr_drm"
+	if [ -r "$f" ]; then
+		eotf=$(od -An -tx1 -j4 -N1 "$f" 2>/dev/null | tr -d ' ')
+		case "$eotf" in
+		02) hdr="HDR10 (PQ)" ;;
+		03) hdr="HLG" ;;
+		*) hdr="SDR" ;;
+		esac
+	fi
+	case "$cs" in BT2020*) cs="BT.2020" ;; Default|"") cs="" ;; esac
+	extra=""
+	[ -n "$hdr" ] && extra=" · $hdr"
+	[ -n "$cs" ] && extra="$extra · $cs"
+	[ -n "$bpc" ] && [ "$bpc" != 0 ] && extra="$extra · ${bpc}-bit"
+	[ -n "$fmt" ] && extra="$extra $fmt"
+	echo "$line$extra"
+	exit 0
+done
+# without debugfs: only the connection
+for s in /sys/class/drm/card*-*/status; do
+	[ "$(cat $s)" = connected ] || continue
+	c=${s%/status}; c=${c##*/}; c=${c#card*-}
+	echo "$c${mon:+ · $mon}"
+	exit 0
+done
+echo "No display found"

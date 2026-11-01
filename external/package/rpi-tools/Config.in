@@ -1,0 +1,7 @@
+config BR2_PACKAGE_RPI_TOOLS
+	bool "rpi-tools"
+	depends on BR2_aarch64
+	help
+	  NotaTV-værktøjer til Raspberry Pi 4: tvmon (temperatur, clocks,
+	  spænding og throttling fra firmwaren) og tryboot (genstart én gang
+	  med tryboot.txt - bruges til sikker overclocking).

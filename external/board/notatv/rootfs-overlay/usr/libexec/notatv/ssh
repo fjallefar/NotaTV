@@ -1,0 +1,11 @@
+#!/bin/sh
+# developer mode: on | off  (host keys are stored on the data partition)
+case "$1" in
+on)
+	mkdir -p /data/notatv/dropbear
+	# /etc/dropbear -> /data/notatv/dropbear is set in the image (post-build), so the rootfs is not changed here
+	[ -s /data/notatv/dropbear/dropbear_ed25519_host_key ] || { rm -f /data/notatv/dropbear/dropbear_ed25519_host_key; dropbearkey -t ed25519 -f /data/notatv/dropbear/dropbear_ed25519_host_key >/dev/null 2>&1; }
+	pidof dropbear >/dev/null || dropbear -R -p 22
+	;;
+off) killall -q dropbear ;;
+esac

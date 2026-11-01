@@ -1,0 +1,14 @@
+config BR2_PACKAGE_LIBGAMESTREAM
+	bool "libgamestream"
+	select BR2_PACKAGE_OPENSSL
+	select BR2_PACKAGE_LIBCURL
+	select BR2_PACKAGE_EXPAT
+	select BR2_PACKAGE_UTIL_LINUX
+	select BR2_PACKAGE_UTIL_LINUX_LIBUUID
+	help
+	  Moonlight-protokollen (moonlight-common-c) og parring/app-liste
+	  (libgamestream fra moonlight-embedded) som ét statisk bibliotek
+	  til tvmoon. Open source, GPL-3.
+
+	  https://github.com/moonlight-stream/moonlight-embedded
+	  https://github.com/moonlight-stream/moonlight-common-c

@@ -1,0 +1,23 @@
+#!/bin/sh
+# system info: version | boottime | uptime | hw | mode
+. /usr/libexec/notatv/lib.sh
+case "$1" in
+version) sed -n 's/^VERSION=//p' /etc/notatv-release ;;
+boottime)
+	t=$(cat /tmp/notatv-boottime 2>/dev/null)
+	[ -n "$t" ] && msg "%s s from kernel to user interface" "$t" || echo "-"
+	;;
+uptime)
+	s=$(cut -d. -f1 /proc/uptime)
+	d=$((s/86400)); h=$((s%86400/3600)); m=$((s%3600/60))
+	if [ $d -gt 0 ]; then msg "%s d %s h %s min" $d $h $m; elif [ $h -gt 0 ]; then msg "%s h %s min" $h $m; else echo "$m min"; fi
+	;;
+hw)
+	cpu=$(sed -n 's/^model name[[:space:]]*:[[:space:]]*//p' /proc/cpuinfo | head -1 | sed 's/(R)//g; s/(TM)//g; s/ CPU//; s/  */ /g')
+	mem=$(awk '/MemTotal/ {printf "%.0f GB", $2/1048576}' /proc/meminfo)
+	echo "$cpu · $mem RAM"
+	;;
+mode)
+	[ "$(cat $RUN/mode 2>/dev/null)" = installed ] && echo "Internal disk" || echo "USB (live - settings are not saved)"
+	;;
+esac

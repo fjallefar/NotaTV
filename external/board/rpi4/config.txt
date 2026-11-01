@@ -1,0 +1,23 @@
+# NotaTV - Raspberry Pi 4 (64-bit)
+start_file=start4.elf
+fixup_file=fixup4.dat
+kernel=Image
+arm_64bit=1
+
+# KMS-grafik med nok CMA-hukommelse til hardware-videodekodning
+dtoverlay=vc4-kms-v3d,cma-512
+max_framebuffers=2
+disable_overscan=1
+hdmi_enable_4kp60=1
+dtparam=audio=on
+
+# HDMI-CEC håndteres af Linux-kernen (TV-fjernbetjening -> /dev/cec0), ikke af firmwaren
+hdmi_ignore_cec_init=1
+
+# hurtigere opstart
+disable_splash=1
+boot_delay=0
+initial_turbo=30
+
+# seriel konsol (GPIO 14/15) til fejlfinding
+enable_uart=1

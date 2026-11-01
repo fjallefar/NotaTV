@@ -1,0 +1,6 @@
+#!/bin/sh
+# NotaTV Pi: finish an update that was cut off by a power cut after its commit point (or throw away one
+# cut off before it). Runs right after S05notatv has mounted /data.
+[ "$1" = start ] || exit 0
+/usr/libexec/notatv/update resume
+exit 0

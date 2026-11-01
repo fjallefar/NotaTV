@@ -1,0 +1,27 @@
+From: NotaTV
+Subject: [PATCH] drm/hdmi: prefer YCbCr 4:2:2 for BT.2020 (HDR) output
+
+Dedicated players send HDR as YCbCr 4:2:2 12-bit. RGB 4:4:4 HDR makes LG
+OLEDs treat the input as a PC (peak brightness/gamma locked, darker image).
+---
+--- a/drivers/gpu/drm/display/drm_hdmi_state_helper.c
++++ b/drivers/gpu/drm/display/drm_hdmi_state_helper.c
+@@ -289,6 +289,18 @@
+ 	 * TODO: Add support for YCbCr420 output for HDMI 2.0 capable
+ 	 * devices, for modes that only support YCbCr420.
+ 	 */
++	/*
++	 * NotaTV: send HDR (BT.2020) as YCbCr 4:2:2 like dedicated players do.
++	 * TVs such as LG OLEDs treat RGB 4:4:4 HDR as PC input, locking picture
++	 * settings and rendering it darker.
++	 */
++	if ((conn_state->colorspace == DRM_MODE_COLORIMETRY_BT2020_RGB ||
++	     conn_state->colorspace == DRM_MODE_COLORIMETRY_BT2020_YCC) &&
++	    hdmi_try_format_bpc(connector, conn_state, mode, bpc, HDMI_COLORSPACE_YUV422)) {
++		conn_state->hdmi.output_format = HDMI_COLORSPACE_YUV422;
++		return 0;
++	}
++
+ 	if (hdmi_try_format_bpc(connector, conn_state, mode, bpc, HDMI_COLORSPACE_RGB)) {
+ 		conn_state->hdmi.output_format = HDMI_COLORSPACE_RGB;
+ 		return 0;

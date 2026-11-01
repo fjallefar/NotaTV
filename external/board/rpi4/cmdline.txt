@@ -1,0 +1,1 @@
+root=PARTUUID=7b0c5a01-02 rw rootwait rootfstype=ext4 fsck.repair=no quiet loglevel=3 vt.global_cursor_default=0 console=tty1 console=serial0,115200

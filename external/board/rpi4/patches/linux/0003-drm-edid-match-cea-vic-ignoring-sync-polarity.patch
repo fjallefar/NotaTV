@@ -1,0 +1,29 @@
+From: NotaTV
+Subject: [PATCH] drm/edid: match CEA VIC even with inverted sync polarity
+
+LG OLEDs list 1080p60 in a DTD with negative syncs. That mode got VIC 0 in
+the AVI infoframe, so the TV treated it as a PC timing and ignored HDR.
+---
+--- a/drivers/gpu/drm/drm_edid.c
++++ b/drivers/gpu/drm/drm_edid.c
+@@ -4342,6 +4342,7 @@
+ {
+ 	unsigned int match_flags = DRM_MODE_MATCH_TIMINGS | DRM_MODE_MATCH_FLAGS;
+ 	u8 vic;
++	int pass;
+ 
+ 	if (!to_match->clock)
+ 		return 0;
+@@ -4349,6 +4350,12 @@
+ 	if (to_match->picture_aspect_ratio)
+ 		match_flags |= DRM_MODE_MATCH_ASPECT_RATIO;
+ 
++	/*
++	 * NotaTV: some sinks list CEA timings with inverted sync polarity in a
++	 * DTD (e.g. LG OLED 1080p60). Such a mode got VIC 0, so the TV treated
++	 * it as a PC timing and ignored HDR. Retry ignoring the sync flags.
++	 */
++	for (pass = 0; pass < 2; pass++, match_flags &= ~DRM_MODE_MATCH_FLAGS)
+ 	for (vic = 1; vic < cea_num_vics(); vic = cea_next_vic(vic)) {
+ 		struct drm_display_mode cea_mode;
+ 		unsigned int clock1, clock2;

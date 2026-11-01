@@ -1,0 +1,94 @@
+#!/bin/sh
+# Overclocking the Raspberry Pi 4: status | apply | boot
+#   status  current CPU frequency, temperature and any warnings (for settings)
+#   apply   write cfg cpu_mhz into the boot config and reboot. A new frequency is first tried once
+#           via tryboot (tryboot.txt); if the box does not start, a power cycle restores the old config.
+#   boot    (from init) after a successful tryboot: make the new config permanent after 60 s
+# Tested on Pi 4 Rev 1.1 (2026-10-31): 2147 MHz with over_voltage=6 is the ceiling without force_turbo (warranty bit),
+# but it crashed shortly after 5 min at full load; 2300 and 2200 do not boot. 2100 passed the test, but
+# rebooted by itself after a few hours of use (2026-10-31) - 2000 is used on the test box.
+# GPU clocks (v3d/gpu_freq) cannot be raised together with hdmi_enable_4kp60 - the firmware crashes.
+. /usr/libexec/notatv/lib.sh
+
+BOOT=/run/notatv/boot
+BEGIN="# --- NotaTV overclock (styres fra Indstillinger) ---"
+END="# --- slut overclock ---"
+FAILED=/data/notatv/oc-failed
+PENDING=/data/notatv/oc-pending
+
+mount_boot() {
+	mountpoint -q $BOOT && return 0
+	mkdir -p $BOOT
+	mount "$(findfs LABEL=NOTABOOT)" $BOOT
+}
+
+tryboot_active() {
+	[ "$(od -An -tx1 /proc/device-tree/chosen/bootloader/tryboot 2>/dev/null | tr -d ' \n')" = 00000001 ]
+}
+
+# config.txt without the overclock block + a new block for $1 MHz
+make_config() {
+	sed "/^$BEGIN\$/,/^$END\$/d" $BOOT/config.txt
+	[ "$1" -gt 1500 ] 2>/dev/null || return 0
+	printf '%s\nover_voltage=6\narm_freq=%s\n%s\n' "$BEGIN" "$1" "$END"
+}
+
+cur_mhz() { echo $(($(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq) / 1000)); }
+
+case "$1" in
+status)
+	t=$(($(cat /sys/class/thermal/thermal_zone0/temp) / 1000))
+	s="$(cur_mhz) MHz · $t °C"
+	thr=$(tvmon -1 2>/dev/null | sed -n 's/.*thr=\(0x[0-9a-f]*\).*/\1/p')
+	[ -n "$thr" ] && [ $((thr & 0x10001)) -ne 0 ] && s="$s · Power supply too weak!"
+	[ -f $FAILED ] && s="$s · Did not start: $(cat $FAILED) MHz"
+	echo "$s"
+	;;
+apply)
+	want=$(cfg_get cpu_mhz 1500)
+	mount_boot || { echo "Cannot find the boot partition"; exit 1; }
+	make_config "$want" > $BOOT/tryboot.txt.new
+	if cmp -s $BOOT/tryboot.txt.new $BOOT/config.txt; then
+		rm -f $BOOT/tryboot.txt.new
+		msg "%s MHz is already active" "$want"
+		exit 0
+	fi
+	rm -f $FAILED
+	if [ "$want" -le 1500 ]; then
+		# back to default: no risk, write directly
+		mv $BOOT/tryboot.txt.new $BOOT/config.txt
+		rm -f $PENDING
+		sync; umount $BOOT
+		log "overclock: tilbage til 1500 MHz"
+		reboot
+	else
+		mv $BOOT/tryboot.txt.new $BOOT/tryboot.txt
+		echo "$want" > $PENDING
+		sync; umount $BOOT
+		log "overclock: prøver $want MHz (tryboot)"
+		tryboot
+	fi
+	;;
+boot)
+	[ -f $PENDING ] || exit 0
+	want=$(cat $PENDING)
+	if ! tryboot_active; then
+		# the attempt did not boot (power cycle) - we are running on the old config
+		rm -f $PENDING
+		echo "$want" > $FAILED
+		cfg_set cpu_mhz "$(cur_mhz)"
+		log "overclock: $want MHz startede ikke - beholder $(cur_mhz) MHz"
+		exit 0
+	fi
+	(
+		sleep 60
+		# the UI must be running and the firmware responding (a hung GPU firmware locks up tvmon)
+		pidof tvshell >/dev/null && timeout 5 tvmon -1 >/dev/null 2>&1 || exit 0
+		mount_boot || exit 0
+		cp $BOOT/tryboot.txt $BOOT/config.txt.new && mv $BOOT/config.txt.new $BOOT/config.txt
+		rm -f $BOOT/tryboot.txt $PENDING
+		sync; umount $BOOT
+		log "overclock: $want MHz gjort permanent"
+	) >/dev/null 2>&1 &
+	;;
+esac

@@ -1,0 +1,20 @@
+From: NotaTV
+Subject: [PATCH] httpd: restore index.html when only CGI is enabled
+
+The "/index.html" suffix is truncated when BASIC_AUTH or CGI is enabled,
+but only restored with BASIC_AUTH. With CGI alone, "GET /" sends an
+empty path and answers 404.
+---
+--- a/networking/httpd.c
++++ b/networking/httpd.c
+@@ -2784,8 +2784,8 @@
+ 	/* !CGI: it can be only GET or HEAD */
+ #endif
+ 
+-#if ENABLE_FEATURE_HTTPD_BASIC_AUTH
+-	/* Restore truncated .../index.html */
++#if ENABLE_FEATURE_HTTPD_BASIC_AUTH || ENABLE_FEATURE_HTTPD_CGI
++	/* Restore truncated .../index.html (truncated under the same condition above) */
+ 	if (urlp[-1] == '/')
+ 		urlp[0] = index_page[0];
+ #endif

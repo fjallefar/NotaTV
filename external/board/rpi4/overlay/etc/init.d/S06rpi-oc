@@ -1,0 +1,5 @@
+#!/bin/sh
+# NotaTV Pi: finish an overclock attempt (see /usr/libexec/notatv/oc)
+[ "$1" = start ] || exit 0
+/usr/libexec/notatv/oc boot
+exit 0

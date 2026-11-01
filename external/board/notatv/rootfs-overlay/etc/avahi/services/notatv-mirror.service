@@ -1,0 +1,10 @@
+<?xml version="1.0" standalone='no'?>
+<!-- NotaTV: modtager skærmspejling fra vores egen Android-app (MPEG-TS over TCP, src/shell/mirror.c) -->
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">%h</name>
+  <service>
+    <type>_notatv-mirror._tcp</type>
+    <port>7400</port>
+  </service>
+</service-group>

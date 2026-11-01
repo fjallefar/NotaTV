@@ -1,0 +1,29 @@
+From: NotaTV
+Subject: [PATCH] drm/hdmi: announce as a set-top box, not a PC
+
+The SPD infoframe said "Broadcom Videocore" with source type PC. LG TVs
+then put the input in PC mode, which locks picture settings (peak
+brightness, gamma) and renders HDR noticeably darker.
+---
+--- a/drivers/gpu/drm/display/drm_hdmi_state_helper.c
++++ b/drivers/gpu/drm/display/drm_hdmi_state_helper.c
+@@ -391,7 +391,7 @@
+ 	if (ret)
+ 		return ret;
+ 
+-	frame->sdi = HDMI_SPD_SDI_PC;
++	frame->sdi = HDMI_SPD_SDI_DSTB;
+ 
+ 	infoframe->set = true;
+ 
+--- a/drivers/gpu/drm/vc4/vc4_hdmi.c
++++ b/drivers/gpu/drm/vc4/vc4_hdmi.c
+@@ -617,7 +617,7 @@
+ 		max_bpc = 12;
+ 
+ 	ret = drmm_connector_hdmi_init(dev, connector,
+-				       "Broadcom", "Videocore",
++				       "NotaTV", "NotaTV",
+ 				       &vc4_hdmi_connector_funcs,
+ 				       &vc4_hdmi_hdmi_connector_funcs,
+ 				       DRM_MODE_CONNECTOR_HDMIA,

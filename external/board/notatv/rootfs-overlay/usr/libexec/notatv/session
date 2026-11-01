@@ -1,0 +1,30 @@
+#!/bin/sh
+# Starts the NotaTV user interface on the screen (restarted by init)
+umask 077 # log files (may contain paths/names) for root only
+export HOME=/root
+export XDG_RUNTIME_DIR=/run/notatv/xdg
+export SDL_VIDEO_DRIVER=kmsdrm
+mkdir -p $XDG_RUNTIME_DIR && chmod 700 $XDG_RUNTIME_DIR
+# wait for a graphics card with display outputs (normally ready already; on the Pi vc4 is a module)
+i=0
+while [ $i -lt 200 ]; do
+	for c in /sys/class/drm/card[0-9]-*; do [ -e "$c" ] && break 2; done
+	sleep 0.05; i=$((i+1))
+done
+# right after an update: if the user interface stops 4 times without having run for a minute,
+# put the previous version back (update rollback) and restart
+V=/data/notatv/update-verify
+if [ -f $V ] && [ -x /usr/libexec/notatv/update ]; then
+	n=$(( $(cat $V 2>/dev/null | tr -cd 0-9) + 1 ))
+	echo $n > $V
+	if [ $n -ge 4 ]; then
+		rm -f $V
+		echo "[$(date +%T)] tvshell keeps stopping after the update - rolling back" >> /tmp/notatv.log
+		[ "$(/usr/libexec/notatv/update rollback 2>&1 | tail -1)" = OK ] && { sync; reboot; sleep 30; }
+	else
+		( sleep 60; kill -0 $$ 2>/dev/null && rm -f $V ) &
+	fi
+fi
+# keep the previous log after a crash
+[ -f /tmp/tvshell.log ] && mv /tmp/tvshell.log /tmp/tvshell.log.1
+exec /usr/bin/tvshell > /tmp/tvshell.log 2>&1

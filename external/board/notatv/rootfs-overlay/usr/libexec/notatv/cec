@@ -1,0 +1,91 @@
+#!/bin/sh
+# HDMI-CEC: daemon | setup | status | tv-on | tv-off | wake
+. /usr/libexec/notatv/lib.sh
+
+devs() { ls /dev/cec* 2>/dev/null; }
+
+attach_pulse8() {
+	# a Pulse-Eight USB-CEC adapter must be attached to the kernel's CEC framework via inputattach
+	for t in /sys/class/tty/ttyACM*; do
+		[ -e "$t" ] || continue
+		n=${t##*/}
+		v=$(cat $t/device/../idVendor 2>/dev/null)
+		[ "$v" = 2548 ] || continue
+		[ -f $RUN/pulse8-$n ] && kill -0 $(cat $RUN/pulse8-$n) 2>/dev/null && continue
+		inputattach --pulse8-cec /dev/$n >/dev/null 2>&1 &
+		echo $! > $RUN/pulse8-$n
+		log "cec: Pulse-Eight på /dev/$n"
+		sleep 2
+	done
+}
+
+phys() { cec-ctl -d $1 2>/dev/null | sed -n 's/.*Physical Address[[:space:]]*:[[:space:]]*//p' | head -1; }
+
+configure() { # dev
+	cec-ctl -d $1 --playback --osd-name "$(device_name | cut -c1-14)" >/dev/null 2>&1
+}
+
+wake() {
+	for d in $(devs); do
+		[ "$(cfg_get cec_wake_tv 1)" = 1 ] && cec-ctl -d $d --to 0 --image-view-on >/dev/null 2>&1
+		if [ "$(cfg_get cec_active_source 1)" = 1 ]; then
+			pa=$(phys $d)
+			[ -n "$pa" ] && [ "$pa" != "f.f.f.f" ] && cec-ctl -d $d --to 15 --active-source phys-addr=$pa >/dev/null 2>&1
+		fi
+	done
+}
+
+monitor() { # dev - react to the TV's standby
+	cec-ctl -d $1 --monitor 2>/dev/null | while read -r line; do
+		case "$line" in
+		*"STANDBY (0x36)"*)
+			if [ "$(cfg_get cec_standby 1)" = 1 ] && [ ! -f $RUN/sleeping ]; then
+				log "cec: TV slukket -> dvale"
+				CEC_NO_TV_OFF=1 $H/power sleep &
+			fi ;;
+		esac
+	done
+}
+
+case "$1" in
+daemon)
+	first=1
+	while :; do
+		attach_pulse8
+		for d in $(devs); do
+			n=${d##*/}
+			[ -f $RUN/cec-$n ] && continue
+			configure $d
+			touch $RUN/cec-$n
+			monitor $d &
+			log "cec: $d konfigureret"
+			[ $first = 1 ] && wake
+		done
+		first=0
+		sleep 3
+	done
+	;;
+setup)
+	for d in $(devs); do configure $d; done
+	;;
+wake) wake ;;
+tv-on)
+	[ -z "$(devs)" ] && { echo "No CEC adapter found"; exit 1; }
+	for d in $(devs); do cec-ctl -d $d --to 0 --image-view-on >/dev/null 2>&1; done
+	wake
+	echo "Power-on command sent to the TV"
+	;;
+tv-off)
+	[ -z "$(devs)" ] && { echo "No CEC adapter found"; exit 1; }
+	for d in $(devs); do cec-ctl -d $d --to 0 --standby >/dev/null 2>&1; done
+	echo "Power-off command sent to the TV"
+	;;
+status)
+	d=$(devs | head -1)
+	[ -z "$d" ] && { echo "No CEC adapter found"; exit 0; }
+	pa=$(phys $d)
+	if [ -z "$pa" ] || [ "$pa" = "f.f.f.f" ]; then echo "Adapter found - no TV responds"; exit 0; fi
+	tv=$(cec-ctl -d $d --to 0 --give-osd-name 2>/dev/null | sed -n "s/.*name: '\(.*\)'.*/\1/p" | head -1)
+	if [ -n "$tv" ]; then msg "Connected to %s (address %s)" "$tv" "$pa"; else msg "Connected (address %s)" "$pa"; fi
+	;;
+esac

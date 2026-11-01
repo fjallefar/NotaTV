@@ -1,0 +1,17 @@
+#!/bin/sh
+# NotaTV Pi: grow the data partition (NOTADATA, last partition) to the rest of the drive on first boot (SD or USB)
+[ "$1" = start ] || exit 0
+dev=$(findfs LABEL=NOTADATA 2>/dev/null) || exit 0
+P=${dev##*/}
+[ -e /sys/class/block/$P/partition ] || exit 0
+N=$(cat /sys/class/block/$P/partition)
+D=$(basename "$(readlink -f /sys/class/block/$P/..)")
+start=$(cat /sys/class/block/$P/start); size=$(cat /sys/class/block/$P/size); disk=$(cat /sys/class/block/$D/size)
+# already full size (less than 16 MB left)
+[ $((disk - start - size)) -lt 32768 ] && exit 0
+echo "NotaTV: udvider datapartitionen…" > /dev/console
+echo ",+" | sfdisk -q -N $N --no-reread --no-tell-kernel /dev/$D >/dev/null 2>&1 || exit 0
+partx -u -n $N /dev/$D 2>/dev/null
+e2fsck -fy /dev/$P >/dev/null 2>&1
+resize2fs /dev/$P >/dev/null 2>&1
+exit 0

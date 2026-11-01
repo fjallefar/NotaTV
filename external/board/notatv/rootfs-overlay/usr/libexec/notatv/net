@@ -1,0 +1,34 @@
+#!/bin/sh
+# network: up | status | ip
+. /usr/libexec/notatv/lib.sh
+
+eth_ifaces() { for d in /sys/class/net/*; do n=${d##*/}; [ -d $d/wireless ] && continue; [ "$n" = lo ] && continue; [ -e $d/device ] && echo $n; done; }
+wifi_iface() { for d in /sys/class/net/*; do [ -d $d/wireless ] && { echo ${d##*/}; return; }; done; }
+
+case "$1" in
+up)
+	ip link set lo up
+	for e in $(eth_ifaces); do
+		ip link set $e up
+		udhcpc -b -i $e -x hostname:$(hostname) -s /usr/libexec/notatv/dhcp-script -p /run/udhcpc.$e.pid >/dev/null 2>&1
+	done
+	$H/wifi start
+	;;
+status)
+	for e in $(eth_ifaces); do
+		if [ "$(cat /sys/class/net/$e/carrier 2>/dev/null)" = 1 ]; then
+			echo "Wired (Ethernet)"; exit 0
+		fi
+	done
+	w=$(wifi_iface)
+	if [ -n "$w" ]; then
+		ssid=$(wpa_cli -i $w status 2>/dev/null | grep '^ssid=' | cut -d= -f2-)
+		[ -n "$ssid" ] && { echo "Wi-Fi: $ssid"; exit 0; }
+		echo "Wi-Fi: not connected"; exit 0
+	fi
+	echo "Not connected"
+	;;
+ip)
+	ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1
+	;;
+esac

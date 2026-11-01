@@ -1,0 +1,360 @@
+#!/bin/sh
+# Updating NotaTV on Raspberry Pi from GitHub releases.
+#   check     "NY <version>" | "NYESTE <version>" | error text
+#   install   download, verify and install crash-safe; prints "OK" (reboot afterwards)
+#   rollback  put back the files the last update replaced; prints "OK" (reboot afterwards)
+#             (also run automatically by session if the user interface keeps crashing right after an update)
+#   resume    at boot (S05notatv-update): finish an install that was cut off after the commit point,
+#             throw away one that was cut off before it, remove leftovers from older updaters
+#   usb       not used on the Pi
+# Repo: cfg update_repo or /etc/notatv-update-repo ("owner/name"). The release must have the files
+# notatv-rpi4-update.tar.gz and notatv-rpi4-update.tar.gz.sha256 (created by make rpi4).
+#
+# Safety rules:
+# - /data (settings, logins, media) is never touched, except our own folders update/ and update-backup/
+# - nothing on the system changes before the whole package is downloaded and checked (SHA256, paths,
+#   version, CPU type, file type conflicts, free space) and every changed file is staged on the same
+#   filesystem as its target. The switch is then one rename per file, recorded in a journal: after a power
+#   cut the box ends up either on the old version or (at the next boot) on the new one, never in between.
+# - only files that differ are written; config.txt, cmdline.txt and tryboot.txt on the boot partition are kept
+# - a file missing from the new version is only removed if the installed file list
+#   (/usr/share/notatv/files.list) says NotaTV put it there
+# - writes never go through a symlink that leads out of the root filesystem (e.g. /root/.config -> /data)
+# - the boot partition is the first partition of the disk the root filesystem is on (never another disk)
+. /usr/libexec/notatv/lib.sh
+
+ASSET=notatv-rpi4-update.tar.gz
+DL=/data/notatv/update          # download + unpacked package
+BK=/data/notatv/update-backup   # old versions of replaced files (one step of rollback)
+ST=/.notatv-update              # journal + staged files on the root filesystem
+BOOT=/run/notatv/boot
+BST=.notatv-new                 # staged files on the boot partition ($BOOT/$BST)
+LIST=/usr/share/notatv/files.list
+VERIFY=/data/notatv/update-verify
+KEEP_BOOT='config.txt cmdline.txt tryboot.txt'
+
+die() { log "update: $*"; echo "$*"; exit 1; }
+
+# ---------------------------------------------------------------- helpers
+repo() {
+	r=$(cfg_get update_repo "")
+	[ -n "$r" ] || r=$(cat /etc/notatv-update-repo 2>/dev/null)
+	r=$(echo "$r" | tr -d ' \n')
+	case "$r" in */*/*|*[!A-Za-z0-9._/-]*|/*|*/) echo "" ;; *) echo "$r" ;; esac
+}
+current() { sed -n 's/^VERSION=\([^ ]*\).*/\1/p' /etc/notatv-release; }
+valid_ver() { echo "$1" | grep -Eq '^[0-9]+(\.[0-9]+){0,3}$'; }
+# newer A B: true if version A > version B (numeric per part, 1.0.10 > 1.0.9)
+newer() {
+	awk -v a="$1" -v b="$2" 'BEGIN { n = split(a, x, "."); m = split(b, y, "."); if (m > n) n = m
+		for (i = 1; i <= n; i++) { if (x[i] + 0 > y[i] + 0) exit 0; if (x[i] + 0 < y[i] + 0) exit 1 } exit 1 }'
+}
+free_kb() { df -Pk "$1" 2>/dev/null | awk 'NR == 2 { print $4 }'; }
+size_kb() { du -sk "$1" 2>/dev/null | awk '{ print $1 }'; }
+
+latest() { # -> TAG (vX.Y.Z), VER (X.Y.Z)
+	R=$(repo)
+	[ -n "$R" ] || die "No GitHub repository set up yet"
+	J=$(curl -fsSL -m 20 --retry 2 -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$R/releases/latest") \
+		|| die "Could not reach GitHub"
+	TAG=$(echo "$J" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+	[ -n "$TAG" ] || die "No releases found"
+	VER=${TAG#v}
+	valid_ver "$VER" || die "No releases found"
+}
+
+lock() {
+	mkdir -p /run/notatv
+	exec 9> /run/notatv/update.lock
+	flock -n 9 || die "An update is already running"
+}
+
+# the boot partition: partition 1 on the same disk as / (with the label NOTABOOT)
+boot_dev() {
+	mm=$(mountpoint -d / 2>/dev/null) || return 1
+	p=$(readlink -f "/sys/dev/block/$mm") || return 1
+	[ -e "$p/partition" ] || return 1
+	for q in "${p%/*}"/*/partition; do
+		[ "$(cat "$q" 2>/dev/null)" = 1 ] || continue
+		d=/dev/$(basename "${q%/partition}")
+		blkid "$d" 2>/dev/null | grep -q 'LABEL="NOTABOOT"' || return 1
+		echo "$d"; return 0
+	done
+	return 1
+}
+BOOT_MOUNTED=
+mount_boot() {
+	d=$(boot_dev) || return 1
+	want=$(cat "/sys/class/block/${d##*/}/dev")
+	if mountpoint -q $BOOT; then
+		[ "$(mountpoint -d $BOOT)" = "$want" ] || return 1 # something else is mounted there
+		return 0
+	fi
+	mkdir -p $BOOT && mount -t vfat "$d" $BOOT && BOOT_MOUNTED=1
+}
+umount_boot() { [ -n "$BOOT_MOUNTED" ] && { sync; umount $BOOT 2>/dev/null; BOOT_MOUNTED=; }; return 0; }
+
+# safe_target path (relative to /): may a file be written at /path?
+# The nearest existing parent must be a real directory on the root filesystem (not reached through a
+# symlink to /data, /tmp etc.), and /path itself must not be a real directory.
+safe_target() {
+	t="/$1"
+	case "$1" in ''|/*|../*|*/../*|*/..|..) return 1 ;; esac
+	[ -d "$t" ] && [ ! -L "$t" ] && return 1
+	p=${t%/*}; [ -n "$p" ] || p=/
+	while [ ! -e "$p" ] && [ ! -L "$p" ]; do p=${p%/*}; [ -n "$p" ] || p=/; done
+	[ -d "$p" ] || return 1
+	r=$(readlink -f "$p") || return 1
+	case "$r" in
+	/data|/data/*|/tmp|/tmp/*|/run|/run/*|/proc|/proc/*|/sys|/sys/*|/dev|/dev/*|/media|/media/*|/mnt|/mnt/*|"$ST"|"$ST"/*) return 1 ;;
+	esac
+	return 0
+}
+
+# put staged file $1 at $2 with one rename; a symlink at $2 is replaced, never followed
+place() {
+	mkdir -p "${2%/*}" || return 1
+	[ -L "$2" ] && { rm -f "$2" || return 1; }
+	mv -f "$1" "$2"
+}
+
+# ---------------------------------------------------------------- journal
+# $ST/root.list   files to put in place, staged in $ST/new/<path>
+# $ST/boot.list   files to put on the boot partition, staged in $BOOT/$BST/<path>
+# $ST/remove.list files to delete
+# $ST/boot-remove.list files to delete on the boot partition (rollback of files an update added)
+# $ST/version     the version being installed (for the log)
+# $ST/COMMIT      written (after sync) when everything is staged; from then on the change is finished,
+#                 also after a power cut. Without COMMIT the staging is thrown away.
+
+discard() { # throw away an unfinished staging (nothing on the system was changed yet)
+	rm -rf "$ST"
+	if [ -n "$1" ] || mount_boot; then rm -rf "$BOOT/$BST"; umount_boot; fi
+	sync
+}
+
+apply() { # finish a committed change; can be run again any number of times
+	if [ -s "$ST/boot.list" ] || [ -s "$ST/boot-remove.list" ]; then mount_boot || return 1; fi
+	while IFS= read -r f; do
+		[ -e "$ST/new/$f" ] || [ -L "$ST/new/$f" ] || continue # already in place
+		place "$ST/new/$f" "/$f" || return 1
+	done < "$ST/root.list"
+	if [ -s "$ST/boot.list" ]; then
+		while IFS= read -r f; do
+			[ -e "$BOOT/$BST/$f" ] || continue
+			mkdir -p "$BOOT/${f%/*}" && mv -f "$BOOT/$BST/$f" "$BOOT/$f" || return 1
+		done < "$ST/boot.list"
+	fi
+	[ -s "$ST/boot-remove.list" ] && while IFS= read -r f; do
+		case "$f" in ''|/*|*..*) continue ;; esac
+		case " $KEEP_BOOT " in *" $f "*) continue ;; esac
+		rm -f "$BOOT/$f"
+	done < "$ST/boot-remove.list"
+	[ -f "$ST/remove.list" ] && while IFS= read -r f; do
+		{ [ -L "/$f" ] || [ -f "/$f" ]; } && rm -f "/$f"
+	done < "$ST/remove.list"
+	sync
+	rm -rf "$BOOT/$BST"; umount_boot
+	log "update: $(cat "$ST/version" 2>/dev/null) is in place"
+	rm -rf "$ST"; sync
+}
+
+# stage SRC: stage the files listed in $ST/root.list from SRC/rootfs and $ST/boot.list from SRC/boot
+stage() {
+	while IFS= read -r f; do
+		mkdir -p "$ST/new/${f%/*}" && cp -a "$1/rootfs/$f" "$ST/new/$f" || return 1
+	done < "$ST/root.list"
+	if [ -s "$ST/boot.list" ]; then
+		while IFS= read -r f; do
+			mkdir -p "$BOOT/$BST/${f%/*}" && cp "$1/boot/$f" "$BOOT/$BST/$f" || return 1
+		done < "$ST/boot.list"
+	fi
+	sync
+}
+
+commit() {
+	sync
+	echo "$1" > "$ST/version" && sync && : > "$ST/COMMIT" && sync
+}
+
+data_mounted() { awk '$2 == "/data" && $3 != "tmpfs" { f = 1 } END { exit !f }' /proc/mounts; }
+data_ok() { # /data must be the real data partition (not the tmpfs fallback), and / must be writable
+	data_mounted || die "The data partition is not mounted"
+	touch /.notatv-rw 2>/dev/null && rm -f /.notatv-rw || die "The system partition is read-only"
+}
+
+# ---------------------------------------------------------------- install
+install() {
+	latest
+	CUR=$(current)
+	newer "$VER" "$CUR" || die "You already have the latest version"
+	data_ok
+	[ -e "$ST/COMMIT" ] && { apply || die "Restart the box to finish the previous update"; }
+	discard
+	[ "$(free_kb /data)" -gt 800000 ] 2>/dev/null || die "Not enough free space for the update"
+
+	# download (a cut-off download of the same version continues where it stopped)
+	[ "$(cat $DL/tag 2>/dev/null)" = "$TAG" ] || { rm -rf $DL; mkdir -p $DL; echo "$TAG" > $DL/tag; }
+	rm -rf $DL/new
+	U="https://github.com/$(repo)/releases/download/$TAG"
+	progress "$(msg "Downloading NotaTV %s…" "$VER")"
+	curl -fsSL -m 30 --retry 3 -o $DL/$ASSET.sha256 "$U/$ASSET.sha256" || die "Download failed"
+	curl -fsSL --retry 5 --retry-delay 5 --speed-limit 2000 --speed-time 60 -C - -o $DL/$ASSET "$U/$ASSET" ||
+		curl -fsSL --retry 3 --retry-delay 5 --speed-limit 2000 --speed-time 60 -o $DL/$ASSET "$U/$ASSET" ||
+		die "Download failed"
+
+	# check
+	want=$(awk 'NR == 1 { print $1 }' $DL/$ASSET.sha256)
+	echo "$want" | grep -Eq '^[0-9a-f]{64}$' || die "Download failed"
+	if [ "$(sha256sum $DL/$ASSET | awk '{ print $1 }')" != "$want" ]; then
+		rm -rf $DL; die "The file is damaged (SHA256 does not match)"
+	fi
+	progress "Checking files…"
+	gunzip -c $DL/$ASSET 2>/dev/null | tar -tv -f - > $DL/names.v 2>/dev/null || { rm -rf $DL; die "Could not unpack"; }
+	awk '{ print $6 }' $DL/names.v > $DL/names
+	# only boot/ and rootfs/, no absolute paths or "..", nothing for /data, /dev, /tmp etc.
+	if grep -vE '^(\./|boot/|rootfs/)' $DL/names | grep -q . ||
+		grep -Eq '(^|/)\.\.(/|$)' $DL/names ||
+		grep -Eq '^rootfs/(data|dev|proc|sys|tmp|run|media|mnt)(/|$)' $DL/names ||
+		grep -Eq '^rootfs/\.notatv-update(/|$)' $DL/names ||
+		grep -q ' ' $DL/names ||
+		! awk 'NR == FNR { if ($1 ~ /^l/) { n = $6; sub("/$", "", n); l[n] = 1 } next }
+			{ n = $6; while (sub("/[^/]*$", "", n)) if (n in l) exit 1 }' $DL/names.v $DL/names.v; then
+		# (the last test: nothing may be unpacked through a symlink in the package itself)
+		rm -rf $DL; die "The update does not fit this device"
+	fi
+	sz=$(size_kb $DL/$ASSET)
+	[ "$(free_kb /data)" -gt $((sz * 3)) ] 2>/dev/null || die "Not enough free space for the update"
+	progress "Unpacking…"
+	mkdir -p $DL/new && gunzip -c $DL/$ASSET 2>/dev/null | tar -x -f - -C $DL/new 2>$DL/tar.err ||
+		{ log "update: $(tail -3 $DL/tar.err)"; rm -rf $DL/new; die "Could not unpack"; }
+	N=$DL/new
+	for f in usr/bin/tvshell bin/busybox usr/libexec/notatv/update etc/notatv-release etc/init.d/rcS; do
+		[ -f "$N/rootfs/$f" ] || { rm -rf $N; die "The update is missing files"; }
+	done
+	for f in Image bcm2711-rpi-4-b.dtb start4.elf fixup4.dat; do
+		[ -s "$N/boot/$f" ] || { rm -rf $N; die "The update is missing files"; }
+	done
+	# the right device and the version the release says
+	[ "$(sed -n 's/^VERSION=\([^ ]*\).*/\1/p' $N/rootfs/etc/notatv-release)" = "$VER" ] || { rm -rf $N; die "The update does not fit this device"; }
+	[ "$(od -An -tx1 -j18 -N2 $N/rootfs/usr/bin/tvshell | tr -d ' \n')" = b700 ] || { rm -rf $N; die "The update does not fit this device"; }
+	[ "$(od -An -tx1 -j18 -N2 $N/rootfs/bin/busybox | tr -d ' \n')" = b700 ] || { rm -rf $N; die "The update does not fit this device"; }
+
+	# what changes (only files that differ)
+	progress "Preparing…"
+	mount_boot || die "The boot partition was not found"
+	mkdir -p "$ST" || die "The system partition is read-only"
+	: > "$ST/root.list"; : > "$ST/boot.list"; : > "$ST/remove.list"
+	(cd $N/rootfs && find . ! -type d) | sed 's,^\./,,' > $DL/new.list
+	need=0
+	while IFS= read -r f; do
+		n="$N/rootfs/$f"; t="/$f"
+		if [ -L "$n" ]; then
+			[ -L "$t" ] && [ "$(readlink "$n")" = "$(readlink "$t")" ] && continue
+		elif [ -f "$n" ]; then
+			if [ -f "$t" ] && [ ! -L "$t" ] && cmp -s "$n" "$t"; then
+				[ "$(ls -ln "$n" | awk '{ print $1, $3, $4 }')" = "$(ls -ln "$t" | awk '{ print $1, $3, $4 }')" ] && continue
+			fi
+			need=$((need + $(size_kb "$n") + 4))
+		else
+			continue # device nodes/fifos are never in the package; skip them if they are
+		fi
+		safe_target "$f" || { discard 1; log "update: conflict at /$f"; die "The update does not fit this device"; }
+		echo "$f" >> "$ST/root.list"
+	done < $DL/new.list
+	if [ -f $LIST ]; then
+		grep -vxF -f $DL/new.list $LIST | while IFS= read -r f; do
+			{ [ -L "/$f" ] || [ -f "/$f" ]; } && safe_target "$f" && echo "$f"
+		done > "$ST/remove.list"
+	fi
+	bneed=0
+	(cd $N/boot && find . ! -type d) | sed 's,^\./,,' | while IFS= read -r f; do
+		case " $KEEP_BOOT " in *" $f "*) continue ;; esac
+		case "$f" in ''|/*|*..*) continue ;; esac
+		cmp -s "$N/boot/$f" "$BOOT/$f" || echo "$f"
+	done > "$ST/boot.list"
+	while IFS= read -r f; do bneed=$((bneed + $(size_kb "$N/boot/$f") + 4)); done < "$ST/boot.list"
+	[ "$(free_kb /)" -gt $((need + 20000)) ] 2>/dev/null || { discard 1; die "Not enough free space for the update"; }
+	[ "$(free_kb $BOOT)" -gt $((bneed + 1024)) ] 2>/dev/null || { discard 1; die "Not enough free space for the update"; }
+
+	# backup of everything that will be replaced or removed (for rollback)
+	progress "Installing…"
+	rm -rf $BK; mkdir -p $BK/root $BK/boot || { discard 1; die "The update could not be installed - nothing was changed"; }
+	: > $BK/added.list; : > $BK/boot-added.list
+	ok=1
+	cat "$ST/root.list" "$ST/remove.list" | while IFS= read -r f; do
+		if [ -e "/$f" ] || [ -L "/$f" ]; then
+			mkdir -p "$BK/root/${f%/*}" && cp -a "/$f" "$BK/root/$f" || exit 1
+		else echo "$f" >> $BK/added.list; fi
+	done || ok=
+	while IFS= read -r f; do
+		if [ -e "$BOOT/$f" ]; then mkdir -p "$BK/boot/${f%/*}" && cp "$BOOT/$f" "$BK/boot/$f" || { ok=; break; }
+		else echo "$f" >> $BK/boot-added.list; fi
+	done < "$ST/boot.list"
+	echo "$CUR" > $BK/version
+	[ -n "$ok" ] || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }
+
+	# stage, commit, switch
+	stage $N || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }
+	sync
+	commit "$VER" || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }
+	apply || die "Restart the box to finish the update"
+	rm -rf $DL; sync
+	[ "$(current)" = "$VER" ] || die "The update could not be installed"
+	echo 0 > $VERIFY; sync
+	log "update: $CUR -> $VER"
+	echo OK
+}
+
+# ---------------------------------------------------------------- rollback
+rollback() {
+	data_ok
+	[ -f $BK/version ] && [ -d $BK/root ] || die "No earlier version saved"
+	[ -e "$ST/COMMIT" ] && { apply || die "Restart the box to finish the previous update"; }
+	discard
+	mount_boot || die "The boot partition was not found"
+	mkdir -p "$ST" || die "The system partition is read-only"
+	(cd $BK/root && find . ! -type d) | sed 's,^\./,,' > "$ST/root.list"
+	while IFS= read -r f; do safe_target "$f" || { discard 1; die "The update could not be installed - nothing was changed"; }; done < "$ST/root.list"
+	while IFS= read -r f; do
+		{ [ -L "/$f" ] || [ -f "/$f" ]; } && safe_target "$f" && echo "$f"
+	done < $BK/added.list > "$ST/remove.list"
+	(cd $BK/boot && find . ! -type d) | sed 's,^\./,,' > "$ST/boot.list"
+	cp $BK/boot-added.list "$ST/boot-remove.list" 2>/dev/null
+	mkdir -p $ST/src && ln -s $BK/root $ST/src/rootfs && ln -s $BK/boot $ST/src/boot || { discard 1; die "The update could not be installed - nothing was changed"; }
+	stage $ST/src || { discard 1; die "The update could not be installed - nothing was changed"; }
+	rm -rf $ST/src
+	commit "$(cat $BK/version)" || { discard 1; die "The update could not be installed - nothing was changed"; }
+	apply || die "Restart the box to finish the update"
+	log "update: rolled back to $(cat $BK/version)"
+	rm -rf $BK $VERIFY; sync
+	echo OK
+}
+
+# ---------------------------------------------------------------- boot
+resume() {
+	if [ -e "$ST/COMMIT" ]; then
+		printf "%s\n" "NotaTV: finishing the update" > /dev/console
+		apply || log "update: could not finish the update at boot"
+	elif [ -d "$ST" ]; then
+		discard
+	fi
+	# leftovers from the first updater (1.0.0/1.0.1): it left "*.tvnew" symlinks inside folders that
+	# symlinks point to, a full copy of the system as backup, and half-copied files after a power cut
+	if [ -d $BK ] && [ ! -f $BK/version ]; then rm -rf $BK; fi
+	find / -xdev -name '*.tvnew' ! -type d -exec rm -f {} \; 2>/dev/null
+	data_mounted && find /data/notatv -maxdepth 3 -name '*.tvnew' -type l -exec rm -f {} \; 2>/dev/null
+	return 0
+}
+
+case "$1" in
+check)
+	latest
+	if newer "$VER" "$(current)"; then echo "NY $VER"; else echo "NYESTE $(current)"; fi
+	;;
+install) lock; install ;;
+rollback) lock; rollback ;;
+resume) lock; resume ;;
+usb) echo "Use 'Update NotaTV' (downloads from GitHub)"; exit 1 ;;
+*) exit 1 ;;
+esac

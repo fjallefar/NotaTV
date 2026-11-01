@@ -1,0 +1,76 @@
+#!/bin/sh
+# Music receivers: AirPlay (shairport-sync + nqptp) and Bluetooth (bluez-alsa): start | stop | restart | pause | resume
+# Everything is open source and only listens on the local network.
+. /usr/libexec/notatv/lib.sh
+SP=/run/shairport-sync.pid
+NQ=/run/nqptp.pid
+META=/tmp/shairport-sync-metadata
+BA=/run/bluealsa.pid
+BP=/run/bluealsa-aplay.pid
+
+running() { [ -f "$1" ] && kill -0 $(cat "$1") 2>/dev/null; }
+
+airplay_start() {
+	[ "$(cfg_get airplay_enabled 1)" = 1 ] || return 0
+	command -v shairport-sync >/dev/null || return 0
+	running $SP && return 0
+	name=$(device_name | tr -d '"\\')
+	mkdir -p $RUN
+	[ -p $META ] || { rm -f $META; mkfifo $META; }
+	cat > $RUN/shairport-sync.conf <<EOC
+general = {
+	name = "${name:-NotaTV}";
+	output_backend = "alsa";
+	volume_range_db = 50;
+};
+alsa = { output_device = "default"; };
+metadata = {
+	enabled = "yes";
+	include_cover_art = "yes";
+	pipe_name = "$META";
+	pipe_timeout = 5000;
+};
+sessioncontrol = { session_timeout = 20; };
+EOC
+	# AirPlay 2 needs nqptp (time sync, UDP 319/320 locally)
+	command -v nqptp >/dev/null && ! running $NQ && start-stop-daemon -S -b -m -p $NQ -x /usr/bin/nqptp
+	start-stop-daemon -S -b -m -p $SP -x /bin/sh -- -c "exec /usr/bin/shairport-sync -c $RUN/shairport-sync.conf >> /tmp/shairport-sync.log 2>&1"
+	log "airplay startet (${name:-NotaTV})"
+}
+
+airplay_stop() {
+	for p in $SP $NQ; do running $p && kill $(cat $p) 2>/dev/null; rm -f $p; done
+}
+
+# Bluetooth: bluealsa receives A2DP audio from the phone, bluealsa-aplay plays it on HDMI (ALSA "default").
+# Pairing and "Now playing" are handled by tvshell via D-Bus (BlueZ).
+bt_start() {
+	[ "$(cfg_get bt_enabled 1)" = 1 ] || return 0
+	command -v bluealsa >/dev/null || return 0
+	running $BA || start-stop-daemon -S -b -m -p $BA -x /bin/sh -- -c "exec /usr/bin/bluealsa -p a2dp-sink >> /tmp/bluealsa.log 2>&1"
+	# wait until bluealsa is on D-Bus, otherwise bluealsa-aplay cannot find it
+	i=0; while [ $i -lt 10 ] && ! dbus-send --system --print-reply --dest=org.bluealsa / org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; do sleep 1; i=$((i+1)); done
+	aplay_start
+}
+aplay_start() {
+	command -v bluealsa-aplay >/dev/null || return 0
+	running $BP || start-stop-daemon -S -b -m -p $BP -x /bin/sh -- -c "exec /usr/bin/bluealsa-aplay --pcm=default >> /tmp/bluealsa.log 2>&1"
+}
+aplay_stop() { running $BP && kill $(cat $BP) 2>/dev/null; rm -f $BP; }
+bt_stop() { aplay_stop; running $BA && kill $(cat $BA) 2>/dev/null; rm -f $BA; }
+
+case "$1" in
+start) airplay_start; bt_start ;;
+stop) airplay_stop; bt_stop ;;
+restart) airplay_stop; bt_stop; sleep 1; airplay_start; bt_start ;;
+pause)
+	# release the audio device while video plays (AirPlay disappears from the phone meanwhile; Bluetooth stays connected)
+	if running $SP; then airplay_stop; touch $RUN/music-paused; fi
+	if running $BP; then aplay_stop; touch $RUN/bt-paused; fi
+	;;
+resume)
+	[ -f $RUN/music-paused ] && { rm -f $RUN/music-paused; airplay_start; }
+	[ -f $RUN/bt-paused ] && { rm -f $RUN/bt-paused; aplay_start; }
+	;;
+esac
+exit 0

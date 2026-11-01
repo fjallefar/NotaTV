@@ -1,0 +1,26 @@
+#!/bin/sh
+# NotaTV: background services (do not block booting)
+. /usr/libexec/notatv/lib.sh
+
+case "$1" in
+start)
+	(
+		$H/net up
+		$H/cec daemon &
+		# phone remote / text input
+		httpd -p 80 -h /usr/share/notatv/www
+		[ "$(cfg_get ssh_enabled 0)" = 1 ] && $H/ssh on
+		$H/music start
+		$H/automount
+		# clock: sync when the network is up
+		for i in 1 2 3 4 5 6; do ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 && break; sleep 5; done
+		# only with a real hardware clock (x86); the Pi 4 has none. -u: the clock is in UTC, no /etc/adjtime
+		[ -e /dev/rtc0 ] && hwclock -w -u 2>/dev/null
+	) >/dev/null 2>&1 &
+	;;
+stop)
+	$H/music stop
+	killall -q httpd dropbear udhcpc wpa_supplicant 2>/dev/null
+	;;
+esac
+exit 0

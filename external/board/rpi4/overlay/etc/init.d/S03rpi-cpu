@@ -1,0 +1,8 @@
+#!/bin/sh
+# NotaTV Pi: CPU at full speed. With "ondemand" it often sits at 600-1000 MHz because the UI only
+# uses part of one core - but then the graphics driver's work does not reach 60 fps (measured: 30 -> 60 fps).
+[ "$1" = start ] || exit 0
+for g in /sys/devices/system/cpu/cpufreq/policy*/scaling_governor; do
+	[ -w "$g" ] && echo performance > "$g"
+done
+exit 0

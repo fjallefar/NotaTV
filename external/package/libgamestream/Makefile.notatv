@@ -1,0 +1,18 @@
+# Bygger libgamestream.a: moonlight-common-c (protokol, enet, Reed-Solomon) + libgamestream (HTTP/parring).
+# discover.c (finder kun én PC) og sps.c (H.264-omskrivning) bruges ikke: tvmoon har sin egen mDNS-søgning.
+CC ?= cc
+AR ?= ar
+CFLAGS ?= -O2
+MC = third_party/moonlight-common-c
+SRCS = $(wildcard $(MC)/src/*.c) $(MC)/reedsolomon/rs.c \
+       $(addprefix $(MC)/enet/,callbacks.c compress.c host.c list.c packet.c peer.c protocol.c unix.c) \
+       $(addprefix libgamestream/,client.c http.c mkcert.c xml.c)
+OBJS = $(SRCS:.c=.o)
+override CFLAGS += -std=gnu11 -fPIC -DNDEBUG -DHAS_SOCKLEN_T=1 -DHAVE_CLOCK_GETTIME \
+	-DHAS_FCNTL=1 -DHAS_IOCTL=1 -DHAS_POLL=1 -DHAS_GETADDRINFO=1 -DHAS_GETNAMEINFO=1 \
+	-DHAS_GETHOSTBYNAME_R=1 -DHAS_GETHOSTBYADDR_R=1 -DHAS_INET_PTON=1 -DHAS_INET_NTOP=1 -DHAS_MSGHDR_FLAGS=1 \
+	-I$(MC)/src -I$(MC)/enet/include -I$(MC)/reedsolomon -Wno-deprecated-declarations
+
+libgamestream.a: $(OBJS)
+	rm -f $@
+	$(AR) rcs $@ $(OBJS)

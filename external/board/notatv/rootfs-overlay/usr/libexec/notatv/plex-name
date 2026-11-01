@@ -1,0 +1,3 @@
+#!/bin/sh
+. /usr/libexec/notatv/lib.sh
+[ -n "$(cfg_get plex_server_uri)" ] && cfg_get plex_server_name Plex || echo "Not connected"

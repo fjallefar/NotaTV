@@ -1,0 +1,17 @@
+diff --git a/third_party/moonlight-common-c/src/PlatformSockets.c b/third_party/moonlight-common-c/src/PlatformSockets.c
+index 56f9b9c..15b1727 100644
+--- a/third_party/moonlight-common-c/src/PlatformSockets.c
++++ b/third_party/moonlight-common-c/src/PlatformSockets.c
+@@ -426,7 +426,12 @@ int setSocketNonBlocking(SOCKET s, bool enabled) {
+ SOCKET createSocket(int addressFamily, int socketType, int protocol, bool nonBlocking) {
+     SOCKET s;
+ 
++#ifdef SOCK_CLOEXEC
++    /* NotaTV: sockets må ikke arves af andre programmer */
++    s = socket(addressFamily, socketType | SOCK_CLOEXEC, protocol);
++#else
+     s = socket(addressFamily, socketType, protocol);
++#endif
+     if (s == INVALID_SOCKET) {
+         Limelog("socket() failed: %d\n", (int)LastSocketError());
+         return INVALID_SOCKET;

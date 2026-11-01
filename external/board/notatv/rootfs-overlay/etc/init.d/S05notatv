@@ -1,0 +1,31 @@
+#!/bin/sh
+# NotaTV: quick basic setup before the user interface starts
+. /usr/libexec/notatv/lib.sh
+
+case "$1" in
+start)
+	mkdir -p $RUN /tmp/notatv-inbox /media /data
+	chmod 700 /tmp/notatv-inbox
+	: > $RUN/mpv-local.conf
+	# persistent data partition (created by the installer)
+	dev=$(findfs LABEL=NOTADATA 2>/dev/null)
+	if [ -n "$dev" ] && mount -o noatime "$dev" /data 2>/dev/null; then
+		echo installed > $RUN/mode
+	else
+		mount -t tmpfs -o size=64m tmpfs /data
+		echo live > $RUN/mode
+	fi
+	mkdir -p /data/notatv
+	# targets for symlinks from the rootfs (see post-build.sh): Bluetooth, bluealsa, shader cache, mpv
+	mkdir -p /data/notatv/bluetooth /data/notatv/bluealsa /data/notatv/cache /data/notatv/config
+	# tokens, passwords and cookies (Plex, IPTV, Seerr, YouTube) for root only
+	chmod -R go= /data/notatv
+	# audio default (HDMI with a connected TV) - runs in the background
+	$H/audio setup >/dev/null 2>&1 &
+	;;
+stop)
+	sync
+	umount /data 2>/dev/null
+	;;
+esac
+exit 0

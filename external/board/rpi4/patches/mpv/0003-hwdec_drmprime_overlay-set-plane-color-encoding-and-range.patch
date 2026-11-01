@@ -1,0 +1,24 @@
+From: NotaTV
+Subject: [PATCH] hwdec_drmprime_overlay: set plane COLOR_ENCODING and COLOR_RANGE
+
+Without these the plane keeps its default YCbCr matrix (BT.709 limited on
+vc4), so BT.2020 HDR video was converted with the wrong coefficients.
+---
+--- a/video/out/hwdec/hwdec_drmprime_overlay.c
++++ b/video/out/hwdec/hwdec_drmprime_overlay.c
+@@ -204,6 +204,15 @@
+                 drm_object_set_property(request, p->ctx->drmprime_video_plane, "CRTC_W",  dstw);
+                 drm_object_set_property(request, p->ctx->drmprime_video_plane, "CRTC_H",  dsth);
+                 drm_object_set_property(request, p->ctx->drmprime_video_plane, "ZPOS",    0);
++                // Tell the plane how to convert YCbCr to RGB; the default
++                // (often BT.709 limited) is wrong for BT.2020/BT.601 sources.
++                // Enum values follow enum drm_color_encoding / drm_color_range.
++                const struct pl_color_repr *repr = &hw_image->params.repr;
++                uint64_t enc = repr->sys == PL_COLOR_SYSTEM_BT_2020_NC ? 2 :
++                               repr->sys == PL_COLOR_SYSTEM_BT_601 ? 0 : 1;
++                drm_object_set_property(request, p->ctx->drmprime_video_plane, "COLOR_ENCODING", enc);
++                drm_object_set_property(request, p->ctx->drmprime_video_plane, "COLOR_RANGE",
++                                        repr->levels == PL_COLOR_LEVELS_FULL ? 1 : 0);
+             } else {
+                 ret = drmModeSetPlane(p->ctx->fd, p->ctx->drmprime_video_plane->id, p->ctx->crtc->id, next_frame.fb.fb_id, 0,
+                                       MP_ALIGN_DOWN(p->dst.x0, 2), MP_ALIGN_DOWN(p->dst.y0, 2), dstw, dsth,

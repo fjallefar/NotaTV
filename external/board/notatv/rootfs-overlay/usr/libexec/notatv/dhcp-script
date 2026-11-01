@@ -1,0 +1,23 @@
+#!/bin/sh
+# udhcpc hook: set address, route and DNS
+case "$1" in
+deconfig) ip addr flush dev $interface; ip link set $interface up ;;
+bound|renew)
+	ip addr flush dev $interface
+	ip addr add $ip/${mask:-24} ${broadcast:+broadcast $broadcast} dev $interface
+	if [ -n "$router" ]; then
+		while ip route del default dev $interface 2>/dev/null; do :; done
+		metric=10; [ -d /sys/class/net/$interface/wireless ] && metric=20
+		for r in $router; do ip route add default via $r dev $interface metric $metric; break; done
+	fi
+	# /etc/resolv.conf is a symlink into /run (RAM): write there, so the rootfs is not changed
+	R=/run/resolv.conf
+	: > $R.tmp
+	[ -n "$domain" ] && echo "search $domain" >> $R.tmp
+	for d in $dns; do echo "nameserver $d" >> $R.tmp; done
+	# if the DNS server does not answer a query, wait 1 s (not 5) before retrying
+	echo "options timeout:1 attempts:3" >> $R.tmp
+	mv $R.tmp $R
+	;;
+esac
+exit 0

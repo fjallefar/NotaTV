@@ -1,0 +1,12 @@
+#!/bin/sh
+# find and mount the NotaTV installation medium (ISO/USB) on /run/notatv/iso - prints the device
+M=/run/notatv/iso
+mkdir -p $M
+if [ -f $M/notatv.efi ]; then grep " $M " /proc/mounts | cut -d' ' -f1; exit 0; fi
+for d in /dev/sr[0-9]* /dev/sd[a-z] /dev/vd[a-z] /dev/nvme[0-9]n[0-9] /dev/mmcblk[0-9]; do
+	[ -b "$d" ] || continue
+	mount -t iso9660 -o ro "$d" $M 2>/dev/null || continue
+	if [ -f $M/notatv.efi ]; then echo "$d"; exit 0; fi
+	umount $M
+done
+exit 1

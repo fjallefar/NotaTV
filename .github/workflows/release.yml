@@ -1,0 +1,131 @@
+# Release: push a tag like v1.0.1 and the build machine (self-hosted runner with the label "notatv")
+# builds the Pi 4 image and publishes a GitHub release with the image and the update files.
+#
+# It builds in /opt/notatv (not the runner's work folder), so no home folder paths end up in
+# the image and the build folder is kept between releases: normally only NotaTV's own packages
+# are rebuilt. If configs, patches or packages changed since the last build, it builds from scratch.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  TREE: /opt/notatv
+  REPO_URL: https://github.com/${{ github.repository }}.git
+
+jobs:
+  build:
+    runs-on: [self-hosted, linux, notatv]
+    timeout-minutes: 720
+    steps:
+      - name: Fetch the tagged code into /opt/notatv
+        run: |
+          set -e
+          mkdir -p "$TREE"
+          cd "$TREE"
+          # also works if the folder already exists without git (e.g. a build made by hand)
+          [ -d .git ] || git init -q
+          git remote add origin "$REPO_URL" 2>/dev/null || git remote set-url origin "$REPO_URL"
+          git fetch --force --tags origin
+          git checkout --force --detach "$GITHUB_REF_NAME"
+          git clean -fd   # removes stray files, keeps ignored ones (buildroot/, dl/, output-rpi4/, secrets/)
+          test "v$(cat VERSION)" = "$GITHUB_REF_NAME" || { echo "VERSION is $(cat VERSION), but the tag is $GITHUB_REF_NAME"; exit 1; }
+
+      - name: Twitch Client ID
+        env:
+          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+        run: |
+          mkdir -p "$TREE/secrets"
+          if [ -n "$TWITCH_CLIENT_ID" ]; then
+            printf '%s\n' "$TWITCH_CLIENT_ID" > "$TREE/secrets/twitch-client-id"
+          else
+            echo "::warning::The TWITCH_CLIENT_ID secret is not set - Twitch login will not work in this image"
+          fi
+
+      - name: Decide what to rebuild
+        shell: bash
+        run: |
+          cd "$TREE"
+          OUT=output-rpi4
+          LAST=$(cat $OUT/.notatv-built 2>/dev/null || true)
+          # changes Buildroot does not notice by itself -> start over (ccache keeps that from being too slow)
+          FULL='^(Makefile|external/(Config\.in|external\.(mk|desc)|configs/|package/)|external/board/[^/]+/(patches/|[^/]*\.fragment|rpi-ffmpeg|ffmpeg-override))'
+          OWN='^external/package/(tvshell|tvmoon|rpi-tools)/'
+          if [ ! -d $OUT ]; then
+            echo "No earlier build - full build"
+          elif [ -z "$LAST" ] || ! git cat-file -e "$LAST" 2>/dev/null; then
+            echo "Earlier build made by hand - keeping it, rebuilding tvshell, tvmoon and rpi-tools"
+            make -C buildroot O=$TREE/$OUT BR2_EXTERNAL=$TREE/external tvshell-dirclean tvmoon-dirclean rpi-tools-dirclean
+          elif git diff --name-only "$LAST" HEAD | grep -vE "$OWN" | grep -qE "$FULL"; then
+            echo "Configuration, patches or packages changed since $LAST - full build:"
+            git diff --name-only "$LAST" HEAD | grep -vE "$OWN" | grep -E "$FULL"
+            rm -rf $OUT
+          else
+            echo "Only NotaTV's own code changed since $LAST - rebuilding tvshell, tvmoon and rpi-tools"
+            make -C buildroot O=$TREE/$OUT BR2_EXTERNAL=$TREE/external tvshell-dirclean tvmoon-dirclean rpi-tools-dirclean
+          fi
+          # rpi-ffmpeg is fetched again if the pinned commit changed
+          if [ -d src/rpi-ffmpeg ] && [ "$(cat src/rpi-ffmpeg/.notatv-commit 2>/dev/null)" != "$(cat external/board/rpi4/rpi-ffmpeg.commit)" ]; then
+            rm -rf src/rpi-ffmpeg
+          fi
+
+      - name: Build (full log in /opt/notatv/build.log)
+        shell: bash
+        run: |
+          cd "$TREE"
+          rm -f notatv-rpi4.img notatv-rpi4.img.xz notatv-rpi4-update.tar.gz notatv-rpi4-update.tar.gz.sha256
+          make rpi4 > build.log 2>&1 || { tail -80 build.log; exit 1; }
+          git rev-parse HEAD > output-rpi4/.notatv-built
+          xz -T0 -k -f notatv-rpi4.img
+          # the update package must say the right version, have the file list, and tvshell must show it
+          V=$(cat VERSION)
+          # (no grep -q directly on tar: with pipefail, grep stopping early makes tar fail with a write error)
+          tar -tzf notatv-rpi4-update.tar.gz > pkg.list
+          tar -xzOf notatv-rpi4-update.tar.gz rootfs/etc/notatv-release > pkg.release
+          tar -xzOf notatv-rpi4-update.tar.gz rootfs/usr/bin/tvshell > pkg.tvshell
+          grep -q "^VERSION=$V " pkg.release || { echo "update package: wrong /etc/notatv-release"; exit 1; }
+          grep -qx 'rootfs/usr/share/notatv/files.list' pkg.list || { echo "update package: files.list missing"; exit 1; }
+          grep -aq "NotaTV/$V" pkg.tvshell || { echo "update package: tvshell was not built with version $V"; exit 1; }
+          ! grep -Eq '^rootfs/(data|dev|proc|sys|tmp|run|media|mnt)/.' pkg.list || { echo "update package: contains runtime folders"; exit 1; }
+          rm -f pkg.list pkg.release pkg.tvshell
+          ls -la notatv-rpi4.img.xz notatv-rpi4-update.tar.gz notatv-rpi4-update.tar.gz.sha256
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd "$TREE"
+          python3 - <<'EOF'
+          import json, os, urllib.error, urllib.request
+          repo, tag, tok = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_REF_NAME"], os.environ["GH_TOKEN"]
+          hdr = {"Authorization": "Bearer " + tok, "Accept": "application/vnd.github+json"}
+          def call(url, data=None, method=None, ctype="application/json"):
+              req = urllib.request.Request(url, data=data, method=method, headers=dict(hdr, **{"Content-Type": ctype}))
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+          api = f"https://api.github.com/repos/{repo}/releases"
+          try:
+              rel = call(f"{api}/tags/{tag}")
+          except urllib.error.HTTPError as e:
+              if e.code != 404: raise
+              rel = call(api, json.dumps({"tag_name": tag, "name": "NotaTV " + tag.lstrip("v"),
+                                          "generate_release_notes": True, "make_latest": "true"}).encode())
+          names = ["notatv-rpi4.img.xz", "notatv-rpi4-update.tar.gz", "notatv-rpi4-update.tar.gz.sha256"]
+          for a in rel.get("assets", []):  # running again for the same tag replaces the files
+              if a["name"] in names:
+                  urllib.request.urlopen(urllib.request.Request(f"{api}/assets/{a['id']}", method="DELETE", headers=hdr))
+          for n in names:
+              with open(n, "rb") as f:
+                  call(f"https://uploads.github.com/repos/{repo}/releases/{rel['id']}/assets?name={n}",
+                       data=f.read(), ctype="application/octet-stream")
+              print("uploaded", n)
+          print(rel["html_url"])
+          EOF

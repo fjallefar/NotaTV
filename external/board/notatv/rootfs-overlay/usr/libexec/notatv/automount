@@ -1,0 +1,52 @@
+#!/bin/sh
+# mount USB drives under /media/<name> and any network drives
+. /usr/libexec/notatv/lib.sh
+mkdir -p /media
+# only one at a time
+mkdir $RUN/automount.lock 2>/dev/null || exit 0
+trap 'rmdir $RUN/automount.lock' EXIT
+# remove mounts for drives that have been unplugged
+grep ' /media/' /proc/mounts | while read -r dev mnt rest; do
+	case "$dev" in /dev/*) [ -b "$dev" ] || { umount -l "$mnt"; rmdir "$mnt" 2>/dev/null; } ;; esac
+done
+for d in /dev/sd[a-z][0-9]* /dev/sd[a-z] /dev/mmcblk[0-9]p[0-9]* /dev/nvme[0-9]n[0-9]p[0-9]*; do
+	[ -b "$d" ] || continue
+	grep -q "^$d " /proc/mounts && continue
+	info=$(blkid "$d" 2>/dev/null)
+	[ -z "$info" ] && continue
+	label=$(echo "$info" | sed -n 's/.*LABEL="\([^"]*\)".*/\1/p')
+	type=$(echo "$info" | sed -n 's/.*TYPE="\([^"]*\)".*/\1/p')
+	case "$label" in NOTABOOT|NOTADATA|NOTATV*) continue ;; esac
+	case "$type" in vfat|exfat|ntfs|ext2|ext3|ext4|iso9660|udf|btrfs|xfs) ;; *) continue ;; esac
+	name=${label:-${d##*/}}
+	mnt="/media/$name"
+	[ -e "$mnt" ] && mnt="/media/$name-${d##*/}"
+	mkdir -p "$mnt"
+	opt=ro
+	[ "$type" = ntfs ] && type=ntfs3
+	mount -t "$type" -o $opt "$d" "$mnt" 2>/dev/null || rmdir "$mnt"
+done
+# network drives
+share=$(cfg_get media_share "")
+mnt=/media/Netværk
+if [ -n "$share" ] && ! grep -q " $mnt " /proc/mounts; then
+	mkdir -p "$mnt"
+	case "$share" in
+	smb://*)
+		rest=${share#smb://}
+		cred=""; case "$rest" in *@*) cred=${rest%%@*}; rest=${rest#*@} ;; esac
+		user=${cred%%:*}; pass=""; case "$cred" in *:*) pass=${cred#*:} ;; esac
+		host=${rest%%/*}; path=${rest#*/}
+		mount -t cifs "//$host/$path" "$mnt" -o "ro,vers=3.0,username=${user:-guest},password=$pass" 2>/dev/null ||
+			mount -t cifs "//$host/$path" "$mnt" -o "ro,vers=2.0,username=${user:-guest},password=$pass" 2>/dev/null ||
+			{ rmdir "$mnt"; log "netværksdrev fejlede: $host/$path"; }
+		;;
+	nfs://*)
+		rest=${share#nfs://}
+		host=${rest%%/*}; path=/${rest#*/}
+		ip=$(nslookup "$host" 2>/dev/null | awk '/^Address/ {a=$NF} END {print a}')
+		mount -t nfs4 -o ro,addr=${ip:-$host} "$host:$path" "$mnt" 2>/dev/null || { rmdir "$mnt"; log "NFS fejlede: $share"; }
+		;;
+	esac
+fi
+exit 0

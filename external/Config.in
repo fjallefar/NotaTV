@@ -1,0 +1,8 @@
+menu "NotaTV"
+source "$BR2_EXTERNAL_NOTATV_PATH/package/tvshell/Config.in"
+source "$BR2_EXTERNAL_NOTATV_PATH/package/yt-dlp/Config.in"
+source "$BR2_EXTERNAL_NOTATV_PATH/package/uxplay/Config.in"
+source "$BR2_EXTERNAL_NOTATV_PATH/package/rpi-tools/Config.in"
+source "$BR2_EXTERNAL_NOTATV_PATH/package/libgamestream/Config.in"
+source "$BR2_EXTERNAL_NOTATV_PATH/package/tvmoon/Config.in"
+endmenu

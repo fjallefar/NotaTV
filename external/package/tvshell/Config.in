@@ -1,0 +1,6 @@
+config BR2_PACKAGE_TVSHELL
+	bool "tvshell"
+	depends on BR2_PACKAGE_SDL3_KMSDRM
+	select BR2_PACKAGE_LIBCURL
+	help
+	  NotaTV brugerflade (launcher, IPTV, Plex, Spotify, indstillinger).

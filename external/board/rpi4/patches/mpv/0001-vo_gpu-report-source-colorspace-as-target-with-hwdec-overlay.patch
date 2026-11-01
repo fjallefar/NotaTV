@@ -1,0 +1,65 @@
+From: NotaTV
+Subject: [PATCH] vo_gpu: report source colorspace as target with hwdec overlay
+
+With a hwdec overlay (e.g. drmprime-overlay) the GL renderer never runs,
+so target_params stayed empty and DRM never sent HDR_OUTPUT_METADATA.
+Also allow overriding the static HDR metadata via NOTATV_HDR_STATIC
+("mastering_max,mastering_min,max_cll,max_fall").
+---
+--- a/video/out/gpu/video.c
++++ b/video/out/gpu/video.c
+@@ -360,6 +360,23 @@
+     {0},
+ };
+ 
++// NotaTV: optional fixed static HDR metadata for the display, set by tvshell
++// in NOTATV_HDR_STATIC ("mastering_max,mastering_min,max_cll,max_fall"),
++// e.g. like Apple TV: 1000,0.005,4000,1000 with BT.2020 mastering primaries.
++static void notatv_hdr_override(struct mp_image_params *tp)
++{
++    const char *ov = getenv("NOTATV_HDR_STATIC");
++    float mx, mn, cll, fall;
++    if (!ov || sscanf(ov, "%f,%f,%f,%f", &mx, &mn, &cll, &fall) != 4 ||
++        !pl_color_space_is_hdr(&tp->color))
++        return;
++    tp->color.hdr.max_luma = mx;
++    tp->color.hdr.min_luma = mn;
++    tp->color.hdr.max_cll = cll;
++    tp->color.hdr.max_fall = fall;
++    tp->color.hdr.prim = *pl_raw_primaries_get(PL_COLOR_PRIM_BT_2020);
++}
++
+ static const struct gl_video_opts gl_video_opts_def = {
+     .dither_algo = DITHER_FRUIT,
+     .dither_size = 6,
+@@ -2800,6 +2817,7 @@
+             .repr = {.sys = PL_COLOR_SYSTEM_RGB, .levels = cparams.levels_out},
+             .rotate = p->image_params.rotate,
+         };
++        notatv_hdr_override(&p->target_params);
+     }
+ 
+     if (p->use_lut_3d && (flags & RENDER_SCREEN_COLOR)) {
+@@ -3420,8 +3438,21 @@
+                                                 &p->src_rect, &p->dst_rect,
+                                                 frame->frame_id != p->image.id);
+ 
+-        if (frame->current)
++        if (frame->current) {
+             p->osd_pts = frame->current->pts;
++            // The overlay plane shows the decoded image untouched, so the
++            // display receives the source colorspace. Report it as the target
++            // so the VO can signal HDR (e.g. HDR_OUTPUT_METADATA on DRM).
++            p->target_params = (struct mp_image_params){
++                .imgfmt_name = "overlay",
++                .w = mp_rect_w(p->dst_rect),
++                .h = mp_rect_h(p->dst_rect),
++                .color = frame->current->params.color,
++                .repr = frame->current->params.repr,
++                .rotate = frame->current->params.rotate,
++            };
++            notatv_hdr_override(&p->target_params);
++        }
+ 
+         // Disable GL rendering
+         has_frame = false;

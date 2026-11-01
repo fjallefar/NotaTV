@@ -1,0 +1,8 @@
+# NotaTV: additions to Raspberry Pi's bcm2711_defconfig
+# (CEC via vc4-HDMI, RC_CORE/MEDIA_CEC_RC, evdev, exFAT/NTFS/CIFS and the HEVC decoder are already included)
+CONFIG_DEBUG_INFO_NONE=y
+# CONFIG_DEBUG_INFO is not set
+CONFIG_LOCALVERSION="-notatv"
+CONFIG_INPUT_UINPUT=y
+CONFIG_USB_PULSE8_CEC=m
+CONFIG_USB_RAINSHADOW_CEC=m
