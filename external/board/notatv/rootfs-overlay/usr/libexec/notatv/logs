@@ -1,0 +1,97 @@
+#!/bin/sh
+# Logs for troubleshooting, as one .tar.gz on stdout (downloaded from the phone page, cgi-bin/logs).
+#   logs bundle    the logs in /tmp, the kept ones in /data/notatv/logs (troubleshooting log on), system info
+#                  and the settings - with passwords, tokens, logins and addresses with logins masked
+#   logs save      copy the logs in /tmp to /data/notatv/logs/before-restart (power reboot/poweroff, when the
+#                  troubleshooting log is on), so they survive the restart
+# Nothing is sent anywhere: the files only leave the box when someone with the phone page code downloads them.
+. /usr/libexec/notatv/lib.sh
+
+KEEP=/data/notatv/logs
+CONF=/data/notatv/notatv.conf
+
+# masking: values of secret URL parameters, Authorization/token headers and fields, Xtream paths,
+# smb://user:password@ and http://user:password@, cookies
+mask() {
+	sed -E \
+		-e 's#([?&;](api_key|apikey|ApiKey|X-Plex-Token|x-plex-token|token|Token|access_token|refresh_token|password|pass|username|user|auth|key|sig|signature)=)[^&" ]*#\1***#g' \
+		-e 's#(Token|token|Bearer|X-Plex-Token|X-Emby-Token|X-MediaBrowser-Token)([=:] *"?)[A-Za-z0-9._~+/=-]{6,}#\1\2***#g' \
+		-e 's#(Authorization: *)[^"]*#\1***#g' \
+		-e 's#(Bearer|OAuth) +[A-Za-z0-9._~+/=-]+#\1 ***#g' \
+		-e 's#"(access_token|refresh_token|AccessToken|token|authToken|password|Pw|api_key|apiKey)" *: *"[^"]*"#"\1":"***"#g' \
+		-e 's#/(live|movie|series|timeshift)/[^/ ]+/[^/ ]+/#/\1/***/***/#g' \
+		-e 's#(://)[^/@ :]+:[^/@ ]+@#\1***:***@#g' \
+		-e 's#(Cookie: *)[^"]*#\1***#g'
+}
+
+# settings: names and values, except the secret ones and account details
+conf() {
+	[ -f $CONF ] || return
+	awk -F= '{
+		k = tolower($1)
+		if (k ~ /token|pass|pin|key|secret|cookie|user|uid|url|server|refresh|login|name|share|profile|epg|id$/) print $1 "=***"
+		else print
+	}' $CONF
+}
+
+info() {
+	echo "NotaTV $(sed -n 's/^VERSION=//p' /etc/notatv-release)"
+	echo "Created: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+	echo "Uptime: $(cut -d' ' -f1 /proc/uptime) s"
+	echo "Troubleshooting log: $(cfg_get debug_log 0)"
+	echo
+	uname -a
+	cat /proc/device-tree/model 2>/dev/null; echo
+	echo
+	echo "--- memory"; free
+	echo "--- disks"; df -h 2>/dev/null
+	echo "--- temperature"; cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null
+	echo "--- throttled"; vcgencmd get_throttled 2>/dev/null
+	echo "--- network"; ip -4 addr 2>/dev/null | grep -E '^[0-9]|inet '; ip route 2>/dev/null
+	echo "--- dns"; cat /etc/resolv.conf 2>/dev/null
+	for d in /sys/class/net/*/wireless; do
+		[ -d "$d" ] || continue
+		w=${d%/wireless}; w=${w##*/}
+		echo "--- wifi $w"
+		iw dev $w link 2>/dev/null | grep -vE '^\s*(SSID|Connected to)'   # band, speed, signal (not the network name)
+		iw dev $w get power_save 2>/dev/null
+	done
+	echo "--- display"; $H/display info 2>/dev/null
+	echo "--- apps"; ls /data/notatv/apps-pkg 2>/dev/null
+	echo "--- processes"; ps 2>/dev/null
+	echo "--- kernel (last 200 lines)"; dmesg 2>/dev/null | tail -200
+}
+
+bundle() {
+	T=$(mktemp -d /tmp/notatv-logs.XXXXXX) || exit 1
+	D=$T/notatv-logs
+	mkdir -p $D/tmp $D/kept
+	for f in /tmp/*.log /tmp/*.log.1 /var/log/messages /var/log/messages.0; do
+		[ -f "$f" ] && mask < "$f" > "$D/tmp/${f##*/}"
+	done
+	if [ -d $KEEP ]; then
+		(cd $KEEP && find . -type f) | while IFS= read -r f; do
+			mkdir -p "$D/kept/${f%/*}"
+			mask < "$KEEP/$f" > "$D/kept/$f"
+		done
+	fi
+	info 2>&1 | mask > $D/system.txt
+	conf | mask > $D/settings.txt
+	(cd $T && tar -czf - notatv-logs)
+	rm -rf $T
+}
+
+save() {
+	[ "$(cfg_get debug_log 0)" = 1 ] || return 0
+	[ -d /data/notatv ] || return 0
+	B=$KEEP/before-restart
+	rm -rf $B; mkdir -p $B
+	for f in /tmp/*.log /tmp/*.log.1 /var/log/messages; do [ -f "$f" ] && cp "$f" $B/; done
+	sync
+}
+
+case "$1" in
+bundle) bundle ;;
+save) save ;;
+*) exit 1 ;;
+esac

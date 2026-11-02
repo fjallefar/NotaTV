@@ -799,8 +799,10 @@ static Screen *twitch_screen(void) {
 
 /* ---------- the app (see NotaApp in tv.h) ---------- */
 static void act_tw_logout(void) { app_ask_signout("Twitch", twitch_forget); }
+static const char *tw_signed_out(void) { return *tw_token() ? NULL : ITEM_HIDDEN; }
 static const Item tw_items[] = {
-    {N_("Sign out of Twitch"), IT_ACTION, .action = act_tw_logout, .help = N_("Revokes the login at Twitch and deletes it from this box")},
+    {N_("Sign out of Twitch"), IT_ACTION, .action = act_tw_logout, .help = N_("Revokes the login at Twitch and deletes it from this box"),
+     .locked = tw_signed_out},
 };
 const NotaApp nota_app = {
     NOTA_API, "twitch", "Twitch", N_("Live streams from the channels you follow and all of Twitch"), "1.0.0", 50, 0,

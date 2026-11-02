@@ -20,6 +20,7 @@ start)
 	;;
 stop)
 	$H/music stop
+	[ -f $RUN/netwatch.pid ] && kill $(cat $RUN/netwatch.pid) 2>/dev/null
 	killall -q httpd dropbear udhcpc wpa_supplicant 2>/dev/null
 	;;
 esac

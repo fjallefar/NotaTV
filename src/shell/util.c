@@ -233,6 +233,14 @@ bool http_request_cookies(const char *method, const char *url, const char *const
     else if (method && strcmp(method, "POST") == 0) curl_easy_setopt(c, CURLOPT_POSTFIELDS, "");
     CURLcode rc = curl_easy_perform(c);
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &out->status);
+    if (debug_log_on()) {
+        double t = 0;
+        curl_easy_getinfo(c, CURLINFO_TOTAL_TIME, &t);
+        char *lu = log_url(url);
+        SDL_Log("http: %s %s -> %ld, %zu bytes, %.2f s%s%s", method ? method : "GET", lu, out->status, out->len, t,
+                rc != CURLE_OK ? ", " : "", rc != CURLE_OK ? curl_easy_strerror(rc) : "");
+        free(lu);
+    }
     curl_slist_free_all(hl);
     curl_easy_cleanup(c);
     if (rc != CURLE_OK) {
@@ -267,6 +275,13 @@ bool http_download_ua(const char *url, const char *path, long timeout_s, const c
     CURLcode rc = curl_easy_perform(c);
     long status = 0;
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &status);
+    if (debug_log_on()) {
+        double t = 0;
+        curl_easy_getinfo(c, CURLINFO_TOTAL_TIME, &t);
+        char *lu = log_url(url);
+        SDL_Log("http: download %s -> %ld, %.2f s", lu, status, t);
+        free(lu);
+    }
     curl_easy_cleanup(c);
     fclose(f);
     bool ok = rc == CURLE_OK && (status == 200 || status == 0);
@@ -319,6 +334,49 @@ static char cfg_path[512];
 static char g_data_dir[256];
 
 const char *data_dir(void) { return g_data_dir; }
+
+/* ---------- troubleshooting log ---------- */
+static SDL_AtomicInt g_debug_log; /* read from worker threads (http) */
+bool debug_log_on(void) { return SDL_GetAtomicInt(&g_debug_log) != 0; }
+static char *log_path(const char *name, bool keep) {
+    if (!keep) return str_printf("/tmp/%s", name);
+    char *d = str_printf("%s/logs", data_dir());
+    mkdir(d, 0700);
+    char *p = str_printf("%s/%s", d, name);
+    free(d);
+    return p;
+}
+const char *mpv_log_path(void) {
+    static char p[512];
+    char *l = log_path("mpv.log", debug_log_on());
+    snprintf(p, sizeof p, "%s", l);
+    free(l);
+    return p;
+}
+void debug_log_apply(void) {
+    bool on = cfg_int("debug_log", 0) != 0;
+    SDL_SetAtomicInt(&g_debug_log, on);
+    /* the user interface's own log: on the box (stderr goes to /tmp/tvshell.log or the kept log) it moves along */
+    char cur[512] = "";
+    ssize_t n = readlink("/proc/self/fd/2", cur, sizeof cur - 1);
+    if (n <= 0) return;
+    cur[n] = 0;
+    char *keep = log_path("tvshell.log", true), *tmp = log_path("tvshell.log", false);
+    const char *want = on ? keep : tmp;
+    if ((!strcmp(cur, keep) || !strcmp(cur, tmp)) && strcmp(cur, want)) {
+        if (on) { /* the previous kept log becomes .1 (it may tell about a crash before a restart) */
+            char *old = str_printf("%s.1", keep);
+            rename(keep, old);
+            free(old);
+        }
+        fflush(stderr);
+        fflush(stdout);
+        if (freopen(want, "a", stderr)) dup2(fileno(stderr), 1);
+        SDL_Log("troubleshooting log %s (NotaTV %s)", on ? "on" : "off", TV_VERSION);
+    }
+    free(keep);
+    free(tmp);
+}
 
 static void mkdirs(const char *p) {
     char tmp[512];

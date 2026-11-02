@@ -1,6 +1,6 @@
 {
   "id": "seerr",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "Seerr",
   "desc": "Find and request movies and shows for Plex",

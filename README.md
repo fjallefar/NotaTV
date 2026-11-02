@@ -218,13 +218,13 @@ YouTube cast goes through YouTube's servers because the protocol requires it. Pl
 
 The user interface is available in **English** (the default) and **Danish**. Change it under *Settings → System → Language* or in the first step of the setup guide.
 
-- **The source text is English.** Other languages are standard gettext `.po` files in [`src/shell/assets/lang/`](src/shell/assets/lang/).
-- **One file per language covers everything:** the UI, the game streaming client, the player OSD, the phone page and the helper scripts' messages.
+- **The source text is English.** Other languages are standard gettext `.po` files: [`src/shell/assets/lang/`](src/shell/assets/lang/) for the system, and `src/apps/<id>/lang/` for each app (an app brings its own translations).
+- **The system file covers** the UI, the game streaming client, the player OSD, the phone page and the helper scripts' messages.
 - **The rest follows the language too:** the default subtitle and audio languages, Seerr's metadata language, the keyboard layout and the country list.
 
 **Adding a language:**
 1. Run `python3 scripts/i18n-check.py --pot` to write the template `src/shell/assets/lang/notatv.pot`.
-2. Copy it to `<code>.po` (e.g. `sv.po`) and fill in every `msgstr`. Any editor that handles `.po` files works, e.g. Poedit.
+2. Copy it to `<code>.po` (e.g. `sv.po`) and fill in every `msgstr`. Do the same for each app: copy its `lang/da.po` to `lang/<code>.po` and translate it. Any editor that handles `.po` files works, e.g. Poedit.
 3. Add the language to `i18n_langs[]` in `src/shell/i18n.c` and in its copy `src/moon/i18n.c`.
 4. Run `python3 scripts/i18n-check.py`. It reports missing texts and placeholders (`%s`, `%d`) that do not match.
 
@@ -280,12 +280,14 @@ Build the app packages first (`make -C src/apps`) and run with `TVSHELL_APPS=$PW
 
 **Making an app:** see [src/apps/README.md](src/apps/README.md).
 
+**Getting the logs without SSH:** *Settings → System → Get the logs* shows the box's address and code. Open it on a phone or computer and press *Download logs* at the bottom of the page: one `.tar.gz` with all logs, system info and the settings, with passwords, tokens and logins removed. Nothing is sent anywhere by itself. For more detail, turn on *Settings → System → Troubleshooting log* first: every network request is logged, and the logs of the user interface and playback are kept in `/data/notatv/logs` (also across restarts) until you turn it off.
+
 **Logs on the box** (readable by root only; tokens and passwords are masked):
 
 | File | Contents |
 |---|---|
 | `/tmp/tvshell.log` | User interface (including Bluetooth, DLNA, Jellyfin, Plex and YouTube cast) |
-| `/tmp/mpv.log` | Playback |
+| `/tmp/mpv.log` | Playback (the previous playback in `mpv.log.1`) |
 | `/tmp/tvmoon.log` | Game streaming, with statistics every second |
 | `/tmp/uxplay.log` | AirPlay screen mirroring |
 | `/tmp/shairport-sync.log`, `/tmp/bluealsa.log` | AirPlay audio, Bluetooth audio |

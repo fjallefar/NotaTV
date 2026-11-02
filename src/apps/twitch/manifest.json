@@ -1,6 +1,6 @@
 {
   "id": "twitch",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "Twitch",
   "desc": "Live streams from the channels you follow and all of Twitch",

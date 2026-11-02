@@ -246,8 +246,9 @@ static void confirm_draw(Screen *s) {
     text_draw(F_BOLD, 36, UI_W / 2, py + 44, C_TEXT, AL_CENTER, c->title);
     text_draw_wrap(F_REG, 26, px + 60, py + 110, pw - 120, 4, 36, C_TEXT2, c->msg);
     const char *lbl[2] = {c->yes, c->no};
-    for (int i = 0; i < 2; i++) {
-        float bw = 300, bx = UI_W / 2 + (i == 0 ? -bw - 15 : 15), by = py + ph - 110;
+    int nb = c->no[0] ? 2 : 1; /* no = "": one button (a message) */
+    for (int i = 0; i < nb; i++) {
+        float bw = 300, bx = nb == 1 ? UI_W / 2 - bw / 2 : UI_W / 2 + (i == 0 ? -bw - 15 : 15), by = py + ph - 110;
         bool f = c->sel == i;
         fill_rrect(bx, by, bw, 68, 34, f ? C_FOCUS : RGB(44, 50, 64));
         text_draw(F_SEMI, 28, bx + bw / 2, by + 18, f ? RGB(10, 10, 10) : C_TEXT, AL_CENTER, lbl[i]);
@@ -256,7 +257,7 @@ static void confirm_draw(Screen *s) {
 
 static bool confirm_input(Screen *s, const InputEvent *ev) {
     Confirm *c = s->st;
-    if (ev->a == A_LEFT || ev->a == A_RIGHT) { c->sel ^= 1; return true; }
+    if (ev->a == A_LEFT || ev->a == A_RIGHT) { if (c->no[0]) c->sel ^= 1; return true; }
     if (ev->a == A_OK && ev->repeat) return true;
     if (ev->a == A_OK || ev->a == A_BACK) {
         bool yes = ev->a == A_OK && c->sel == 0;
@@ -276,7 +277,7 @@ void confirm_open(const char *title, const char *msg, const char *yes, const cha
     snprintf(c->msg, sizeof c->msg, "%s", msg ? msg : "");
     snprintf(c->yes, sizeof c->yes, "%s", yes ? yes : T("Yes"));
     snprintf(c->no, sizeof c->no, "%s", no ? no : T("Cancel"));
-    c->sel = 1; /* safe choice by default */
+    c->sel = c->no[0] ? 1 : 0; /* safe choice by default */
     c->cb = cb;
     c->ud = ud;
     s->name = "confirm";

@@ -251,7 +251,8 @@ static cJSON *jf_get_sync(const char *method, const char *path, const char *body
 static void report_sync(const char *path, const char *id, double pos) {
     char *b = str_printf("{\"ItemId\":\"%s\",\"PositionTicks\":%.0f,\"IsPaused\":false,\"CanSeek\":true,\"PlayMethod\":\"DirectStream\"}",
                          id, pos * TICKS);
-    cJSON_Delete(jf_get_sync("POST", path, b, 4));
+    /* waits for the server (a slow one too), so "Continue watching" is up to date when the lists are fetched again */
+    cJSON_Delete(jf_get_sync("POST", path, b, 10));
     free(b);
 }
 
@@ -415,11 +416,15 @@ static bool jf_play(JItem *j, bool resume, bool *watched, JItem *next) {
     rq.media_w = ts.w;
     report("/Sessions/Playing", c.id, rq.start, false);
     PlayResult res = player_run(&rq);
-    double pos = res.pos > 0 ? res.pos : c.last;
+    /* the video never started (could not be loaded, or Back while loading): report the position it had, never 0 -
+       0 would make the server forget where you were, and the item would drop out of "Continue watching" */
+    bool started = res.dur > 0;
+    double pos = res.pos > 0 ? res.pos : c.last > 0 ? c.last : rq.start;
+    if (!started) pos = j->pos;
     report_sync("/Sessions/Playing/Stopped", c.id, pos);
     /* watched to the end, into the credits or past 90 %: mark as watched */
-    bool ended = res.eof;
-    bool done = ended || (c.outro_start > 0 && pos >= c.outro_start) || (res.dur > 0 && pos > res.dur * 0.9);
+    bool ended = started && res.eof; /* a video that never started has not "ended" (no jump to the next episode) */
+    bool done = started && (ended || (c.outro_start > 0 && pos >= c.outro_start) || pos > res.dur * 0.9);
     if (done) {
         char *p = str_printf("/UserPlayedItems/%s?userId=%s", c.id, jf_uid());
         cJSON_Delete(jf_get_sync("POST", p, NULL, 4));
@@ -801,6 +806,7 @@ static void jf_enter(Screen *s) {
 static void jf_resume(Screen *s) {
     Jf *v = s->st;
     live = v;
+    v->gen = jf_play_gen; /* fetched here: jf_update must not fetch everything once more */
     if (v->state == 2 && v->view == V_HOME) show_home(v); /* refresh "continue" after playback */
 }
 
@@ -1685,12 +1691,14 @@ void jellyfin_remote_tick(void) {
 static const char *const plexst_o[] = {"hero", "focus", NULL}, *const plexst_l[] = {"Hero", N_("Focus"), NULL};
 static const char *const jfsub_o[] = {"jellyfin", "player", "off", NULL}, *const jfsub_l[] = {N_("Follow Jellyfin"), N_("Language setting"), N_("Off"), NULL};
 static void act_jf_logout(void) { app_ask_signout("Jellyfin", jellyfin_forget); }
+static const char *jf_signed_out(void) { return *jf_token() ? NULL : ITEM_HIDDEN; }
 static const Item jf_items[] = {
     {N_("Jellyfin subtitles"), IT_CYCLE, "jf_subs", "jellyfin", jfsub_o, jfsub_l,
      .help = N_("Follow Jellyfin: the audio and subtitles your Jellyfin user settings pick (language, smart, forced only). Language setting: the player picks by Subtitle language under Picture and sound. Off: never")},
     {N_("Jellyfin: play from phone"), IT_TOGGLE, "jf_cast", "1", set_onoff, .help = N_("NotaTV appears under \"Play On\" in the Jellyfin app when you are signed in to Jellyfin here")},
     {N_("Home screen (Plex and Jellyfin)"), IT_CYCLE, "plex_home_style", "hero", plexst_o, plexst_l, .help = N_("Hero: a featured title at the top. Focus: background and info follow the selected title")},
-    {N_("Sign out of Jellyfin"), IT_ACTION, .action = act_jf_logout, .help = N_("Invalidates the login at the server and deletes it from this box")},
+    {N_("Sign out of Jellyfin"), IT_ACTION, .action = act_jf_logout, .help = N_("Invalidates the login at the server and deletes it from this box"),
+     .locked = jf_signed_out},
 };
 
 /* installed/uninstalled: give the "Play on" thread a new snapshot now (it stops when the app is gone) */

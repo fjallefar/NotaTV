@@ -5,6 +5,10 @@ W=""
 for d in /sys/class/net/*; do [ -d $d/wireless ] && { W=${d##*/}; break; }; done
 CONFW=/data/notatv/wpa_supplicant.conf
 
+# Wi-Fi power saving off: on the Pi 4's chip (brcmfmac) it makes new connections take seconds and streams stall,
+# even with a strong signal. Also set in dhcp-script after every (re)connection, where the driver may turn it on again.
+nopower() { command -v iw >/dev/null && iw dev $W set power_save off 2>/dev/null; return 0; }
+
 ensure() {
 	[ -n "$W" ] || { echo "No Wi-Fi adapter found"; exit 1; }
 	[ -f $CONFW ] || printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=1\ncountry=DK\n' > $CONFW
@@ -12,6 +16,7 @@ ensure() {
 		ip link set $W up
 		wpa_supplicant -B -i $W -c $CONFW -D nl80211 >/dev/null 2>&1
 		sleep 1
+		nopower
 		udhcpc -b -i $W -x hostname:$(hostname) -s $H/dhcp-script -p /run/udhcpc.$W.pid >/dev/null 2>&1
 	fi
 }
@@ -53,6 +58,7 @@ connect)
 		sleep 1
 	done
 	[ "$st" = COMPLETED ] || { msg "Could not connect to %s (wrong password?)" "$ssid"; exit 1; }
+	nopower
 	kill -USR1 $(cat /run/udhcpc.$W.pid 2>/dev/null) 2>/dev/null || \
 		udhcpc -b -i $W -s $H/dhcp-script -p /run/udhcpc.$W.pid >/dev/null 2>&1
 	for i in $(seq 1 15); do

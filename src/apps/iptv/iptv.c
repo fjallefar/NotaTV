@@ -1917,12 +1917,20 @@ Screen *iptv_screen(void) {
 
 /* ---------- the app (see NotaApp in tv.h) ---------- */
 static void act_xtream(void) { iptv_xtream_login(); }
+static const char *iptv_signed_out(void) { return *cfg_get("xtream_user", "") || *cfg_get("iptv_url", "") ? NULL : ITEM_HIDDEN; }
+/* "Switch account" only with two or more accounts (the list is read at most once a second) */
+static const char *iptv_one_account(void) {
+    static double next;
+    static int n;
+    if (app_time() >= next) { next = app_time() + 1; xacc_load(); n = n_xacc; }
+    return n >= 2 ? NULL : ITEM_HIDDEN;
+}
 static void apply_iptv(void) { app_toast(T("Playlist saved - open Live TV")); }
 static const Item live_items[] = {
     {N_("Account"), IT_INFO, .value = iptv_account_line},
     {N_("Add account"), IT_ACTION, .action = act_xtream, .help = N_("Xtream Codes login from your IPTV provider. The current account stays until the new one works")},
-    {N_("Switch account"), IT_ACTION, .action = iptv_account_switch, .help = N_("Choose between the accounts you have added")},
-    {N_("Sign out of this account"), IT_ACTION, .action = iptv_account_signout},
+    {N_("Switch account"), IT_ACTION, .action = iptv_account_switch, .help = N_("Choose between the accounts you have added"), .locked = iptv_one_account},
+    {N_("Sign out of this account"), IT_ACTION, .action = iptv_account_signout, .locked = iptv_signed_out},
     {N_("IPTV playlist (M3U link)"), IT_TEXT, "iptv_url", "", .changed = apply_iptv},
     {N_("IPTV program guide (XMLTV)"), IT_TEXT, "iptv_epg", ""},
 };

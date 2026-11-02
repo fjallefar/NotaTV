@@ -1,6 +1,6 @@
 {
   "id": "youtube",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "YouTube",
   "desc": "Search and watch videos on YouTube",

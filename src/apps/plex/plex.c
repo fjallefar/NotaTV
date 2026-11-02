@@ -804,7 +804,7 @@ static bool plex_play(PItem *it, double start, bool *watched, PItem *next) {
             it->offset = w ? 0 : pos;
             if (w) { it->view_count++; if (watched) *watched = true; }
         }
-        ended = res.eof;
+        ended = res.dur > 0 && res.eof; /* a video that never started has not ended (no jump to the next episode) */
         break;
     }
     plexcast_stopped();
@@ -2625,6 +2625,7 @@ static const char *plex_hdr_locked(void) { return cfg_int("hdr", 1) && display_h
 static const char *const plexst_o[] = {"hero", "focus", NULL}, *const plexst_l[] = {"Hero", N_("Focus"), NULL};
 static const char *const plexsub_o[] = {"plex", "player", "off", NULL}, *const plexsub_l[] = {N_("Follow Plex"), N_("Language setting"), N_("Off"), NULL};
 static void act_plex_logout(void) { app_ask_signout("Plex", plex_forget); }
+static const char *plex_signed_out(void) { return *cfg_get("plex_token", "") ? NULL : ITEM_HIDDEN; }
 static const Item plex_items[] = {
     {N_("Plex cast"), IT_TOGGLE, "plexcast_enabled", "1", set_onoff, .changed = plexcast_apply, .help = N_("The Plex app on your phone can play on NotaTV (cast button) and control playback. Local network only")},
     {N_("Plex subtitles"), IT_CYCLE, "plex_subs", "plex", plexsub_o, plexsub_l,
@@ -2633,8 +2634,8 @@ static const Item plex_items[] = {
     {N_("Server converts HDR movies"), IT_TOGGLE, "plex_hdr_server", "0", set_onoff,
      .help = N_("Only when the TV shows HDR movies without HDR: the Plex server converts them instead of the box (1080p, stereo sound). Needs a powerful server"),
      .locked = plex_hdr_locked},
-    {N_("Plex server"), IT_INFO, .info_cmd = "plex-name"},
-    {N_("Sign out of Plex"), IT_ACTION, .action = act_plex_logout},
+    {N_("Plex server"), IT_INFO, .info_cmd = "plex-name", .locked = plex_signed_out},
+    {N_("Sign out of Plex"), IT_ACTION, .action = act_plex_logout, .locked = plex_signed_out},
 };
 
 static void plex_row_open(const HomeItem *it, int idx) { (void)idx; if (it->key) plex_play_key(it->key); }

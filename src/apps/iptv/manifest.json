@@ -1,6 +1,6 @@
 {
   "id": "iptv",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "Live TV",
   "desc": "Watch live TV and channels from your IPTV provider",

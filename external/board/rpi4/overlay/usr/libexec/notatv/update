@@ -30,9 +30,17 @@ BOOT=/run/notatv/boot
 BST=.notatv-new                 # staged files on the boot partition ($BOOT/$BST)
 LIST=/usr/share/notatv/files.list
 VERIFY=/data/notatv/update-verify
+STATE=/tmp/notatv-update-state  # progress for the user interface: "<percent>" or "dl <bytes total> <file>"
 KEEP_BOOT='config.txt cmdline.txt tryboot.txt'
 
 die() { log "update: $*"; echo "$*"; exit 1; }
+state() { echo "$*" > $STATE; }
+# size in bytes of a release file, from the release JSON in $J (0 if unknown)
+asset_size() {
+	echo "$J" | tr ',{}' '\n\n\n' | awk -v n="\"$1\"" '
+		/"name": *"/ { s = $0; sub(/.*"name": */, "", s); sub(/[ \t\r]+$/, "", s); if (s == n) hit = 1 }
+		hit && /"size": *[0-9]/ { s = $0; sub(/.*"size": */, "", s); print s + 0; exit }'
+}
 
 # ---------------------------------------------------------------- helpers
 repo() {
@@ -196,8 +204,10 @@ install() {
 	[ "$(cat $DL/tag 2>/dev/null)" = "$TAG" ] || { rm -rf $DL; mkdir -p $DL; echo "$TAG" > $DL/tag; }
 	rm -rf $DL/new
 	U="https://github.com/$(repo)/releases/download/$TAG"
+	state 0
 	progress "$(msg "Downloading NotaTV %s…" "$VER")"
 	curl -fsSL -m 30 --retry 3 -o $DL/$ASSET.sha256 "$U/$ASSET.sha256" || die "Download failed"
+	state dl "$(asset_size $ASSET)" $DL/$ASSET
 	curl -fsSL --retry 5 --retry-delay 5 --speed-limit 2000 --speed-time 60 -C - -o $DL/$ASSET "$U/$ASSET" ||
 		curl -fsSL --retry 3 --retry-delay 5 --speed-limit 2000 --speed-time 60 -o $DL/$ASSET "$U/$ASSET" ||
 		die "Download failed"
@@ -208,6 +218,7 @@ install() {
 	if [ "$(sha256sum $DL/$ASSET | awk '{ print $1 }')" != "$want" ]; then
 		rm -rf $DL; die "The file is damaged (SHA256 does not match)"
 	fi
+	state 86
 	progress "Checking files…"
 	gunzip -c $DL/$ASSET 2>/dev/null | tar -tv -f - > $DL/names.v 2>/dev/null || { rm -rf $DL; die "Could not unpack"; }
 	awk '{ print $6 }' $DL/names.v > $DL/names
@@ -224,6 +235,7 @@ install() {
 	fi
 	sz=$(size_kb $DL/$ASSET)
 	[ "$(free_kb /data)" -gt $((sz * 3)) ] 2>/dev/null || die "Not enough free space for the update"
+	state 90
 	progress "Unpacking…"
 	mkdir -p $DL/new && gunzip -c $DL/$ASSET 2>/dev/null | tar -x -f - -C $DL/new 2>$DL/tar.err ||
 		{ log "update: $(tail -3 $DL/tar.err)"; rm -rf $DL/new; die "Could not unpack"; }
@@ -240,6 +252,7 @@ install() {
 	[ "$(od -An -tx1 -j18 -N2 $N/rootfs/bin/busybox | tr -d ' \n')" = b700 ] || { rm -rf $N; die "The update does not fit this device"; }
 
 	# what changes (only files that differ)
+	state 94
 	progress "Preparing…"
 	mount_boot || die "The boot partition was not found"
 	mkdir -p "$ST" || die "The system partition is read-only"
@@ -277,6 +290,7 @@ install() {
 	[ "$(free_kb $BOOT)" -gt $((bneed + 1024)) ] 2>/dev/null || { discard 1; die "Not enough free space for the update"; }
 
 	# backup of everything that will be replaced or removed (for rollback)
+	state 97
 	progress "Installing…"
 	rm -rf $BK; mkdir -p $BK/root $BK/boot || { discard 1; die "The update could not be installed - nothing was changed"; }
 	: > $BK/added.list; : > $BK/boot-added.list
@@ -301,6 +315,7 @@ install() {
 	rm -rf $DL; sync
 	[ "$(current)" = "$VER" ] || die "The update could not be installed"
 	echo 0 > $VERIFY; sync
+	state 100
 	log "update: $CUR -> $VER"
 	echo OK
 }

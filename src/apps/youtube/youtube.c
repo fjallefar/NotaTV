@@ -1544,12 +1544,34 @@ static void act_ytpair(void) {
 static const char *const ytq_o[] = {"720", "1080", "1440", "2160", NULL}, *const ytq_l[] = {"720p", "1080p", "1440p", "4K", NULL};
 
 static void act_yt_logout(void) { app_ask_signout("YouTube", youtube_forget_all); }
+/* signed in = at least one account (<data>/youtube/<name>.cookies); looked up at most once a second */
+static const char *yt_signed_out(void) {
+    static double next;
+    static bool any;
+    if (app_time() >= next) {
+        next = app_time() + 1;
+        any = false;
+        char p[600];
+        snprintf(p, sizeof p, "%s/youtube", data_dir());
+        DIR *d = opendir(p);
+        if (d) {
+            struct dirent *e;
+            while (!any && (e = readdir(d))) {
+                size_t len = strlen(e->d_name);
+                any = len > 8 && !strcmp(e->d_name + len - 8, ".cookies");
+            }
+            closedir(d);
+        }
+    }
+    return any ? NULL : ITEM_HIDDEN;
+}
 static const Item yt_items[] = {
     {N_("YouTube cast"), IT_TOGGLE, "ytcast_enabled", "1", set_onoff, .changed = ytcast_apply, .help = N_("The cast button in the YouTube app can play on NotaTV. Control goes through YouTube (Google)")},
     {N_("YouTube: link with TV code"), IT_ACTION, .action = act_ytpair, .help = N_("If NotaTV does not show up under Cast in the YouTube app: link with a code")},
     {N_("YouTube max quality"), IT_CYCLE, "yt_quality", "2160", ytq_o, ytq_l},
     {N_("YouTube subtitles"), IT_TOGGLE, "yt_subs", "0", set_onoff, .help = N_("Downloads English subtitles - makes start about 2 sec. slower")},
-    {N_("Sign out of YouTube"), IT_ACTION, .action = act_yt_logout, .help = N_("Deletes the accounts (cookies), subscriptions, search history and what you have watched")},
+    {N_("Sign out of YouTube"), IT_ACTION, .action = act_yt_logout, .help = N_("Deletes the accounts (cookies), subscriptions, search history and what you have watched"),
+     .locked = yt_signed_out},
 };
 
 static void yt_row_open(const HomeItem *it, int idx) { (void)idx; if (it->key && !strncmp(it->key, "yt:", 3)) youtube_play_recent(atoi(it->key + 3)); }

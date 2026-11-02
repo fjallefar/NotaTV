@@ -1320,8 +1320,10 @@ void seerr_forget(void) {
 
 /* ---------- the app (see NotaApp in tv.h) ---------- */
 static void act_seerr_logout(void) { app_ask_signout("Seerr", seerr_forget); }
+static const char *seerr_signed_out(void) { return *seerr_url() ? NULL : ITEM_HIDDEN; }
 static const Item seerr_items[] = {
-    {N_("Sign out of Seerr"), IT_ACTION, .action = act_seerr_logout, .help = N_("Closes the session at Seerr and deletes the address and login from this box")},
+    {N_("Sign out of Seerr"), IT_ACTION, .action = act_seerr_logout, .help = N_("Closes the session at Seerr and deletes the address and login from this box"),
+     .locked = seerr_signed_out},
 };
 
 static const SeerrIface seerr_iface = {seerr_ratings};

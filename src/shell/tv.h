@@ -148,6 +148,12 @@ void cfg_set(const char *key, const char *val);
 void cfg_set_int(const char *key, int v);
 void cfg_unset(const char *key); /* the default applies again */
 const char *data_dir(void);
+/* troubleshooting log (Settings → System, cfg debug_log): more details (every network request), and the logs of
+   the user interface and playback are kept in <data>/logs, so they survive a restart. The phone page offers
+   them for download with secrets masked (cgi-bin/logs). */
+bool debug_log_on(void);
+void debug_log_apply(void);      /* after cfg debug_log has changed (and at start) */
+const char *mpv_log_path(void);  /* where mpv writes its log for the next playback */
 const char *asset_dir(void); /* fonts, icons and language files (lang/) */
 void lang_init(void);        /* language from the settings (language), before anything is drawn */
 const char *lang_media_default(const char *key); /* sub_lang/audio_lang default based on the UI language */
@@ -280,8 +286,10 @@ typedef struct {
     const char *help;
     const char *(*value)(void); /* value computed when drawing (IT_INFO/IT_ACTION) */
     int sub;                    /* IT_SUB: index in the section's subs */
-    const char *(*locked)(void); /* not NULL = the item cannot be changed, and the text is shown instead of the control */
+    const char *(*locked)(void); /* not NULL = the item cannot be changed, and the text is shown instead of the control;
+                                    "" (ITEM_HIDDEN) = the item is not shown at all (e.g. "Sign out" when nobody is signed in) */
 } Item;
+#define ITEM_HIDDEN "" /* returned by Item.locked: hide the item (older NotaTV shows it empty and locked) */
 extern const char *const set_onoff[]; /* {"0","1",NULL} for IT_TOGGLE */
 const char *set_hdr_locked(void);     /* "Not supported by the display" when the display has no HDR */
 /* "Sign out of <app>?" - confirmed, forget() runs and a toast says so */
@@ -446,7 +454,7 @@ Screen *home_screen(void);
 Screen *settings_screen(void);
 void settings_wifi(void);         /* search for and choose Wi-Fi (from Settings) */
 void settings_apply_name(void);   /* device name changed: restart AirPlay/CEC/BT/DLNA */
-void settings_update_install(void); /* download and install the GitHub update (Pi), then offer a restart */
+void update_install_open(const char *ver); /* update_notice.c: install the GitHub update with a progress bar, then offer a restart */
 void update_tick(void);           /* update_notice.c: looks for updates on GitHub and reminds every other day */
 Screen *setup_screen(void);       /* setup guide (first boot) */
 const char *phone_pin(void);      /* code for the phone page (created if missing) */

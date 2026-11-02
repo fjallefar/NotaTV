@@ -1,5 +1,8 @@
 #!/bin/sh
-# network: up | status | ip
+# network: up | status | ip | watch
+# Cable and Wi-Fi can be on at the same time: the cable's default route has metric 10, Wi-Fi's 20 (dhcp-script),
+# so the cable is used whenever it is plugged in. When the cable is pulled, its route is ignored right away
+# (ignore_routes_with_linkdown) and Wi-Fi takes over; "watch" asks for an address at once when a cable is plugged in.
 . /usr/libexec/notatv/lib.sh
 
 eth_ifaces() { for d in /sys/class/net/*; do n=${d##*/}; [ -d $d/wireless ] && continue; [ "$n" = lo ] && continue; [ -e $d/device ] && echo $n; done; }
@@ -8,11 +11,39 @@ wifi_iface() { for d in /sys/class/net/*; do [ -d $d/wireless ] && { echo ${d##*
 case "$1" in
 up)
 	ip link set lo up
+	# a route over an interface without carrier (cable pulled) is not used - otherwise the box keeps sending
+	# into the unplugged cable until its DHCP lease runs out, even with Wi-Fi connected
+	echo 1 > /proc/sys/net/ipv4/conf/all/ignore_routes_with_linkdown
+	echo 1 > /proc/sys/net/ipv4/conf/default/ignore_routes_with_linkdown
 	for e in $(eth_ifaces); do
 		ip link set $e up
 		udhcpc -b -i $e -x hostname:$(hostname) -s /usr/libexec/notatv/dhcp-script -p /run/udhcpc.$e.pid >/dev/null 2>&1
 	done
 	$H/wifi start
+	[ -n "$(eth_ifaces)" ] && { $H/net watch & }
+	;;
+watch)
+	# cable plugged in: ask for an address now (udhcpc otherwise waits up to ~20 s between attempts, and keeps an
+	# old lease from another network). Every 2 s, only reading /sys.
+	mkdir -p $RUN
+	echo $$ > $RUN/netwatch.pid
+	last=""
+	while :; do
+		now=""
+		for e in $(eth_ifaces); do now="$now $e=$(cat /sys/class/net/$e/carrier 2>/dev/null)"; done
+		for p in $now; do
+			case " $last " in *" $p "*) continue ;; esac
+			e=${p%=*}
+			if [ "${p#*=}" = 1 ] && [ -n "$last" ]; then
+				log "net: cable plugged in ($e)"
+				kill -USR1 $(cat /run/udhcpc.$e.pid 2>/dev/null) 2>/dev/null
+			elif [ -n "$last" ]; then
+				log "net: cable pulled out ($e)"
+			fi
+		done
+		last=$now
+		sleep 2
+	done
 	;;
 status)
 	for e in $(eth_ifaces); do
@@ -29,6 +60,14 @@ status)
 	echo "Not connected"
 	;;
 ip)
-	ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1
+	# the address of the connection in use (the one the default route goes out of), else the first one with carrier
+	a=$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -1)
+	if [ -z "$a" ]; then
+		ip -4 -o addr show scope global | while read -r _ dev _ addr _; do
+			[ "$(cat /sys/class/net/$dev/carrier 2>/dev/null)" = 1 ] && { echo ${addr%/*}; break; }
+		done
+		exit 0
+	fi
+	echo $a
 	;;
 esac

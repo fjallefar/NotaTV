@@ -399,7 +399,7 @@ static void build_args(const PlayRequest *rq, const char *mode, char ***out, int
     add_arg(&argv, n, "--input-terminal=no");
     add_arg(&argv, n, "--force-window=immediate");
     add_arg(&argv, n, "--keep-open=no");
-    add_arg(&argv, n, "--log-file=/tmp/mpv.log");
+    { char *s = str_printf("--log-file=%s", mpv_log_path()); add_arg(&argv, n, s); free(s); }
     if (rq->title) { char *s = str_printf("--force-media-title=%s", rq->title); add_arg(&argv, n, s); free(s); }
     if (rq->start > 1) { char *s = str_printf("--start=%.1f", rq->start); add_arg(&argv, n, s); free(s); }
     if (rq->playlist_start > 0) { char *s = str_printf("--playlist-start=%d", rq->playlist_start); add_arg(&argv, n, s); free(s); }
@@ -460,6 +460,12 @@ static void build_args(const PlayRequest *rq, const char *mode, char ***out, int
         add_arg(&argv, n, "--demuxer-max-back-bytes=64MiB");
         add_arg(&argv, n, "--deinterlace=auto");
     }
+    /* yt-dlp only for what needs it (YouTube, Twitch: they pass --ytdl-... options or a ytdl:// address).
+       Otherwise mpv's ytdl hook tries yt-dlp after a failed open - for a server that does not answer that is
+       20-25 s more of "Loading…" before the error is shown */
+    bool ytdl = rq->url && (strstr(rq->url, "ytdl://") || strstr(rq->url, "youtube.com") || strstr(rq->url, "youtu.be") || strstr(rq->url, "twitch.tv"));
+    for (int i = 0; rq->extra && rq->extra[i] && !ytdl; i++) ytdl = !strncmp(rq->extra[i], "--ytdl", 6) && strcmp(rq->extra[i], "--ytdl=no");
+    if (!ytdl) add_arg(&argv, n, "--ytdl=no");
     for (int i = 0; rq->extra && rq->extra[i]; i++) add_arg(&argv, n, rq->extra[i]);
     add_arg(&argv, n, "--");
     add_arg(&argv, n, rq->url);
@@ -578,6 +584,11 @@ static void handle_action(const InputEvent *ev, const PlayRequest *rq, MpvState 
 PlayResult player_run(const PlayRequest *rq) {
     PlayResult res = {0};
     unlink(SOCK_PATH);
+    { /* the previous playback's log is kept as .1 (e.g. the one that failed, before you tried again) */
+        char *old = str_printf("%s.1", mpv_log_path());
+        rename(mpv_log_path(), old);
+        free(old);
+    }
     bt_media("Pause"); /* Bluetooth: pause the phone, so the music does not keep playing into nothing */
     run_cmd("%s/music pause >/dev/null 2>&1", helper_path());
 
@@ -798,7 +809,20 @@ PlayResult player_run(const PlayRequest *rq) {
     if (rq->progress && st.have_dur) rq->progress(rq->ud, st.pos, st.dur, true, false);
     if (video_off) app_video_resume();
     run_cmd("%s/music resume >/dev/null 2>&1", helper_path());
-    if (!user_quit && !res.quality[0] && !res.goto_channel && res.exit_code != 0 && !st.have_dur)
-        app_toast(T("Could not play %s"), rq->title ? rq->title : "videoen");
+    if (!user_quit && !res.quality[0] && !res.goto_channel && res.exit_code != 0 && !st.have_dur) {
+        /* mpv's log says why: a server that never answered is worth saying (it is not the box) */
+        bool no_answer = false, http_error = false; /* an answer like 401/404 is not "did not answer" */
+        FILE *lf = fopen(mpv_log_path(), "r");
+        if (lf) {
+            char line[1024];
+            while (fgets(line, sizeof line, lf))
+                if (strstr(line, "][e][stream] Failed to open http") || strstr(line, "Connection timed out") || strstr(line, "Connection refused"))
+                    no_answer = true;
+                else if (strstr(line, "HTTP error")) http_error = true;
+            fclose(lf);
+        }
+        if (no_answer && !http_error) app_toast(T("The server did not send %s in time - check that it is running and the network"), rq->title ? rq->title : "videoen");
+        else app_toast(T("Could not play %s"), rq->title ? rq->title : "videoen");
+    }
     return res;
 }

@@ -343,9 +343,6 @@ msgstr "Færdig"
 msgid "Download failed"
 msgstr "Download fejlede"
 
-msgid "Downloading and installing update…"
-msgstr "Henter og installerer opdatering…"
-
 msgid "Downloading NotaTV %s…"
 msgstr "Henter NotaTV %s…"
 
@@ -610,9 +607,6 @@ msgstr "Ingen udgivelser fundet"
 msgid "No subtitles found"
 msgstr "Ingen undertekster fundet"
 
-msgid "No update found"
-msgstr "Ingen opdatering fundet"
-
 msgid "No Wi-Fi adapter found"
 msgstr "Ingen Wi-Fi-adapter fundet"
 
@@ -831,9 +825,6 @@ msgstr "Genstart med %s MHz?"
 
 msgid "Restart now"
 msgstr "Genstart nu"
-
-msgid "Restart to use the new version."
-msgstr "Genstart for at bruge den nye version."
 
 msgid "Run the setup guide again"
 msgstr "Kør opsætningsguiden igen"
@@ -1083,9 +1074,6 @@ msgstr "Pakker ud…"
 
 msgid "Update"
 msgstr "Opdatér"
-
-msgid "Update installed"
-msgstr "Opdatering installeret"
 
 msgid "Update NotaTV"
 msgstr "Opdatér NotaTV"
@@ -1498,3 +1486,72 @@ msgstr "Appen kunne ikke hentes"
 
 msgid "The download is damaged - try again"
 msgstr "Det hentede er beskadiget - prøv igen"
+
+msgid "UPDATING"
+msgstr "OPDATERER"
+
+msgid "Starting…"
+msgstr "Starter…"
+
+msgid "%d MB of %d MB"
+msgstr "%d MB af %d MB"
+
+msgid "Keep the box turned on until the update is done. Your settings, apps and logins are kept."
+msgstr "Lad boksen være tændt, til opdateringen er færdig. Dine indstillinger, apps og logins bevares."
+
+msgid "UPDATE INSTALLED"
+msgstr "OPDATERING INSTALLERET"
+
+msgid "UPDATE FAILED"
+msgstr "OPDATERINGEN MISLYKKEDES"
+
+msgid "The update did not finish"
+msgstr "Opdateringen blev ikke færdig"
+
+msgid "Restart the box to start using the new version. It takes about a minute."
+msgstr "Genstart boksen for at tage den nye version i brug. Det tager omkring et minut."
+
+msgid "Restart later"
+msgstr "Genstart senere"
+
+msgid "NotaTV %s starts the next time the box is restarted"
+msgstr "NotaTV %s starter, næste gang boksen genstartes"
+
+msgid "Troubleshooting log"
+msgstr "Fejlfindingslog"
+
+msgid "Saves more details about playback and the network, also across restarts. Turn it off again when the problem is found"
+msgstr "Gemmer flere detaljer om afspilning og netværk, også efter en genstart. Slå den fra igen, når fejlen er fundet"
+
+msgid "Get the logs"
+msgstr "Hent logfiler"
+
+msgid "Download them on a phone or computer to send to whoever helps you"
+msgstr "Hent dem på en telefon eller computer og send dem til den, der hjælper dig"
+
+msgid "Turn on the phone page first (Settings → Network → Phone page)."
+msgstr "Slå først telefon-siden til (Indstillinger → Netværk → Telefon-siden)."
+
+msgid "The box is not on a network."
+msgstr "Boksen er ikke på et netværk."
+
+msgid "Open http://%s on a phone or computer on the same network, enter the code %s and press Download logs at the bottom. Passwords and logins are removed from the files."
+msgstr "Åbn http://%s på en telefon eller computer på samme netværk, indtast koden %s, og tryk Hent logfiler nederst. Adgangskoder og logins fjernes fra filerne."
+
+msgid "Troubleshooting"
+msgstr "Fejlfinding"
+
+msgid "The box's logs as one file, to send to whoever helps you. Passwords and logins are removed. For more details: turn on Settings → System → Troubleshooting log on the TV, make the problem happen, then download."
+msgstr "Boksens logfiler i én fil, som du kan sende til den, der hjælper dig. Adgangskoder og logins fjernes. Flere detaljer: slå Indstillinger → System → Fejlfindingslog til på TV'et, få fejlen til at ske, og hent så filerne."
+
+msgid "Download logs"
+msgstr "Hent logfiler"
+
+msgid "Collecting logs…"
+msgstr "Samler logfiler…"
+
+msgid "Too large"
+msgstr "For stor"
+
+msgid "The server did not send %s in time - check that it is running and the network"
+msgstr "Serveren sendte ikke %s i tide - tjek at den kører, og tjek netværket"

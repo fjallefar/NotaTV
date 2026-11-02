@@ -53,7 +53,9 @@ void app_toast(const char *fmt, ...) {
 const char *app_ip(void) {
     if (app_time() - ip_checked > 5) {
         ip_checked = app_time();
-        char *o = run_capture("ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1");
+        char *cmd = str_printf("%s/net ip 2>/dev/null", helper_path()); /* the connection in use (cable before Wi-Fi) */
+        char *o = run_capture(cmd);
+        free(cmd);
         str_trim(o);
         snprintf(ip_str, sizeof ip_str, "%s", o);
         free(o);
@@ -715,6 +717,7 @@ int main(int argc, char **argv) {
     if (!SDL_Init(SDL_INIT_EVENTS)) { SDL_Log("SDL_Init: %s", SDL_GetError()); return 1; }
     t0 = SDL_GetTicks() / 1000.0;
     cfg_load();
+    debug_log_apply(); /* troubleshooting log on: logs go to <data>/logs */
     lang_init(); /* language (before anything is shown) */
     tz_init();  /* time zone from the settings (before anything shows the clock) */
     http_init();

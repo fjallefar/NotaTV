@@ -243,26 +243,28 @@ void app_ask_signout(const char *app, void (*fn)(void)) {
     signout_app = app;
     confirm_open(t, T("Everything saved for the account on this box is deleted."), T("Sign out"), T("Cancel"), signout_confirmed, NULL);
 }
+/* the logs are downloaded from the phone page (with the code), so they never leave the box by themselves */
+static void act_logs(void) {
+    const char *ip = app_ip();
+    char msg[400];
+    if (!cfg_int("phone_enabled", 1)) snprintf(msg, sizeof msg, "%s", T("Turn on the phone page first (Settings → Network → Phone page)."));
+    else if (!ip[0]) snprintf(msg, sizeof msg, "%s", T("The box is not on a network."));
+    else snprintf(msg, sizeof msg, T("Open http://%s on a phone or computer on the same network, enter the code %s and press Download logs at the bottom. Passwords and logins are removed from the files."), ip, phone_pin());
+    confirm_open(T("Get the logs"), msg, "OK", "", NULL, NULL);
+}
 static void act_os_logout(void) { app_ask_signout("OpenSubtitles", subs_forget); }
+static const char *os_signed_out(void) {
+    return *cfg_get("os_apikey", "") || *cfg_get("os_user", "") || *cfg_get("os_pass", "") ? NULL : ITEM_HIDDEN;
+}
 
 /* --- system --- */
 static void reboot_cb(void *ud, bool yes) { (void)ud; if (yes) helper_bg("power reboot"); }
 
-static void update_done(char *out, void *ud) {
-    (void)ud;
-    busy_close();
-    str_trim(out);
-    const char *last = strrchr(out, '\n');
-    if (!strcmp(last ? last + 1 : out, "OK")) confirm_open(T("Update installed"), T("Restart to use the new version."), T("Restart now"), T("Later"), reboot_cb, NULL);
-    else app_toast("%s", *out ? tr_msg(out) : T("No update found"));
-}
-/* update from GitHub releases: check -> ask -> install -> reboot */
-static void gh_installed(char *out, void *ud) { update_done(out, ud); }
+/* update from GitHub releases: check -> ask -> install with a progress bar -> restart now or later (update_notice.c) */
+static char gh_ver[32];
 static void gh_install_cb(void *ud, bool yes) {
     (void)ud;
-    if (!yes) return;
-    busy_open(T("Downloading and installing update…"));
-    run_async(gh_installed, NULL, "update install");
+    if (yes) update_install_open(gh_ver);
 }
 static void gh_checked(char *out, void *ud) {
     (void)ud;
@@ -270,12 +272,12 @@ static void gh_checked(char *out, void *ud) {
     str_trim(out);
     if (!strncmp(out, "NY ", 3)) {
         char t[96];
-        snprintf(t, sizeof t, T("NotaTV %s is available"), out + 3);
+        snprintf(gh_ver, sizeof gh_ver, "%s", out + 3);
+        snprintf(t, sizeof t, T("NotaTV %s is available"), gh_ver);
         confirm_open(t, T("The update will be downloaded and installed. Your settings and logins are kept."), T("Update"), T("Later"), gh_install_cb, NULL);
     } else if (!strncmp(out, "NYESTE ", 7)) app_toast(T("You have the latest version (%s)"), out + 7);
     else app_toast("%s", *out ? tr_msg(out) : T("Could not check for updates"));
 }
-void settings_update_install(void) { gh_install_cb(NULL, true); }
 static void act_update_gh(void) {
     busy_open(T("Checking for updates…"));
     run_async(gh_checked, NULL, "update check");
@@ -372,7 +374,7 @@ static const Item av_items[] = {
     {N_("OpenSubtitles API key"), IT_TEXT, "os_apikey", "", .help = N_("Free: create an account on opensubtitles.com → Consumers → new API key")},
     {N_("OpenSubtitles username"), IT_TEXT, "os_user", ""},
     {N_("OpenSubtitles password"), IT_TEXT, "os_pass", ""},
-    {N_("Sign out of OpenSubtitles"), IT_ACTION, .action = act_os_logout},
+    {N_("Sign out of OpenSubtitles"), IT_ACTION, .action = act_os_logout, .locked = os_signed_out},
 };
 static const Item bt_items[] = {
     {"Bluetooth", IT_TOGGLE, "bt_enabled", "1", onoff, .changed = bt_apply, .help = N_("Use the TV as a Bluetooth speaker for phones")},
@@ -455,6 +457,9 @@ static const Item sys_items[] = {
     {N_("Run the setup guide again"), IT_ACTION, .action = act_setup, .help = N_("Language, country, time, network, name and apps - like the first start")},
     {N_("Screensaver"), IT_CYCLE, "screensaver_min", "10", ss_o, ss_l},
     {N_("Show FPS"), IT_TOGGLE, "show_fps", "0", onoff, .help = N_("Frames per second and slowest frame (ms) in the top right - for troubleshooting")},
+    {N_("Troubleshooting log"), IT_TOGGLE, "debug_log", "0", onoff, .changed = debug_log_apply,
+     .help = N_("Saves more details about playback and the network, also across restarts. Turn it off again when the problem is found")},
+    {N_("Get the logs"), IT_ACTION, .action = act_logs, .help = N_("Download them on a phone or computer to send to whoever helps you")},
     {N_("Developer mode (SSH)"), IT_TOGGLE, "ssh_enabled", "0", onoff, .changed = apply_ssh, .help = N_("SSH login as root (password: notatv)")},
     {N_("Update NotaTV"), IT_ACTION, .action = act_update_gh, .help = N_("Looks for a new version on GitHub and installs it")},
     {N_("Update reminders"), IT_TOGGLE, "update_notify", "1", onoff,
@@ -481,11 +486,21 @@ static const Item oc_items[] = {
 static Item apps_links[MAX_APP_SECS + 1];
 static Section app_subs[MAX_APP_SECS + 1];
 static int n_app_links;
+static bool item_hidden(const Item *it) {
+    const char *l = it->locked ? it->locked() : NULL;
+    return l && !*l;
+}
+static bool any_shown(const Item *items, int n) {
+    for (int i = 0; i < n; i++)
+        if (!item_hidden(&items[i])) return true;
+    return false;
+}
 static void build_app_sections(void) {
     int n = 0;
     for (int i = 0; i < app_count() && n < MAX_APP_SECS; i++) {
         const NotaApp *a = app_at(i);
-        if (!app_installed(a) || !a->settings || a->n_settings <= 0) continue;
+        /* an app whose items are all hidden right now (e.g. only "Sign out", and nobody is signed in) is left out */
+        if (!app_installed(a) || !a->settings || a->n_settings <= 0 || !any_shown(a->settings, a->n_settings)) continue;
         apps_links[n] = (Item){a->name, IT_SUB, .sub = n};
         app_subs[n] = (Section){a->name, a->icon, a->settings, a->n_settings};
         n++;
@@ -505,6 +520,12 @@ static Section sections[] = { /* not const: the number of Apps items is set when
     {"Overclock", ICON_POWER, oc_items, NI(oc_items)},
 };
 #define N_SEC NI(sections)
+static void rebuild_apps(void) {
+    build_app_sections();
+    for (int i = 0; i < N_SEC; i++)
+        if (sections[i].items == apps_links) sections[i].n = n_app_links;
+}
+
 #define MAX_ITEMS 32 /* the most items in one section (Picture and sound has 17) */
 _Static_assert(NI(net_items) <= MAX_ITEMS && NI(av_items) <= MAX_ITEMS && NI(cec_items) <= MAX_ITEMS && NI(bt_items) <= MAX_ITEMS &&
                NI(cast_items) <= MAX_ITEMS && NI(sys_items) <= MAX_ITEMS && NI(oc_items) <= MAX_ITEMS, "øg MAX_ITEMS");
@@ -568,6 +589,10 @@ static void info_refresh(Settings *s) {
 static void settings_enter(Screen *sc) {
     Settings *s = sc->st;
     settings_token++;
+    if (s->sub < 0) { /* back from an app (e.g. signed in): the list of apps with settings may have changed */
+        rebuild_apps();
+        if (sections[s->sec].items == apps_links && s->item >= n_app_links) s->item = n_app_links - 1;
+    }
     s->info_sec = -1;
     info_refresh(s);
 }
@@ -580,8 +605,52 @@ static void settings_destroy(Screen *sc) {
     free(sc);
 }
 
+/* the row an item is drawn in (hidden items take no row) */
+static int item_row(const Section *sec, int idx) {
+    int r = 0;
+    for (int i = 0; i < idx && i < sec->n; i++)
+        if (!item_hidden(&sec->items[i])) r++;
+    return r;
+}
+static bool selectable(const Section *sec, int i) {
+    return i >= 0 && i < sec->n && sec->items[i].type != IT_INFO && !item_hidden(&sec->items[i]);
+}
+static int next_selectable(const Section *sec, int from, int dir) {
+    int i = from + dir;
+    while (i >= 0 && i < sec->n && !selectable(sec, i)) i += dir;
+    return i >= 0 && i < sec->n ? i : from;
+}
+static int first_selectable(const Section *sec) {
+    int i = next_selectable(sec, -1, 1);
+    return i < 0 ? 0 : i;
+}
+
+/* Back/Left: out of an app's settings to the list of apps, otherwise to the side menu */
+static bool leave_item(Settings *s) {
+    if (s->sub >= 0) {
+        s->item = s->sub;
+        s->sub = -1;
+        rebuild_apps(); /* an app may have nothing left to show (signed out) */
+        if (s->item >= n_app_links) s->item = n_app_links - 1;
+        return true;
+    }
+    s->col = 0;
+    return true;
+}
+
 static void settings_update(Screen *sc, float dt) {
     Settings *s = sc->st;
+    /* the focused item disappeared (e.g. signed out): move to the nearest one still there */
+    if (s->col == 1) {
+        const Section *sec = cur_sec(s);
+        /* an app's page with nothing left on it (signed out of an app whose only item was "Sign out"): back to the list */
+        if (s->sub >= 0 && !any_shown(sec->items, sec->n) && app_top() == sc) { leave_item(s); sec = cur_sec(s); }
+        if (!selectable(sec, s->item)) {
+            int i = next_selectable(sec, s->item, 1);
+            if (i == s->item) i = next_selectable(sec, s->item, -1);
+            s->item = i;
+        }
+    }
     if (s->info_sec != sec_id(s) || app_time() - s->info_t > 4) {
         if (s->info_sec != sec_id(s)) {
             for (int i = 0; i < MAX_ITEMS; i++) { free(s->info[i]); s->info[i] = NULL; }
@@ -589,7 +658,7 @@ static void settings_update(Screen *sc, float dt) {
         }
         info_refresh(s);
     }
-    float target = s->item * 88 - 88 * 5;
+    float target = item_row(cur_sec(s), s->item) * 88 - 88 * 5;
     if (target < 0) target = 0;
     s->scroll = anim_to(s->scroll, target, dt, 14);
 }
@@ -626,9 +695,11 @@ static void settings_draw(Screen *sc) {
         text_draw(F_SEMI, 26, x + 4, 112, C_TEXT2, AL_LEFT, crumb);
     }
     clip_push(x - 10, 150, w + 20, UI_H - 240);
+    int row = 0;
     for (int i = 0; i < sec->n; i++) {
         const Item *it = &sec->items[i];
-        float y = 170 + i * 88 - s->scroll;
+        if (item_hidden(it)) continue;
+        float y = 170 + row++ * 88 - s->scroll;
         if (y < 80 || y > UI_H) continue;
         bool f = s->col == 1 && s->item == i;
         bool info = it->type == IT_INFO;
@@ -678,25 +749,12 @@ static void settings_draw(Screen *sc) {
         }
     }
     clip_pop();
-    if (s->col == 1 && s->item < sec->n && sec->items[s->item].help) {
+    if (s->col == 1 && selectable(sec, s->item) && sec->items[s->item].help) {
         /* one line as before; a longer text wraps to two lines instead of being cut off at the screen edge */
         const char *h = T(sec->items[s->item].help);
         if (text_width(F_REG, 24, h) <= w - 32) text_draw(F_REG, 24, x + 32, UI_H - 70, C_TEXT3, AL_LEFT, h);
         else text_draw_wrap(F_REG, 24, x + 32, UI_H - 84, w - 32, 2, 30, C_TEXT3, h);
     }
-}
-
-static int next_selectable(const Section *sec, int from, int dir) {
-    int i = from + dir;
-    while (i >= 0 && i < sec->n && sec->items[i].type == IT_INFO) i += dir;
-    return i >= 0 && i < sec->n ? i : from;
-}
-
-/* Back/Left: out of an app's settings to the list of apps, otherwise to the side menu */
-static bool leave_item(Settings *s) {
-    if (s->sub >= 0) { s->item = s->sub; s->sub = -1; return true; }
-    s->col = 0;
-    return true;
 }
 
 static bool settings_input(Screen *sc, const InputEvent *ev) {
@@ -708,14 +766,21 @@ static bool settings_input(Screen *sc, const InputEvent *ev) {
         case A_DOWN: if (s->sec < N_SEC - 1) s->sec++; s->item = 0; s->sub = -1; return true;
         case A_RIGHT: case A_OK: {
             s->col = 1;
-            s->item = sec->items[0].type == IT_INFO ? next_selectable(sec, 0, 1) : 0;
+            s->item = first_selectable(sec);
             return true;
         }
         default: return false;
         }
     }
+    if (!selectable(sec, s->item)) { /* nothing to focus in this list */
+        if (ev->a == A_BACK || ev->a == A_LEFT) return leave_item(s);
+        return ev->a != A_HOME;
+    }
     const Item *it = &sec->items[s->item];
-    if (it->locked && it->locked() && (ev->a == A_OK || ev->a == A_RIGHT)) return true; /* locked item */
+    if (it->locked && it->locked()) { /* locked item: cannot be changed; Left/Back still leave it */
+        if (ev->a == A_LEFT) return leave_item(s);
+        if (ev->a == A_OK || ev->a == A_RIGHT) return true;
+    }
     switch (ev->a) {
     case A_UP: s->item = next_selectable(sec, s->item, -1); return true;
     case A_DOWN: s->item = next_selectable(sec, s->item, 1); return true;
@@ -730,7 +795,9 @@ static bool settings_input(Screen *sc, const InputEvent *ev) {
             return true;
         }
         if (it->type == IT_TOGGLE) {
-            cfg_set_int(it->key, ev->a == A_RIGHT);
+            bool on = ev->a == A_RIGHT;
+            if ((cfg_int(it->key, atoi(it->def)) != 0) == on) return true; /* already so: nothing to apply (would e.g. redo the video setup) */
+            cfg_set_int(it->key, on);
             if (it->changed) it->changed();
             return true;
         }
@@ -757,7 +824,7 @@ static bool settings_input(Screen *sc, const InputEvent *ev) {
             s->sub = it->sub;
             s->item = 0;
             s->scroll = 0;
-            s->item = sections[s->sec].subs[s->sub].items[0].type == IT_INFO ? next_selectable(cur_sec(s), 0, 1) : 0;
+            s->item = first_selectable(cur_sec(s));
             break;
         case IT_ACTION:
             if (it->action) it->action();
@@ -770,9 +837,7 @@ static bool settings_input(Screen *sc, const InputEvent *ev) {
 }
 
 Screen *settings_screen(void) {
-    build_app_sections();
-    for (int i = 0; i < NI(sections); i++)
-        if (sections[i].items == apps_links) sections[i].n = n_app_links;
+    rebuild_apps();
     Screen *s = calloc(1, sizeof *s);
     s->name = "settings";
     Settings *st = calloc(1, sizeof(Settings));
