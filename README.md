@@ -255,7 +255,7 @@ make menuconfig        # change the Buildroot configuration
 
 Releases are built by GitHub Actions (`.github/workflows/release.yml`) on a self-hosted runner with the label `notatv`, so nobody has to build by hand:
 
-1. Raise the version in `VERSION` (e.g. `1.0.2`) and push.
+1. Raise the version in `VERSION` (e.g. `1.0.2`), write what is new under `## 1.0.2` in [CHANGELOG.md](CHANGELOG.md) (it becomes the release text), and push.
 2. Tag it: `git tag v1.0.2 && git push origin v1.0.2`. The tag must match `VERSION`.
 3. The runner builds in `/opt/notatv` and publishes a release with `notatv-rpi4.img.xz`, `notatv-rpi4-update.tar.gz` and its `.sha256`. Boxes then find it under *Update NotaTV*.
 4. The same run packs the apps (`scripts/apps-catalog.py`) and uploads them, with the catalog `apps-api<N>.json`, to the pre-release `apps` (the App Store). Files with the same name are replaced. Raise an app's `version` in its `manifest.json` when it changes, so boxes are offered the update.

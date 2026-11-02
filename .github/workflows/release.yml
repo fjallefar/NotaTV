@@ -116,11 +116,24 @@ jobs:
               with urllib.request.urlopen(req) as r:
                   return json.load(r)
           api = f"https://api.github.com/repos/{repo}/releases"
+          # release notes: the section "## <version>" of CHANGELOG.md (GitHub adds its "Full Changelog" link below)
+          notes, ver, sec = [], tag.lstrip("v"), False
+          if os.path.exists("CHANGELOG.md"):
+              for line in open("CHANGELOG.md", encoding="utf-8"):
+                  if line.startswith("## "):
+                      if sec: break
+                      sec = line[3:].strip() == ver
+                      continue
+                  if sec: notes.append(line)
+          body = "".join(notes).strip()
+          if not body: print(f"::warning::CHANGELOG.md has no section '## {ver}' - the release gets no notes")
           try:
               rel = call(f"{api}/tags/{tag}")
+              if body:  # running again: the notes follow CHANGELOG.md
+                  call(f"{api}/{rel['id']}", json.dumps({"body": body}).encode(), method="PATCH")
           except urllib.error.HTTPError as e:
               if e.code != 404: raise
-              rel = call(api, json.dumps({"tag_name": tag, "name": "NotaTV " + tag.lstrip("v"),
+              rel = call(api, json.dumps({"tag_name": tag, "name": "NotaTV " + ver, "body": body,
                                           "generate_release_notes": True, "make_latest": "true"}).encode())
           names = ["notatv-rpi4.img.xz", "notatv-rpi4-update.tar.gz", "notatv-rpi4-update.tar.gz.sha256"]
           for a in rel.get("assets", []):  # running again for the same tag replaces the files
