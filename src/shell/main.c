@@ -794,15 +794,28 @@ void app_set_overlay(const char *app_id, void (*draw)(void)) {
     }
     if (draw && free_i >= 0) { snprintf(overlays[free_i].id, sizeof overlays[0].id, "%s", app_id); overlays[free_i].draw = draw; }
 }
+/* overlays in the top bar (Music's "Now playing", Tesla's cars) are placed right to left, so they never lie on top of
+   each other: each asks for its width at its own right edge and gets the x where it fits (reset every frame) */
+static float overlay_left = UI_W;
+float app_overlay_place(float right, float w) {
+    if (right > overlay_left) right = overlay_left;
+    float x = right - w;
+    if (w > 0) overlay_left = x - 14;
+    return x;
+}
 static void draw_overlays(void) {
     double pos, dur;
     bool paused;
+    overlay_left = UI_W;
     if (player_state(&pos, &dur, &paused)) return; /* video: the player's own OSD */
-    for (int i = 0; i < 4; i++) {
-        if (!overlays[i].draw) continue;
-        const NotaApp *a = app_find(overlays[i].id);
-        if (a && app_installed(a)) overlays[i].draw();
-    }
+    /* Music's "Now playing" comes and goes: it is placed last, so the overlays that are always there (Tesla's cars)
+       keep their place and it goes beside them */
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < 4; i++) {
+            if (!overlays[i].draw || (strcmp(overlays[i].id, "music") == 0) != pass) continue; /* pass 1: Music */
+            const NotaApp *a = app_find(overlays[i].id);
+            if (a && app_installed(a)) overlays[i].draw();
+        }
 }
 
 /* ---------- toast + pause screen ---------- */

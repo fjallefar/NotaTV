@@ -306,11 +306,12 @@ static bool oled_on(void) {
     if (gen != cfg_gen()) { gen = cfg_gen(); on = cfg_int("music_oled", 1) != 0; }
     return on;
 }
-/* a slow orbit of at most amp x 0.7*amp px: under 0.5 px/s, whole pixels, so nothing seems to move */
-static void oled_offset(float amp, float px, float py, int *ox, int *oy) {
+/* a slow orbit of at most amp x 0.7*amp px, under 0.5 px/s. Drawn with gfx_drift it glides (fractions of a pixel);
+   on an older NotaTV without it, it is rounded to whole pixels */
+static void oled_offset(float amp, float px, float py, float *ox, float *oy) {
     float t = (float)app_time();
-    *ox = (int)lroundf(amp * sinf(t * TAU / px));
-    *oy = (int)lroundf(amp * 0.7f * sinf(t * TAU / py + 1));
+    *ox = amp * sinf(t * TAU / px);
+    *oy = amp * 0.7f * sinf(t * TAU / py + 1);
 }
 /* everything drawn until view_shift(0, 0) is moved (the clip rectangles move along) */
 static void view_shift(int ox, int oy) {
@@ -327,6 +328,7 @@ typedef struct {
     double connect_t;
     char faded[320];      /* the cover that has faded in */
     double ready_t, opened;
+    bool on_btn;          /* the focus is on "Disconnect" (Down from the player) */
 } MuView;
 
 /* the real cover fades in over the generated one (0..1, eased); one that is already there when the screen opens is shown at once */
@@ -373,10 +375,30 @@ static void draw_devices(MuView *v, float y) {
     }
 }
 
+/* "Disconnect": the same pill as the phones' row; Down moves the focus to it, Up back to the player */
+static void draw_disconnect(MuView *v, float x, float y) {
+    const char *l = T("Disconnect");
+    float pad = 34, h = 64, w = text_width(F_SEMI, 28, l) + 2 * pad;
+    fill_rrect(x, y, w, h, h / 2, v->on_btn ? C_TEXT : RGBA(255, 255, 255, 22));
+    text_draw(F_SEMI, 28, x + pad, y + 15, v->on_btn ? C_BG : C_TEXT, AL_LEFT, l);
+}
+/* the phone stops sending: Bluetooth disconnects the phone, AirPlay restarts the receiver (that ends the session) */
+static void mu_disconnect(MuView *v) {
+    MusicState s = snapshot();
+    v->on_btn = false;
+    if (!strcmp(s.source, "Bluetooth")) { bt_disconnect(); app_toast(T("Bluetooth disconnected")); return; }
+    run_cmd("%s/music disconnect >/dev/null 2>&1 &", helper_path());
+    SDL_LockMutex(ms_mu);
+    ms.active = ms.playing = false;
+    SDL_UnlockMutex(ms_mu);
+    app_toast(T("AirPlay disconnected"));
+}
+
 static void mu_update(Screen *sc, float dt) {
     (void)dt;
     MuView *v = sc->st;
     MusicState s = snapshot();
+    if (!s.active) v->on_btn = false;
     bt_wake(120); /* Music open: phones must be able to connect (otherwise the radio turns off when idle) */
     if (s.active || app_time() - v->connect_t > 20) v->connecting[0] = 0; /* succeeded or gave up */
     if (!s.active && app_time() - v->refreshed > 4) { /* paired phones (can change via Settings) */
@@ -420,11 +442,13 @@ static void mu_draw(Screen *sc) {
     Image *im;
     float fa = cover_fade(v, &s, &im);
     mu_draw_bg(&s, im, fa, oled);
-    int ox = 0, oy = 0;
+    float ox = 0, oy = 0;
     if (oled) oled_offset(14, 173, 127, &ox, &oy);
-    if (ox || oy) view_shift(ox, oy);
+    bool drift = oled && gfx_drift_begin && gfx_drift_begin(0, 0, UI_W, UI_H);
+    if (oled && !drift) view_shift((int)lroundf(ox), (int)lroundf(oy));
     mu_draw_fg(v, s, im, fa, oled);
-    if (ox || oy) view_shift(0, 0);
+    if (drift) gfx_drift_end(ox, oy);
+    else if (oled) view_shift(0, 0);
 }
 
 static void mu_draw_fg(MuView *v, MusicState s, Image *im, float fa, bool oled) {
@@ -471,7 +495,8 @@ static void mu_draw_fg(MuView *v, MusicState s, Image *im, float fa, bool oled) 
         snprintf(t, sizeof t, "%s", s.sender[0] ? s.sender : s.source);
         text_draw_wrap(F_BOLD, 60, tx, cy + 130, tw, 2, 72, C_TEXT, t);
         text_draw_clip(F_REG, 32, tx, cy + 290, tw, C_TEXT2, AL_LEFT, T("Start music on the phone - or press OK"));
-        if (hints) draw_keybar(120, UI_H - 62, T("Play"), NULL, NULL, NULL, "Menu");
+        draw_disconnect(v, tx, cy + cs + 24);
+        if (hints) draw_keybar(120, UI_H - 62, v->on_btn ? T("Disconnect") : T("Play"), NULL, NULL, NULL, "Menu");
         return;
     }
     text_draw(F_SEMI, 24, tx, cy + 90, MUSIC_ACCENT, AL_LEFT, s.playing ? T("NOW PLAYING") : T("PAUSED"));
@@ -492,7 +517,8 @@ static void mu_draw_fg(MuView *v, MusicState s, Image *im, float fa, bool oled) 
     bool bt = !strcmp(s.source, "Bluetooth");
     snprintf(from, sizeof from, "%s%s%s%s", s.source, s.sender[0] ? T(" from ") : "", s.sender,
              bt ? T("   ·   ← →: previous/next") : T("   ·   Control playback from the phone"));
-    if (bt && hints) draw_keybar(120, UI_H - 62, T("Pause/play"), NULL, NULL, NULL, "Menu");
+    draw_disconnect(v, tx, cy + cs + 24);
+    if (hints && (bt || v->on_btn)) draw_keybar(120, UI_H - 62, v->on_btn ? T("Disconnect") : T("Pause/play"), NULL, NULL, NULL, bt ? "Menu" : NULL);
     text_draw(F_REG, 22, UI_W - 120, UI_H - 58, C_TEXT3, AL_RIGHT, from);
 }
 
@@ -518,6 +544,13 @@ static bool mu_input(Screen *sc, const InputEvent *ev) {
             return true;
         default: return false;
         }
+    }
+    switch (ev->a) { /* "Disconnect" below the player (AirPlay and Bluetooth) */
+    case A_DOWN: if (v->on_btn) return false; v->on_btn = true; return true;
+    case A_UP: if (!v->on_btn) return false; v->on_btn = false; return true;
+    case A_OK: if (v->on_btn) { if (!ev->repeat) mu_disconnect(v); return true; } break;
+    case A_LEFT: case A_RIGHT: if (v->on_btn) return true; break;
+    default: break;
     }
     if (strcmp(s.source, "Bluetooth")) return false;
     switch (ev->a) { /* Bluetooth: control the phone (AVRCP) */
@@ -878,6 +911,7 @@ static bool music_draw_shelf(float x, float y) {
 /* ---------- "Now playing" box on top of other screens (app_set_overlay) ----------
  * In the top bar next to the clock (further left on the home screen and in Live TV). Comes in when you leave Music while something plays,
  * is fully visible for 8 s after a new track, then steps back (72 %); goes away 60 s after the music stopped. */
+#define OV_LEFT 700 /* the box does not go further left than this (the greeting / the screen's title is there) */
 static void music_overlay(void) {
     static float vis, bright = 1;
     static double last_play, last_change;
@@ -909,11 +943,19 @@ static void music_overlay(void) {
        things there, so it goes further left */
     bool busy_bar = t && t->name && (!strcmp(t->name, "home") || !strcmp(t->name, "iptv"));
     float right = busy_bar ? UI_W - 560 : UI_W - 96 - text_width(F_SEMI, 34, "00:00") - 32;
-    float x = right - w, y = 49 - (1 - vis) * 14;
-    if (oled) { /* the box moves a little too */
-        int ox, oy;
+    /* other overlays (Tesla's cars on the home screen) may already be in the bar: then it goes left of them. Without room
+       (it would reach the greeting/title) it shrinks to the cover and the bars, and as a last resort it goes below the bar */
+    float avail = app_overlay_place ? app_overlay_place(right, 0) : right, row_y = 49;
+    if (avail - w < OV_LEFT) { textw = -18; w = 8 + cov + 14 + 20 + 18; } /* bars right after the cover */
+    bool row2 = avail - w < OV_LEFT;
+    if (row2) { avail = right; row_y = 49 + h + 16; }
+    float x = row2 || !app_overlay_place ? avail - w : app_overlay_place(avail, w * vis) - w * (1 - vis), y = row_y - (1 - vis) * 14;
+    float ox = 0, oy = 0;
+    bool drift = false;
+    if (oled) { /* the box moves a little too (with its shadow) */
         oled_offset(6, 149, 109, &ox, &oy);
-        x += ox; y += oy;
+        drift = gfx_drift_begin && gfx_drift_begin(x - 24, y - 20, w + 48, h + 48);
+        if (!drift) { x += lroundf(ox); y += lroundf(oy); }
     }
     draw_shadow(x, y, w, h, h / 2, 18, 0.6f * a);
     fill_rrect(x, y, w, h, h / 2, RGBA(18, 20, 28, (uint8_t)(215 * a)));
@@ -923,13 +965,16 @@ static void music_overlay(void) {
     if (im && img_state(im) == IMG_READY) img_draw_cover(im, cx, cy, cov, cov, cov / 2, a);
     else draw_gen_cover(cx, cy, cov, cov / 2, cover_artist(&s), cover_name(&s), a, false);
     float tx = cx + cov + 14;
-    text_draw_clip(F_SEMI, 22, tx, y + 9, textw, color_alpha(C_TEXT, a), AL_LEFT, title);
-    text_draw_clip(F_REG, 18, tx, y + 36, textw, color_alpha(C_TEXT2, a), AL_LEFT, sub);
+    if (textw > 0) {
+        text_draw_clip(F_SEMI, 22, tx, y + 9, textw, color_alpha(C_TEXT, a), AL_LEFT, title);
+        text_draw_clip(F_REG, 18, tx, y + 36, textw, color_alpha(C_TEXT2, a), AL_LEFT, sub);
+    }
     float bx = tx + textw + 18, base = y + h / 2 + 10; /* three small bars: dance while it plays */
     for (int i = 0; i < 3; i++) {
         float bh = s.playing ? 6 + 14 * (0.5f + 0.5f * sinf((float)now * (5.0f + i * 1.3f) + i * 1.7f)) : 5;
         fill_rrect(bx + i * 8, base - bh, 4, bh, 2, color_alpha(MUSIC_ACCENT, a));
     }
+    if (drift) gfx_drift_end(ox, oy);
 }
 
 static void cover_src_changed(void) {

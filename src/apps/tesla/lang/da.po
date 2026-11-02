@@ -514,3 +514,9 @@ msgstr "Ønsket strøm"
 
 
 
+
+msgid "The cars and Music's Now playing box side by side"
+msgstr "Bilerne og Musiks Spiller nu-boks side om side"
+
+msgid "The cars on the home screen and Music's Now playing box no longer lie on top of each other (needs NotaTV 1.0.6)"
+msgstr "Bilerne på forsiden og Musiks Spiller nu-boks ligger ikke længere oven i hinanden (kræver NotaTV 1.0.6)"

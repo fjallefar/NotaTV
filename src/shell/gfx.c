@@ -438,6 +438,61 @@ void layer_free(Layer *l) {
     free(l);
 }
 
+/* ---------- Drift: OLED burn-in protection that glides ----------
+   What is drawn between gfx_drift_begin and gfx_drift_end (screen coordinates, inside the area) goes into a texture,
+   which is then drawn moved by (ox, oy) - fractions of a pixel too, with linear filtering. So it glides smoothly
+   instead of jumping a whole pixel at a time. One texture (grows to the largest area asked for); not nested. */
+static SDL_Texture *drift_tex, *drift_prev;
+static int drift_w, drift_h, drift_gen;
+static SDL_FRect drift_area; /* logical, whole pixels */
+static bool drift_on;
+bool gfx_drift_begin(float x, float y, float w, float h) {
+    if (!R || drift_on) return false;
+    float x0 = floorf(x), y0 = floorf(y);
+    w = ceilf(x + w) - x0; h = ceilf(y + h) - y0;
+    int W = (int)ceilf(w * g_scale), H = (int)ceilf(h * g_scale);
+    if (W <= 0 || H <= 0) return false;
+    if (drift_tex && (drift_gen != g_generation || W > drift_w || H > drift_h)) {
+        if (drift_gen == g_generation) SDL_DestroyTexture(drift_tex);
+        drift_tex = NULL;
+    }
+    if (!drift_tex) {
+        if (drift_gen != g_generation) drift_w = drift_h = 0;
+        if (W > drift_w) drift_w = W;
+        if (H > drift_h) drift_h = H;
+        drift_tex = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, drift_w, drift_h);
+        if (!drift_tex) return false;
+        /* the texture holds premultiplied color (drawing with alpha over transparent black) */
+        SDL_SetTextureBlendMode(drift_tex, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
+        SDL_SetTextureScaleMode(drift_tex, SDL_SCALEMODE_LINEAR);
+        drift_gen = g_generation;
+        st_tex_new++;
+    }
+    drift_prev = SDL_GetRenderTarget(R);
+    SDL_SetRenderTarget(R, drift_tex);
+    SDL_SetRenderViewport(R, NULL);
+    SDL_SetRenderClipRect(R, NULL);
+    SDL_SetRenderDrawColor(R, 0, 0, 0, 0);
+    SDL_RenderClear(R);
+    SDL_SetRenderScale(R, g_scale, g_scale);
+    /* screen coordinates: the area's corner lands at the texture's corner (the clip rectangles move along) */
+    SDL_Rect vp = {(int)-x0, (int)-y0, UI_W, UI_H};
+    SDL_SetRenderViewport(R, &vp);
+    drift_area = (SDL_FRect){x0, y0, w, h};
+    drift_on = true;
+    return true;
+}
+void gfx_drift_end(float ox, float oy) {
+    if (!drift_on) return;
+    drift_on = false;
+    SDL_SetRenderViewport(R, NULL);
+    SDL_SetRenderTarget(R, drift_prev);
+    SDL_FRect src = {0, 0, ceilf(drift_area.w * g_scale), ceilf(drift_area.h * g_scale)};
+    SDL_FRect dst = {drift_area.x + ox, drift_area.y + oy, src.w / g_scale, src.h / g_scale};
+    SDL_SetTextureAlphaModFloat(drift_tex, 1);
+    SDL_RenderTexture(R, drift_tex, &src, &dst);
+}
+
 /* ---------- Text ---------- */
 typedef struct { uint32_t cp; int16_t x, y, w, h, xoff, yoff; float adv; int glyph; } Glyph;
 #define ATLAS_SZ 1024      /* texture size for big text; small sizes (<= ATLAS_SMALL_PX) get 512 x 512 */

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Wi-Fi: start | scan | connect <ssid> <password> | forget
+# Wi-Fi: boot | start | scan | connect <ssid> <password> | forget
 . /usr/libexec/notatv/lib.sh
-W=""
-for d in /sys/class/net/*; do [ -d $d/wireless ] && { W=${d##*/}; break; }; done
+wlan() { for d in /sys/class/net/*; do [ -d $d/wireless ] && { echo ${d##*/}; return; }; done; }
+W=$(wlan)
 CONFW=/data/notatv/wpa_supplicant.conf
 
 # Wi-Fi power saving off: on the Pi 4's chip (brcmfmac) it makes new connections take seconds and streams stall,
@@ -20,16 +20,33 @@ ensure() {
 	[ -f $CONFW ] || printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=1\ncountry=%s\n' "$(wifi_country)" > $CONFW
 	c=$(wifi_country)
 	grep -q "^country=$c\$" $CONFW || { sed "s/^country=.*/country=$c/" $CONFW > $CONFW.new && mv $CONFW.new $CONFW; }
+	wpa_cli -i $W ping >/dev/null 2>&1 && return 0
+	# boot (S05) and start (S60) can come at the same time: only one starts wpa_supplicant ($RUN is in RAM)
+	mkdir -p $RUN
+	i=0; until mkdir $RUN/wifi.lock 2>/dev/null; do i=$((i+1)); [ $i -ge 100 ] && break; sleep 0.1; done
 	if ! wpa_cli -i $W ping >/dev/null 2>&1; then
 		ip link set $W up
 		wpa_supplicant -B -i $W -c $CONFW -D nl80211 >/dev/null 2>&1
-		sleep 1
+		i=0; until wpa_cli -i $W ping >/dev/null 2>&1 || [ $i -ge 30 ]; do sleep 0.1; i=$((i+1)); done
 		nopower
+		# the moment Wi-Fi is connected, wifi-event asks udhcpc for an address (it otherwise waits up to 20 s
+		# between attempts - wpa_supplicant usually needs a few seconds to connect)
+		wpa_cli -i $W -a $H/wifi-event -B >/dev/null 2>&1
 		udhcpc -b -i $W -x hostname:$(hostname) -s $H/dhcp-script -p /run/udhcpc.$W.pid >/dev/null 2>&1
 	fi
+	rmdir $RUN/wifi.lock 2>/dev/null
+	return 0
 }
 
 case "$1" in
+boot)
+	# at the very start of booting (S05notatv, in the background): load the Wi-Fi driver now instead of waiting for
+	# udev (S10), and connect as soon as the adapter is there - not first when S60 brings up the network
+	[ -f $CONFW ] && grep -q network= $CONFW || exit 0
+	[ -n "$W" ] || modprobe brcmfmac 2>/dev/null
+	i=0; while [ -z "$W" ] && [ $i -lt 150 ]; do sleep 0.1; i=$((i+1)); W=$(wlan); done
+	[ -n "$W" ] && ensure
+	;;
 start)
 	[ -n "$W" ] && [ -f $CONFW ] && grep -q network= $CONFW && ensure
 	;;

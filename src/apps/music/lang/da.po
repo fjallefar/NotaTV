@@ -88,21 +88,6 @@ msgstr "Beskyt OLED-skærme mod indbrænding"
 msgid "Everything on the Music screen and in the Now playing box moves very slowly, so nothing stands still for hours. You will not notice it"
 msgstr "Alt på Musik-skærmen og i Spiller nu-boksen flytter sig meget langsomt, så intet står stille i timevis. Du lægger ikke mærke til det"
 
-msgid "Cover art at once, and a Now playing box"
-msgstr "Cover med det samme og en Spiller nu-boks"
-
-msgid "A cover in the album's colors shows at once and the real cover fades in when it arrives - usually much sooner now"
-msgstr "Et cover i albummets farver vises med det samme, og det rigtige cover tones ind, når det kommer - som regel meget hurtigere nu"
-
-msgid "Covers you have seen before are remembered"
-msgstr "Covers, du har set før, huskes"
-
-msgid "A small Now playing box in the top corner when you leave Music while something plays (needs NotaTV 1.0.5)"
-msgstr "En lille Spiller nu-boks i hjørnet foroven, når du forlader Musik, mens der spilles (kræver NotaTV 1.0.5)"
-
-msgid "Settings: protect OLED screens from burn-in (on by default)"
-msgstr "Indstillinger: beskyt OLED-skærme mod indbrænding (slået til som standard)"
-
 msgid "Cover art from"
 msgstr "Covers hentes fra"
 
@@ -118,8 +103,23 @@ msgstr "Kun MusicBrainz"
 msgid "For Bluetooth music. Apple is fastest; MusicBrainz is an open music database. Only the chosen ones get the artist and album"
 msgstr "Til Bluetooth-musik. Apple er hurtigst; MusicBrainz er en åben musikdatabase. Kun de valgte får kunstner og album at vide"
 
-msgid "Settings: choose where cover art comes from - Apple, MusicBrainz, or both with either one first"
-msgstr "Indstillinger: vælg hvor covers hentes fra - Apple, MusicBrainz eller begge med den ene først"
-
 msgid "MusicBrainz, then Apple"
 msgstr "MusicBrainz, så Apple"
+
+msgid "Disconnect"
+msgstr "Afbryd forbindelse"
+
+msgid "AirPlay disconnected"
+msgstr "AirPlay afbrudt"
+
+msgid "A Disconnect button, and burn-in protection that glides"
+msgstr "En knap til at afbryde, og beskyttelse mod indbrænding, der glider"
+
+msgid "Disconnect: a button below the player ends AirPlay or Bluetooth (Down, then OK)"
+msgstr "Afbryd forbindelse: en knap under afspilleren afbryder AirPlay eller Bluetooth (Ned og så OK)"
+
+msgid "Burn-in protection moves the screen smoothly instead of a pixel at a time (needs NotaTV 1.0.6)"
+msgstr "Beskyttelsen mod indbrænding flytter skærmen blødt i stedet for en pixel ad gangen (kræver NotaTV 1.0.6)"
+
+msgid "The Now playing box no longer hides behind Tesla's cars on the home screen (needs NotaTV 1.0.6)"
+msgstr "Spiller nu-boksen gemmer sig ikke længere bag Teslas biler på forsiden (kræver NotaTV 1.0.6)"

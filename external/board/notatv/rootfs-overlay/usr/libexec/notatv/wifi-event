@@ -1,0 +1,7 @@
+#!/bin/sh
+# wpa_cli -a (started by libexec/notatv/wifi): called as "wifi-event <interface> CONNECTED|DISCONNECTED".
+# Connected: power saving off and an address at once (udhcpc otherwise waits up to 20 s between attempts)
+[ "$2" = CONNECTED ] || exit 0
+command -v iw >/dev/null && iw dev "$1" set power_save off 2>/dev/null
+kill -USR1 $(cat /run/udhcpc.$1.pid 2>/dev/null) 2>/dev/null
+exit 0

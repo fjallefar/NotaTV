@@ -119,6 +119,10 @@ void layer_end(Layer *l);
 void layer_draw(Layer *l, float x, float y, float alpha);
 void layer_set_opaque(Layer *l, bool on); /* the layer covers everything: drawn without blending */
 void layer_free(Layer *l);
+/* OLED burn-in protection that glides: drawing (screen coordinates, inside the area) until gfx_drift_end is shown moved
+   by (ox, oy), fractions of a pixel too. Not nested; false = draw as usual */
+NOTA_NEW bool gfx_drift_begin(float x, float y, float w, float h);
+NOTA_NEW void gfx_drift_end(float ox, float oy);
 bool img_size(Image *im, int *w, int *h);
 /* title logo at the bottom left of a 16:9 image; false if it is not ready */
 bool draw_title_logo(const char *url, float x, float y, float maxw, float maxh, float alpha); /* in memory or on disk (can be exported without network) */
@@ -274,6 +278,9 @@ void app_replace(Screen *s, Screen *with) NOTA_NEW; /* with takes s's place in t
 /* a small layer an app draws on top of every screen (Music: the "Now playing" box). One per app id; NULL removes it.
    Not drawn while the app is uninstalled, during video, or with the screensaver on */
 void app_set_overlay(const char *app_id, void (*draw)(void)) NOTA_NEW;
+/* an overlay in the top bar: w wide, wants to end at right; returns its x, left of the overlays drawn before it
+   in this frame (so they never overlap). w may grow while it fades in, so the others slide aside */
+float app_overlay_place(float right, float w) NOTA_NEW;
 void app_toast(const char *fmt, ...);
 void app_request_redraw(void);
 double app_time(void);

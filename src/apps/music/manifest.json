@@ -1,6 +1,6 @@
 {
   "id": "music",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "api": 2,
   "name": "Music",
   "desc": "Play music from your phone via AirPlay",
@@ -23,13 +23,11 @@
   "order": 70,
   "default": true,
   "changes": {
-    "summary": "Cover art at once, and a Now playing box",
+    "summary": "A Disconnect button, and burn-in protection that glides",
     "points": [
-      "A cover in the album's colors shows at once and the real cover fades in when it arrives - usually much sooner now",
-      "Covers you have seen before are remembered",
-      "A small Now playing box in the top corner when you leave Music while something plays (needs NotaTV 1.0.5)",
-      "Settings: protect OLED screens from burn-in (on by default)",
-      "Settings: choose where cover art comes from - Apple, MusicBrainz, or both with either one first"
+      "Disconnect: a button below the player ends AirPlay or Bluetooth (Down, then OK)",
+      "Burn-in protection moves the screen smoothly instead of a pixel at a time (needs NotaTV 1.0.6)",
+      "The Now playing box no longer hides behind Tesla's cars on the home screen (needs NotaTV 1.0.6)"
     ]
   }
 }

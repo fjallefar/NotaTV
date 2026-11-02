@@ -1,5 +1,5 @@
 #!/bin/sh
-# Music receivers: AirPlay (shairport-sync + nqptp) and Bluetooth (bluez-alsa): start | stop | restart | pause | resume
+# Music receivers: AirPlay (shairport-sync + nqptp) and Bluetooth (bluez-alsa): start | stop | restart | pause | resume | disconnect
 # Everything is open source and only listens on the local network.
 . /usr/libexec/notatv/lib.sh
 SP=/run/shairport-sync.pid
@@ -63,6 +63,15 @@ case "$1" in
 start) airplay_start; bt_start ;;
 stop) airplay_stop; bt_stop ;;
 restart) airplay_stop; bt_stop; sleep 1; airplay_start; bt_start ;;
+disconnect)
+	# Music's "Disconnect" for AirPlay: a new shairport-sync ends the phone's session (nqptp keeps running; Bluetooth is
+	# disconnected by tvshell via BlueZ)
+	if running $SP; then
+		kill $(cat $SP) 2>/dev/null; rm -f $SP
+		i=0; while [ $i -lt 20 ] && pidof shairport-sync >/dev/null; do sleep 0.1; i=$((i+1)); done
+		airplay_start
+	fi
+	;;
 pause)
 	# release the audio device while video plays (AirPlay disappears from the phone meanwhile; Bluetooth stays connected)
 	if running $SP; then airplay_stop; touch $RUN/music-paused; fi

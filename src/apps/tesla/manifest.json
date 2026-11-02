@@ -1,6 +1,6 @@
 {
   "id": "tesla",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "Tesla",
   "desc": "Your Tesla on the TV: battery, charging and status from your TeslaMate",
@@ -9,5 +9,11 @@
   "c2": [120, 12, 18],
   "fg": [255, 255, 255],
   "order": 85,
-  "default": false
+  "default": false,
+  "changes": {
+    "summary": "The cars and Music's Now playing box side by side",
+    "points": [
+      "The cars on the home screen and Music's Now playing box no longer lie on top of each other (needs NotaTV 1.0.6)"
+    ]
+  }
 }

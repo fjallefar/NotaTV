@@ -18,6 +18,8 @@ start)
 	mkdir -p /data/notatv
 	# no clock of its own: start from the last known time instead of 1970 (see clock)
 	$H/clock restore
+	# Wi-Fi right away (in the background), so it is connected by the time the user interface is up
+	$H/wifi boot >/dev/null 2>&1 &
 	# targets for symlinks from the rootfs (see post-build.sh): Bluetooth, bluealsa, shader cache, mpv
 	mkdir -p /data/notatv/bluetooth /data/notatv/bluealsa /data/notatv/cache /data/notatv/config
 	# tokens, passwords and cookies (Plex, IPTV, Seerr, YouTube) for root only

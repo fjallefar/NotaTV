@@ -18,6 +18,31 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.6
+
+> **In short:** Wi-Fi is ready sooner after starting, and Music gets a Disconnect button and smoother burn-in protection.
+> - Wi-Fi connects early while the box starts, and gets its address the moment it is connected
+> - Music: a Disconnect button below the player
+> - Burn-in protection in Music glides instead of moving a pixel at a time
+> - Music's Now playing box and Tesla's cars no longer lie on top of each other
+
+<!-- tldr:da
+Kort: Wi-Fi er klar hurtigere efter opstart, og Musik får en knap til at afbryde og en blødere beskyttelse mod indbrænding.
+- Wi-Fi forbinder tidligt, mens boksen starter, og får sin adresse, så snart den er forbundet
+- Musik: en knap til at afbryde forbindelsen under afspilleren
+- Beskyttelsen mod indbrænding i Musik glider i stedet for at flytte sig en pixel ad gangen
+- Musiks Spiller nu-boks og Teslas biler ligger ikke længere oven i hinanden
+-->
+
+**System**
+- Wi-Fi starts at the very beginning of booting instead of after the other services: the driver is loaded at once and the box connects as soon as the adapter is there. It asks for an address the moment Wi-Fi is connected, instead of waiting up to 20 seconds between attempts.
+- Overlays in the top bar (Music's *Now playing*, Tesla's cars) are placed side by side and never on top of each other. When there is no room, *Now playing* shrinks to the cover, or moves just below the bar.
+- Burn-in protection can move things by fractions of a pixel, so it glides smoothly.
+
+**Apps** (update in the App Store; the fixes in the top bar and the smooth movement need NotaTV 1.0.6)
+- Music 1.0.2: a *Disconnect* button below the player (Down, then OK) ends AirPlay or Bluetooth. Burn-in protection glides instead of jumping a pixel at a time.
+- Tesla 1.0.1: the cars on the home screen make room for Music's *Now playing* box.
+
 ## 1.0.5
 
 > **In short:** A new, calmer look across the whole box, a quick panel with a sleep timer, sharper pictures and the new Tesla app.

@@ -140,6 +140,10 @@ ui_focus_over(x2, y2, w2, h2, 14, f);
 - The app's icon on the home screen and in the App Store is `src/shell/assets/icons/<id>.png`, made by
   `scripts/gen-icons.py` (add a drawing there for a new app; without one the tile uses `icon`, `c1`, `c2`, `fg`).
 - Keep 96 px from the left screen edge, like the rest of the system.
+- `app_set_overlay(id, draw)`: a small layer on top of every screen. In the top bar, get the x from
+  `app_overlay_place(right, w)` (NotaTV 1.0.6+), so overlays from different apps stand side by side.
+- `gfx_drift_begin(x, y, w, h)` ... `gfx_drift_end(ox, oy)` (NotaTV 1.0.6+): burn-in protection that glides - what is
+  drawn in between is shown moved by fractions of a pixel. Check that they are there (`if (gfx_drift_begin)`).
 
 ## Rules
 

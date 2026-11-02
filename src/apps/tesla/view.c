@@ -881,7 +881,8 @@ void tm_home_overlay(void) {
         total += wd[i] + (i ? 12 : 0);
     }
     /* in the top bar between the date and the network icon / key hint */
-    float right = UI_W - 310 - 36 - text_width(F_REG, 22, T("Move app")) - 28, x = right - total, y = 50, h = 58;
+    float right = UI_W - 310 - 36 - text_width(F_REG, 22, T("Move app")) - 28, y = 50, h = 58;
+    float x = app_overlay_place ? app_overlay_place(right, total) : right - total; /* not on top of Music's "Now playing" */
     for (int i = 0; i < m; i++) {
         const TmCar *c = cs[i];
         fill_rrect(x, y, wd[i], h, h / 2, RGBA(18, 20, 28, (uint8_t)(205 * a)));
