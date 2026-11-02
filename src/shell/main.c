@@ -28,7 +28,7 @@ static char toast_msg[256];
 static double toast_t = -10;
 static double t0;
 static float boot_time = -1;
-static int cfg_gen;
+static int ext_cfg_gen; /* changed from outside (phone page) */
 static char ip_str[64] = "";
 static double ip_checked = -100;
 static bool screensaver;
@@ -37,8 +37,8 @@ static double ss_t;
 double app_time(void) { return SDL_GetTicks() / 1000.0 - t0; }
 void app_quit(void) { running = false; }
 float app_boot_time(void) { return boot_time; }
-int app_cfg_gen(void) { return cfg_gen; }
-void app_cfg_changed(void) { cfg_gen++; }
+int app_cfg_gen(void) { return ext_cfg_gen; }
+void app_cfg_changed(void) { ext_cfg_gen++; }
 void app_request_redraw(void) {}
 
 void app_toast(const char *fmt, ...) {
@@ -50,15 +50,36 @@ void app_toast(const char *fmt, ...) {
     SDL_Log("toast: %s", toast_msg);
 }
 
+static bool show_fps(void) {
+    static int seen = -1;
+    static bool on;
+    if (seen != cfg_gen()) { seen = cfg_gen(); on = cfg_int("show_fps", 0) != 0; }
+    return on;
+}
+
+/* the address is fetched in the background (net ip forks a shell); callers get the last known one */
+static bool ip_busy;
+static void ip_work(void *arg) {
+    char **o = arg;
+    char *cmd = str_printf("%s/net ip 2>/dev/null", helper_path()); /* the connection in use (cable before Wi-Fi) */
+    *o = run_capture(cmd);
+    free(cmd);
+}
+static void ip_done(void *arg) {
+    char **o = arg;
+    ip_busy = false;
+    if (*o) { str_trim(*o); snprintf(ip_str, sizeof ip_str, "%s", *o); }
+    free(*o);
+    free(o);
+}
 const char *app_ip(void) {
-    if (app_time() - ip_checked > 5) {
-        ip_checked = app_time();
-        char *cmd = str_printf("%s/net ip 2>/dev/null", helper_path()); /* the connection in use (cable before Wi-Fi) */
-        char *o = run_capture(cmd);
-        free(cmd);
-        str_trim(o);
-        snprintf(ip_str, sizeof ip_str, "%s", o);
-        free(o);
+    if (!ip_busy && app_time() - ip_checked > 5) {
+        char **o = calloc(1, sizeof *o);
+        if (o) {
+            ip_checked = app_time();
+            ip_busy = true;
+            job_submit(ip_work, ip_done, o);
+        }
     }
     return ip_str;
 }
@@ -138,7 +159,11 @@ static void snapshot_close(void) {
 Screen *app_top(void) { return depth ? stack[depth - 1] : NULL; }
 
 void app_push(Screen *s) {
-    if (depth >= 16) return;
+    if (!s) return;
+    if (depth >= 16) { /* full: the oldest screen above home goes, so the new one is really opened */
+        SDL_Log("skærmstakken er fuld - lukker %s", stack[1]->name ? stack[1]->name : "?");
+        app_close(stack[1]);
+    }
     stack[depth++] = s;
     s->anim = 0;
     if (s->enter) s->enter(s);
@@ -157,6 +182,34 @@ void app_pop(void) {
     destroy_screen(s);
     Screen *t = app_top();
     if (t && t->resume) t->resume(t);
+}
+
+/* close one screen wherever it is in the stack (a screen closing itself from update() may not be on top) */
+void app_close(Screen *s) {
+    if (!s) return;
+    if (depth > 1 && stack[depth - 1] == s) { app_pop(); return; }
+    for (int i = 1; i < depth - 1; i++)
+        if (stack[i] == s) {
+            memmove(&stack[i], &stack[i + 1], sizeof stack[0] * (size_t)(depth - 1 - i));
+            depth--;
+            destroy_screen(s);
+            return;
+        }
+}
+
+/* put another screen in place of s (e.g. the login screen is replaced by the app when signed in) */
+void app_replace(Screen *s, Screen *with) {
+    if (!with) return;
+    for (int i = 1; i < depth; i++)
+        if (stack[i] == s) {
+            if (i == depth - 1) { app_pop(); app_push(with); return; }
+            destroy_screen(s);
+            stack[i] = with;
+            with->anim = 1;
+            if (with->enter) with->enter(with);
+            return;
+        }
+    destroy_screen(with); /* s is not open any more */
 }
 
 void app_home(void) {
@@ -357,9 +410,10 @@ void draw_topbar(const char *title) {
 
 void draw_hint(float x, float y, const char *keys, const char *label) {
     static const struct { const char *name; Color c; } dots[] = { /* color keys: a dot instead of text */
-        {"Rød", {226, 62, 58, 255}}, {"Grøn", {64, 186, 92, 255}}, {"Gul", {238, 196, 48, 255}}, {"Blå", {58, 124, 226, 255}}};
+        {N_("Red"), {226, 62, 58, 255}}, {N_("Green"), {64, 186, 92, 255}}, {N_("Yellow"), {238, 196, 48, 255}}, {N_("Blue"), {58, 124, 226, 255}}};
+    /* the English name, or its translation (callers may pass either) */
     for (size_t i = 0; i < sizeof dots / sizeof dots[0]; i++)
-        if (!strcmp(keys, dots[i].name)) {
+        if (!strcmp(keys, dots[i].name) || !strcmp(keys, T(dots[i].name))) {
             fill_circle(x + 15, y + 17, 12, dots[i].c);
             text_draw(F_REG, 22, x + 36, y + 4, C_TEXT2, AL_LEFT, label);
             return;
@@ -452,7 +506,7 @@ static void pending_cb(void *ud, bool yes) {
             *eq = 0;
             cfg_set(line, eq + 1);
         }
-        cfg_gen++;
+        ext_cfg_gen++;
         app_toast(T("Saved from phone"));
     } else app_toast(T("Declined"));
     free(p->kv);
@@ -532,9 +586,24 @@ static void inbox_check(void) {
     }
     closedir(d);
     if (changed) {
-        cfg_gen++;
+        ext_cfg_gen++;
         app_toast(T("Settings received"));
     }
+}
+
+/* what runs every frame besides the screens - also from the playback loop (playing = true), which has its own loop.
+   During playback the apps' services (cast etc.), DLNA, AirPlay and the update reminder wait: they may start
+   playback or open screens, and the playing app controls its own cast (rq->tick). */
+void app_background_tick(bool playing) {
+    jobs_pump();
+    inbox_check();
+    bt_tick(); /* the Bluetooth agent answers pairing requests */
+    appcat_tick(); /* finishes App Store installs; moves boxes from 1.0.x to App Store apps */
+    if (playing) return;
+    dlna_tick();
+    mirror_tick();
+    apps_tick(); /* the installed apps' background services (Plex cast, YouTube cast, Jellyfin "Play on") */
+    update_tick();
 }
 
 /* one frame while the main thread waits (e.g. for ffprobe before playback): the screen keeps drawing with a spinner,
@@ -654,7 +723,7 @@ static void fps_tick(void) {
             fps_worst_ms = (float)(worst * 1000);
             int geom, tex_new, imgs;
             gfx_stats(&geom, &tex_new, &imgs);
-            if (cfg_int("show_fps", 0))
+            if (show_fps())
                 SDL_Log("fps: %.1f, langsomste %.0f ms, cpu/billede %.1f ms, tegnekald/billede %d, billeder/billede %d, nye teksturer %d",
                         fps_now, fps_worst_ms, draw_ms_sum / (frames ? frames : 1), geom / (frames ? frames : 1),
                         imgs / (frames ? frames : 1), tex_new);
@@ -665,7 +734,7 @@ static void fps_tick(void) {
 }
 
 static void draw_fps(void) {
-    if (!cfg_int("show_fps", 0) || fps_now <= 0) return;
+    if (!show_fps() || fps_now <= 0) return;
     char buf[48];
     snprintf(buf, sizeof buf, "%.0f fps · %.0f ms", fps_now, fps_worst_ms);
     Color c = fps_now >= 55 ? C_OK : fps_now >= 40 ? RGB(240, 190, 60) : C_DANGER;
@@ -712,6 +781,10 @@ static void set_kd_graphics(void) {
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
+    /* TZ and NOTATV_LANG exist before any thread starts: changing them later (time zone in Settings) then only
+       swaps the string, and environ is never moved while another thread reads it (localtime, getenv) */
+    if (!getenv("TZ")) setenv("TZ", "UTC0", 1);
+    if (!getenv("NOTATV_LANG")) setenv("NOTATV_LANG", "en", 1);
     SDL_SetHint(SDL_HINT_VIDEO_DOUBLE_BUFFER, "1");
     SDL_SetHint(SDL_HINT_KMSDRM_REQUIRE_DRM_MASTER, "1");
     if (!SDL_Init(SDL_INIT_EVENTS)) { SDL_Log("SDL_Init: %s", SDL_GetError()); return 1; }
@@ -753,14 +826,7 @@ int main(int argc, char **argv) {
             } else input_handle_sdl(&e);
         }
         input_poll();
-        jobs_pump();
-        inbox_check();
-        bt_tick();
-        dlna_tick();
-        mirror_tick();
-        apps_tick(); /* the installed apps' background services (Plex cast, YouTube cast, Jellyfin "Play on") */
-        update_tick();
-        appcat_tick(); /* finishes App Store installs; moves boxes from 1.0.x to App Store apps */
+        app_background_tick(false);
         script_step();
 
         double now = app_time();
@@ -805,10 +871,13 @@ int main(int argc, char **argv) {
             else if (!used && ev.a == A_BACK && depth > 1) app_pop();
             else if (!used && (ev.a == A_CHUP || ev.a == A_CHDOWN) && t && t->input) { /* CH+/CH-: one page up/down */
                 InputEvent step = {ev.a == A_CHUP ? A_UP : A_DOWN, 0, false};
-                for (int k = 0; k < 4; k++) t->input(t, &step);
+                for (int k = 0; k < 4 && app_top() == t; k++) t->input(t, &step); /* stop if the screen closed */
             }
         }
-        ss_minutes = cfg_int("screensaver_min", 10);
+        { /* read again only when a setting changed (cfg_int locks and searches every key) */
+            static int seen = -1;
+            if (seen != cfg_gen()) { seen = cfg_gen(); ss_minutes = cfg_int("screensaver_min", 10); }
+        }
         if (!screensaver && ss_minutes > 0 && now - fmax(input_last_activity(), 0) > ss_minutes * 60.0 && depth >= 1) {
             screensaver = true;
             ss_t = now;
@@ -848,6 +917,7 @@ int main(int argc, char **argv) {
         else if (screensaver) SDL_Delay(100);
         img_cache_trim();
     }
+    cfg_flush();
     while (depth) destroy_screen(stack[--depth]);
     video_quit();
     jobs_shutdown();

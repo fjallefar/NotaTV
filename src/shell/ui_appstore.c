@@ -2,7 +2,9 @@
  * The apps come from the catalog on GitHub (appcat.c); installed apps are shown even when the catalog cannot be
  * reached. Two sections, Installed and Not installed. OK on an app that is not installed downloads and installs it.
  * OK on an installed app offers Open, Update (when the catalog has a newer version) and Uninstall. Uninstalling
- * deletes everything the app has saved on the box (see app_uninstall). Settings and the App Store are not shown. */
+ * deletes everything the app has saved on the box (see app_uninstall). Settings and the App Store are not shown.
+ * When apps have updates, a bar at the top updates them all at once. Before an update, a card shows what is new
+ * (the manifest's "changes", see scripts/apps-catalog.py). */
 #include "tv.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +15,8 @@
 #define STORE_HDR 70.0f
 #define STORE_GAP 50.0f
 #define STORE_MAX 64
+#define STORE_BAR 120.0f /* the "Update all" bar */
+#define ALL_ID "*all"    /* its id in the layout (never an app id) */
 
 /* one app in the store: loaded (app) and/or in the catalog (cat) */
 typedef struct {
@@ -25,7 +29,7 @@ typedef struct {
 typedef struct { char sel[40]; float sy; bool asked_restart; } Store;
 
 typedef struct { StoreItem it; int row, col; float y; } StoreCell;
-typedef struct { StoreCell c[STORE_MAX]; int n, rows; float hdr_y[2]; int cnt[2]; } StoreLayout;
+typedef struct { StoreCell c[STORE_MAX + 1]; int n, rows; float hdr_y[2]; int cnt[2], first_row[2]; } StoreLayout;
 
 static int item_order(const StoreItem *s) { return s->app ? s->app->order : s->cat->order; }
 static const char *item_name(const StoreItem *s) { return s->app ? T(s->app->name) : s->cat->name; }
@@ -57,13 +61,33 @@ static int store_items(StoreItem *out) {
 }
 
 /* y is in content coordinates (0 = top of the list); an empty section gets one row for its message */
+static void store_layout_build(StoreLayout *L);
+/* update, draw and input all need the layout every frame: it is only built again when something it depends on
+   changed (apps loaded/installed, settings, the catalog, the install queue) */
 static void store_layout(StoreLayout *L) {
+    static StoreLayout cache;
+    static int key[6] = {-1};
+    int done = 0, total = 0;
+    bool busy = appcat_busy(&done, &total, NULL);
+    int now[6] = {apps_gen(), cfg_gen(), (int)appcat_state(), appcat_count(), done * 1000 + total, busy};
+    if (memcmp(key, now, sizeof key)) { store_layout_build(&cache); memcpy(key, now, sizeof key); }
+    *L = cache;
+}
+static void store_layout_build(StoreLayout *L) {
     StoreItem items[STORE_MAX];
     int n = store_items(items);
     L->n = 0;
     int row = 0;
     float y = 0;
+    if (appcat_updates() > 0) {
+        StoreCell *b = &L->c[L->n++];
+        memset(b, 0, sizeof *b);
+        snprintf(b->it.id, sizeof b->it.id, ALL_ID);
+        row = 1;
+        y = STORE_BAR + 30;
+    }
     for (int sec = 0; sec < 2; sec++) {
+        L->first_row[sec] = row;
         L->hdr_y[sec] = y;
         y += STORE_HDR;
         int k = 0;
@@ -95,7 +119,7 @@ static void store_update(Screen *s, float dt) {
     if (i >= 0) {
         snprintf(st->sel, sizeof st->sel, "%s", L.c[i].it.id);
         float t = L.c[i].y - 300;
-        if (L.c[i].row == 0 || (L.cnt[0] && L.c[i].row == (L.cnt[0] + STORE_COLS - 1) / STORE_COLS)) t -= STORE_HDR; /* show the section heading */
+        if (L.c[i].row == L.first_row[0] || L.c[i].row == L.first_row[1]) t -= STORE_HDR; /* show the section heading */
         st->sy = anim_to(st->sy, t > 0 ? t : 0, dt, 12);
     }
     /* an app was updated while it was running: the new version starts with the user interface */
@@ -104,6 +128,32 @@ static void store_update(Screen *s, float dt) {
         confirm_open(T("Restart NotaTV?"), T("The updated apps are used after a restart of the user interface. It takes a few seconds."),
                      T("Restart now"), T("Later"), restart_cb, NULL);
     }
+}
+
+/* the bar at the top: "Update all (3)" and which apps */
+static void draw_update_bar(float x, float y, float w, bool f) {
+    if (y > UI_H || y + STORE_BAR < 190) return;
+    if (f) draw_shadow(x, y, w, STORE_BAR, 22, 26, 1);
+    fill_rrect(x, y, w, STORE_BAR, 22, f ? C_SURFACE2 : C_SURFACE);
+    fill_rrect_vgrad(x + 24, y + 20, 80, 80, 20, RGB(16, 150, 140), RGB(8, 92, 96));
+    draw_icon(ICON_CHECK, x + 64, y + 60, 40, C_TEXT);
+    int n = appcat_updates();
+    char t[96], names[400] = "";
+    snprintf(t, sizeof t, n == 1 ? T("1 app has an update") : T("%d apps have an update"), n);
+    text_draw(F_BOLD, 32, x + 130, y + 22, C_TEXT, AL_LEFT, t);
+    for (int i = 0; i < appcat_count(); i++) {
+        const CatApp *c = appcat_at(i);
+        if (!appcat_has_update(c->id)) continue;
+        size_t l = strlen(names);
+        snprintf(names + l, sizeof names - l, "%s%s %s", l ? ",  " : "", c->name, c->version);
+    }
+    text_draw_clip(F_REG, 24, x + 130, y + 66, w - 130 - 330, C_TEXT2, AL_LEFT, names);
+    bool busy = appcat_busy(NULL, NULL, NULL);
+    const char *pill = busy ? T("Updating…") : T("Update all");
+    float pw = text_width(F_SEMI, 26, pill) + 60;
+    fill_rrect(x + w - pw - 30, y + 34, pw, 52, 26, f ? C_FOCUS : C_ACCENT);
+    text_draw(F_SEMI, 26, x + w - 30 - pw / 2, y + 44, f ? RGB(10, 10, 10) : C_TEXT, AL_CENTER, pill);
+    if (f) stroke_rrect(x - 4, y - 4, w + 8, STORE_BAR + 8, 26, 4, C_FOCUS);
 }
 
 static void store_draw(Screen *s) {
@@ -138,8 +188,9 @@ static void store_draw(Screen *s) {
     for (int k = 0; k < L.n; k++) {
         const StoreItem *it = &L.c[k].it;
         float x = 120 + L.c[k].col * (cw + 30), y = top + L.c[k].y;
-        if (y > UI_H || y + ch < 190) continue;
         bool f = k == sel;
+        if (!strcmp(it->id, ALL_ID)) { draw_update_bar(120, y, UI_W - 240, f); continue; }
+        if (y > UI_H || y + ch < 190) continue;
         IconId icon = it->app ? it->app->icon : it->cat->icon;
         Color c1 = it->app ? it->app->c1 : it->cat->c1, c2 = it->app ? it->app->c2 : it->cat->c2, fg = it->app ? it->app->fg : it->cat->fg;
         if (f) draw_shadow(x, y, cw, ch, 22, 26, 1);
@@ -147,9 +198,13 @@ static void store_draw(Screen *s) {
         fill_rrect_vgrad(x + 30, y + 30, 110, 110, 26, c1, c2);
         draw_icon(icon, x + 85, y + 85, 56, fg);
         text_draw_clip(F_BOLD, 32, x + 165, y + 34, cw - 195, C_TEXT, AL_LEFT, item_name(it));
-        text_draw_wrap(F_REG, 22, x + 165, y + 80, cw - 195, 2, 30, C_TEXT2, item_desc(it));
         int pend = appcat_pending(it->id);
         bool upd = appcat_has_update(it->id);
+        if (upd && it->cat->news[0]) { /* an update: what is new instead of the description */
+            char t[240];
+            snprintf(t, sizeof t, T("New: %s"), it->cat->news);
+            text_draw_wrap(F_REG, 22, x + 165, y + 80, cw - 195, 2, 30, C_ACCENT, t);
+        } else text_draw_wrap(F_REG, 22, x + 165, y + 80, cw - 195, 2, 30, C_TEXT2, item_desc(it));
         const char *pill = pend == 2 ? T("Installing…") : pend == 1 ? T("Waiting…")
                          : upd ? T("Update") : it->installed ? T("Installed") : T("Install");
         Color pc = pend ? RGBA(255, 255, 255, 40) : upd ? C_ACCENT : it->installed ? C_OK : (f ? C_ACCENT : RGBA(255, 255, 255, 40));
@@ -158,8 +213,9 @@ static void store_draw(Screen *s) {
         if (pend == 2) draw_spinner(x + 52, y + ch - 41, 9, C_TEXT);
         text_draw(F_SEMI, 22, x + 30 + pw / 2 + (pend == 2 ? 14 : 0), y + ch - 53, C_TEXT, AL_CENTER, pill);
         char v[64];
-        if (upd) snprintf(v, sizeof v, "%s → %s", it->app->version, it->cat->version);
-        else if (it->app && it->app->version) snprintf(v, sizeof v, T("Version %s"), it->app->version);
+        if (upd) snprintf(v, sizeof v, "%s → %s", app_version(it->app), it->cat->version);
+        else if (it->app && *app_next_version(it->app)) snprintf(v, sizeof v, T("%s after a restart"), app_next_version(it->app));
+        else if (it->app && *app_version(it->app)) snprintf(v, sizeof v, T("Version %s"), app_version(it->app));
         else if (it->cat) snprintf(v, sizeof v, "%s  ·  %.1f MB", it->cat->version, it->cat->size / 1048576.0);
         else v[0] = 0;
         text_draw(F_REG, 20, x + cw - 30, y + ch - 50, C_TEXT3, AL_RIGHT, v);
@@ -180,6 +236,41 @@ static char pending_id[40]; /* the app a dialog is about */
 static int menu_kind[3];    /* what the items of the installed-app menu do */
 enum { M_OPEN, M_UPDATE, M_UNINSTALL };
 
+static void update_confirmed(void *ud, bool yes) {
+    (void)ud;
+    if (yes) appcat_install(pending_id);
+}
+static void update_all_confirmed(void *ud, bool yes) {
+    (void)ud;
+    if (yes) appcat_update_all();
+}
+
+/* the card with what is new before an update (straight to the update when the catalog says nothing) */
+static void ask_update(const NotaApp *a, const CatApp *c) {
+    if (!c->news[0] && !c->n_points) { appcat_install(a->id); return; }
+    char title[160];
+    snprintf(title, sizeof title, "%s %s", T(a->name), c->version);
+    const char *pts[4];
+    for (int i = 0; i < c->n_points; i++) pts[i] = c->points[i];
+    notes_open(T("WHAT'S NEW"), title, c->news, pts, c->n_points, T("Update"), T("Cancel"), update_confirmed, NULL);
+}
+static void ask_update_all(void) {
+    const char *pts[8];
+    char lines[8][200];
+    int n = 0, total = appcat_updates();
+    for (int i = 0; i < appcat_count() && n < 8; i++) {
+        const CatApp *c = appcat_at(i);
+        if (!appcat_has_update(c->id)) continue;
+        if (c->news[0]) snprintf(lines[n], sizeof lines[n], "%s %s - %s", c->name, c->version, c->news);
+        else snprintf(lines[n], sizeof lines[n], "%s %s", c->name, c->version);
+        pts[n] = lines[n];
+        n++;
+    }
+    char title[96];
+    snprintf(title, sizeof title, total == 1 ? T("Update 1 app") : T("Update %d apps"), total);
+    notes_open(T("WHAT'S NEW"), title, NULL, pts, n, T("Update all"), T("Cancel"), update_all_confirmed, NULL);
+}
+
 static void uninstall_confirmed(void *ud, bool yes) {
     (void)ud;
     const NotaApp *a = app_find(pending_id);
@@ -194,7 +285,7 @@ static void installed_menu(void *ud, int idx) {
     if (!a || idx < 0 || idx > 2) return;
     switch (menu_kind[idx]) {
     case M_OPEN: { Screen *sc = a->open ? a->open() : NULL; if (sc) app_push(sc); break; }
-    case M_UPDATE: appcat_install(a->id); break;
+    case M_UPDATE: { const CatApp *c = appcat_find(a->id); if (c) ask_update(a, c); break; }
     default: {
         char t[160];
         snprintf(t, sizeof t, T("Uninstall %s?"), T(a->name));
@@ -219,6 +310,7 @@ static bool store_input(Screen *s, const InputEvent *ev) {
     case A_DOWN: if (c.row + 1 < L.rows) t = store_row_pick(&L, c.row + 1, c.col); break;
     case A_OK:
         if (ev->repeat || appcat_pending(c.it.id)) return true;
+        if (!strcmp(c.it.id, ALL_ID)) { ask_update_all(); return true; }
         snprintf(pending_id, sizeof pending_id, "%s", c.it.id);
         if (c.it.installed) {
             const char *items[3];

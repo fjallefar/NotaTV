@@ -18,11 +18,14 @@ for d in /dev/sd[a-z][0-9]* /dev/sd[a-z] /dev/mmcblk[0-9]p[0-9]* /dev/nvme[0-9]n
 	type=$(echo "$info" | sed -n 's/.*TYPE="\([^"]*\)".*/\1/p')
 	case "$label" in NOTABOOT|NOTADATA|NOTATV*) continue ;; esac
 	case "$type" in vfat|exfat|ntfs|ext2|ext3|ext4|iso9660|udf|btrfs|xfs) ;; *) continue ;; esac
-	name=${label:-${d##*/}}
+	# the label comes from the drive: only plain characters, and never "." or ".." (a stick labelled ".." would be
+	# mounted on top of /)
+	name=$(printf '%s' "${label:-${d##*/}}" | tr -c 'A-Za-z0-9._ -' '_' | cut -c1-40)
+	case "$name" in ''|.|..) name=${d##*/} ;; esac
 	mnt="/media/$name"
 	[ -e "$mnt" ] && mnt="/media/$name-${d##*/}"
 	mkdir -p "$mnt"
-	opt=ro
+	opt=ro,nosuid,nodev,noexec # media only: nothing on a drive can run or act as a device
 	[ "$type" = ntfs ] && type=ntfs3
 	mount -t "$type" -o $opt "$d" "$mnt" 2>/dev/null || rmdir "$mnt"
 done
@@ -37,15 +40,19 @@ if [ -n "$share" ] && ! grep -q " $mnt " /proc/mounts; then
 		cred=""; case "$rest" in *@*) cred=${rest%%@*}; rest=${rest#*@} ;; esac
 		user=${cred%%:*}; pass=""; case "$cred" in *:*) pass=${cred#*:} ;; esac
 		host=${rest%%/*}; path=${rest#*/}
-		mount -t cifs "//$host/$path" "$mnt" -o "ro,vers=3.0,username=${user:-guest},password=$pass" 2>/dev/null ||
-			mount -t cifs "//$host/$path" "$mnt" -o "ro,vers=2.0,username=${user:-guest},password=$pass" 2>/dev/null ||
+		# the login in a file only root can read (not on the command line, and a comma in the password works)
+		C=$RUN/cifs.cred
+		mkdir -p $RUN && (umask 077; printf 'username=%s\npassword=%s\n' "${user:-guest}" "$pass" > $C)
+		mount -t cifs "//$host/$path" "$mnt" -o "ro,nosuid,nodev,noexec,vers=3.0,credentials=$C" 2>/dev/null ||
+			mount -t cifs "//$host/$path" "$mnt" -o "ro,nosuid,nodev,noexec,vers=2.0,credentials=$C" 2>/dev/null ||
 			{ rmdir "$mnt"; log "netværksdrev fejlede: $host/$path"; }
+		rm -f $C
 		;;
 	nfs://*)
 		rest=${share#nfs://}
 		host=${rest%%/*}; path=/${rest#*/}
 		ip=$(nslookup "$host" 2>/dev/null | awk '/^Address/ {a=$NF} END {print a}')
-		mount -t nfs4 -o ro,addr=${ip:-$host} "$host:$path" "$mnt" 2>/dev/null || { rmdir "$mnt"; log "NFS fejlede: $share"; }
+		mount -t nfs4 -o ro,nosuid,nodev,noexec,addr=${ip:-$host} "$host:$path" "$mnt" 2>/dev/null || { rmdir "$mnt"; log "NFS fejlede: $share"; }
 		;;
 	esac
 fi

@@ -19,6 +19,11 @@
 #define AVT_ID "urn:upnp-org:serviceId:AVTransport"
 #define RC_ID "urn:upnp-org:serviceId:RenderingControl"
 
+/* only addresses on the network can be played from a phone: http(s) and rtsp */
+static bool net_url(const char *u) {
+    return u && (!strncasecmp(u, "http://", 7) || !strncasecmp(u, "https://", 8) || !strncasecmp(u, "rtsp://", 7));
+}
+
 static const char *SINK =
     "http-get:*:video/mp4:*,http-get:*:video/x-matroska:*,http-get:*:video/webm:*,http-get:*:video/mpeg:*,"
     "http-get:*:video/x-msvideo:*,http-get:*:video/quicktime:*,http-get:*:video/mp2t:*,http-get:*:video/x-flv:*,"
@@ -144,6 +149,12 @@ static int on_action(UpnpActionRequest *req) {
     if (kind == 0) {
         if (!strcmp(act, "SetAVTransportURI")) {
             char *u = arg_of(in, "CurrentURI"), *m = arg_of(in, "CurrentURIMetaData");
+            if (!net_url(u)) { /* file://, mpv's own protocols (edl://, av:// ...): never from the network */
+                SDL_Log("dlna: afviser adressen (kun http, https og rtsp)");
+                free(u); free(m);
+                UpnpActionRequest_set_ErrCode(req, 716); /* resource not found */
+                return 0;
+            }
             SDL_LockMutex(mu);
             snprintf(S.uri, sizeof S.uri, "%s", u);
             snprintf(S.meta, sizeof S.meta, "%s", m);
@@ -492,6 +503,7 @@ static void play_current(void) {
     didl(meta, "upnp:artist", artist, sizeof artist);
     if (!artist[0]) didl(meta, "dc:creator", artist, sizeof artist);
     didl(meta, "upnp:albumArtURI", art, sizeof art);
+    if (!net_url(art)) art[0] = 0; /* a cover only from the network, never a file on the box */
     didl(meta, "upnp:class", cls, sizeof cls);
     bool image = strstr(cls, "imageItem") != NULL;
     char vol[32];

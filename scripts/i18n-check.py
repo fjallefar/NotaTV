@@ -9,7 +9,7 @@ script, data-t/data-th/data-tp in the phone page, and the English messages of th
 App packages are checked on their own: every text in src/apps/<id>/*.c must be in that app's lang/<code>.po
 (an app brings its own translations). Reports texts missing from a .po file, entries no longer used, and translations whose printf
 placeholders (%s, %d, %1$s ...) do not match the English text. Exit code 1 if anything is missing or wrong."""
-import glob, html, os, re, sys
+import glob, html, json, os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LANG_DIR = os.path.join(ROOT, 'src/shell/assets/lang')
@@ -121,7 +121,11 @@ def main():
     bad = check(ids, LANG_DIR, '')
     for app in sorted(glob.glob(os.path.join(ROOT, 'src/apps/*/manifest.json'))):
         d = os.path.dirname(app)
-        bad |= check(c_ids(glob.glob(os.path.join(d, '*.c')), {}), os.path.join(d, 'lang'), 'app ' + os.path.basename(d) + ': ')
+        ids = c_ids(glob.glob(os.path.join(d, '*.c')), {})
+        ch = json.load(open(app, encoding='utf-8')).get('changes') or {}  # what is new (shown in the App Store)
+        for t in [ch.get('summary', '')] + list(ch.get('points', [])):
+            if t: ids.setdefault(t, os.path.relpath(app, ROOT))
+        bad |= check(ids, os.path.join(d, 'lang'), 'app ' + os.path.basename(d) + ': ')
     if '--pot' in sys.argv:
         with open(os.path.join(LANG_DIR, 'notatv.pot'), 'w', encoding='utf-8') as f:
             f.write('# NotaTV translation template. Copy to <code>.po, fill in msgstr and add the language to\n'

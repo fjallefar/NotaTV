@@ -8,7 +8,7 @@ start)
 	chmod 700 /tmp/notatv-inbox
 	: > $RUN/mpv-local.conf
 	# persistent data partition (created by the installer)
-	dev=$(findfs LABEL=NOTADATA 2>/dev/null)
+	dev=$(data_dev)
 	if [ -n "$dev" ] && mount -o noatime "$dev" /data 2>/dev/null; then
 		echo installed > $RUN/mode
 	else

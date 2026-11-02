@@ -93,6 +93,8 @@ const char *tz_label(void) {
     return g_label;
 }
 
+/* setenv("TZ") while other threads run is safe here only because main() creates TZ before any thread starts
+   (glibc then replaces the string in place and never moves environ) */
 void tz_apply(void) {
     const char *zone = cfg_get("tz_zone", "");
     char rule[256], std[64], env[320], link[320];

@@ -358,7 +358,7 @@ static const Item game_items[] = {
 };
 
 const NotaApp nota_app = {
-    NOTA_API, "games", N_("Games"), N_("Play games from your PC via Sunshine (Moonlight)"), "1.0.0", 80, 0,
+    NOTA_API, "games", N_("Games"), N_("Play games from your PC via Sunshine (Moonlight)"), APP_VERSION, 80, 0,
     ICON_PLAY, {30, 160, 90, 255}, {12, 90, 50, 255}, {255, 255, 255, 255},
     .open = games_screen,
     .settings = game_items, .n_settings = sizeof game_items / sizeof game_items[0],

@@ -2,6 +2,7 @@
 # Each one is built into $(OUT)/<id>/ = manifest.json + app.so + lang/ (the package folder that tvshell loads,
 # see src/shell/apps.c). Apps use tv.h from src/shell and call into tvshell (it exports its symbols).
 # An app can add compiler flags in <id>/app.mk as CFLAGS_<id>.
+# The app's version is the "version" in its manifest.json; the code gets it as APP_VERSION (one place to change it).
 PKG_CONFIG ?= pkg-config
 CC ?= cc
 CFLAGS ?= -O2 -g
@@ -23,7 +24,8 @@ all: $(foreach a,$(APPS),$(OUT)/$(a)/app.so)
 .SECONDEXPANSION:
 $(OUT)/%/app.so: $$(wildcard %/*.c) $$(wildcard %/*.h) $(SHELL_DIR)/tv.h $(SHELL_DIR)/i18n.h %/manifest.json $$(wildcard %/lang/*.po) $$(wildcard %/app.mk)
 	mkdir -p $(@D)
-	$(CC) $(CFLAGS) $(CFLAGS_$*) -shared -o $@ $(filter %.c,$^) $(LDFLAGS)
+	$(CC) $(CFLAGS) $(CFLAGS_$*) -DAPP_VERSION="\"$$(sed -n 's/^ *"version": *"\([0-9.]*\)".*/\1/p' $*/manifest.json)\"" \
+		-shared -o $@ $(filter %.c,$^) $(LDFLAGS)
 	cp $*/manifest.json $(@D)/manifest.json
 	rm -rf $(@D)/lang
 	if [ -d $*/lang ]; then cp -r $*/lang $(@D)/lang; fi

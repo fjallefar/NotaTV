@@ -78,12 +78,24 @@ static const NotaApp *pick_cont_app(const Home *h) {
     return a;
 }
 
+static bool str_same(const char *a, const char *b) { return a == b || (a && b && !strcmp(a, b)); }
+static bool item_same(const HomeItem *a, const HomeItem *b) {
+    return str_same(a->title, b->title) && str_same(a->subtitle, b->subtitle) && str_same(a->image, b->image) &&
+           str_same(a->key, b->key) && str_same(a->logo, b->logo) && a->progress == b->progress;
+}
+
 static void collect_continue(Home *h) {
-    free_continue(h);
-    h->cont_app = pick_cont_app(h);
+    const NotaApp *app = pick_cont_app(h);
     HomeItem *a = NULL;
-    int na = h->cont_app && h->cont_app->row ? h->cont_app->row(&a) : 0;
+    int na = app && app->row ? app->row(&a) : 0;
     if (!a) na = 0;
+    if (app == h->cont_app && na == h->n_cont && h->cont) { /* every 2 s: nothing to copy when nothing changed */
+        bool same = true;
+        for (int i = 0; i < na && same; i++) same = item_same(&h->cont[i], &a[i]);
+        if (same) return;
+    }
+    free_continue(h);
+    h->cont_app = app;
     h->cont = calloc(na + 1, sizeof(HomeItem));
     for (int i = 0; i < na; i++) copy_item(&h->cont[h->n_cont++], &a[i]);
     if (h->col2 >= h->n_cont) h->col2 = h->n_cont ? h->n_cont - 1 : 0;
@@ -96,7 +108,7 @@ static void home_enter(Screen *s) {
     if (h->col >= n_vis) h->col = 0;
     for (int i = 0; i < n_vis; i++) if (vis[i]->row_refresh) vis[i]->row_refresh();
     collect_continue(h);
-    h->refreshed = app_time();
+    h->refreshed = h->fetched = app_time();
 }
 
 static void home_resume(Screen *s) { home_enter(s); }
@@ -115,10 +127,10 @@ static void home_update(Screen *s, float dt) {
     h->row_anim = anim_to(h->row_anim, (float)h->row, dt, 12);
     if (h->row == 0 && h->cont_app != pick_cont_app(h)) { h->col2 = 0; h->sx2 = 0; collect_continue(h); }
     h->bg_fade = anim_to(h->bg_fade, 1, dt, 6);
-    /* Plex data arrives asynchronously; re-ask the server now and then, so an episode that just
-       finished moves on in "Continue watching" without leaving and re-entering the app */
+    /* the rows are fetched when the home screen opens and after playback (enter/resume); while it stays open they
+       are fetched again every 5 minutes - not while nobody uses the box (screensaver, the box left on) */
     if (app_time() - h->refreshed > 2) {
-        if (app_time() - h->fetched > 8) {
+        if (app_time() - h->fetched > 300 && app_time() - input_last_activity() < 600) {
             for (int i = 0; i < n_vis; i++) if (vis[i]->row_refresh) vis[i]->row_refresh();
             h->fetched = app_time();
         }

@@ -92,7 +92,7 @@ On first boot the data partition grows to fill the SD card.
 
 A setup guide walks you through five short steps:
 1. **language**
-2. **network** (cable or Wi-Fi)
+2. **network** (cable or Wi-Fi - with both, the cable is used while it is plugged in, and Wi-Fi takes over when you pull it out)
 3. **country and region** for the clock (daylight saving time follows the region)
 4. the box's **name** (NotaTV, Living room, Bedroom … or your own)
 5. which **apps** to install
@@ -140,6 +140,8 @@ The page is protected:
 - It is locked with a code. You set the code in the setup guide and can change it under *Settings → Network → Phone page code*.
 - It only accepts POST requests of at most 512 KB.
 - 10 wrong codes in 10 minutes lock the page.
+- The page uses plain HTTP inside your home network, so the code is sent unencrypted. It keeps others on the network
+  out, but it is not a password: do not reuse one you use elsewhere.
 
 Keys and text work right away. **Playlists, logins, network drives, names and YouTube accounts are only saved after you approve them on the TV.**
 
@@ -149,7 +151,7 @@ Keys and text work right away. **Playlists, logins, network drives, names and Yo
 
 Everything on the home screen is an app, and NotaTV comes without any: you pick them in the setup guide, and they are downloaded from the **App Store**. The App Store is the GitHub release `apps` of this repository, with one package per app and a catalog (version, SHA256). A package is only installed when its SHA256 matches the catalog.
 
-In the App Store on the home screen you can install more apps, update apps (*Update* shows when the catalog has a newer version) and uninstall them. Uninstalling an app deletes everything it has saved on the box, including your sign-in, and stops its background services (e.g. Plex cast). Each app's settings are under *Settings → Apps*. Boxes updated from NotaTV 1.0 download the apps they had by themselves.
+In the App Store on the home screen you can install more apps, update apps (*Update* shows when the catalog has a newer version) and uninstall them. When apps have updates, a bar at the top updates them all at once (*Update all*), and a short card says what is new in each version before it is installed. Uninstalling an app deletes everything it has saved on the box, including your sign-in, and stops its background services (e.g. Plex cast). Each app's settings are under *Settings → Apps*. Boxes updated from NotaTV 1.0 download the apps they had by themselves.
 
 | App | Details |
 |---|---|
@@ -183,10 +185,15 @@ Google Cast/Chromecast cannot be built as open source, because phones require a 
 
 YouTube cast goes through YouTube's servers because the protocol requires it. Plex cast and DLNA stay on the local network.
 
+- **Plex cast** only takes commands from the Plex account the box is signed in with (or its Plex Home); plex.tv is asked once which account a phone belongs to.
+- **AirPlay screen mirroring** asks for the box's 4-digit code the first time a phone mirrors. The TV shows it, and it is under *Settings → Cast and sharing*.
+- **DLNA** only plays addresses on the network (http, https, rtsp).
+
 **Bluetooth pairing:**
 - *Settings → Bluetooth → Pair a phone* makes the TV visible for 3 minutes.
 - The phone and the TV show the same code, and you confirm it on the TV. Nobody can pair without that confirmation.
 - By default the TV is only visible while Music is open. Paired controllers and keyboards can always connect.
+- New devices can only pair while *Pair a phone* is open.
 
 ---
 
@@ -207,8 +214,10 @@ YouTube cast goes through YouTube's servers because the protocol requires it. Pl
 
 *Settings → System → Update NotaTV* downloads the newest release from GitHub, checks its SHA256 and installs it. Your settings and logins on `/data` are kept.
 - Nothing is changed until the whole package is downloaded and checked. Only files that differ are written, each with a single rename, so a power cut leaves either the old or the new version (an interrupted update is finished at the next boot).
+- The kernel, device trees and overlays are kept as two complete sets on the boot partition (the root and `nota-b/`). `notatv-slot.txt`, included from `config.txt`, tells the firmware which one to load (`os_prefix`). An update fills the set that is not in use and switches with one small write, so the box always has a complete kernel to start. Boxes are moved to this the first time they update from 1.0.3 or newer.
+- The update card and *Update NotaTV* show a short summary of what is new (the quote at the top of the version's section in [CHANGELOG.md](CHANGELOG.md)).
 - **Update reminders:** the box looks for a new release on GitHub twice a day and shows a reminder on the home screen at most every other day (*Update now*, *Later* or *Don't remind me*). Turn it off under *Settings → System → Update reminders*; then the box never contacts GitHub by itself.
-- *Undo last update* (same menu) puts the previous version back. This also happens by itself if the user interface keeps crashing right after an update.
+- *Undo last update* (same menu) puts the previous version back (and switches back to the previous kernel set). This also happens by itself if the user interface keeps crashing right after an update.
 - The repository is set in `/etc/notatv-update-repo` and can be overridden with the config key `update_repo`.
 - The release must include `notatv-rpi4-update.tar.gz` and `notatv-rpi4-update.tar.gz.sha256`. `make rpi4` creates both.
 
@@ -255,10 +264,10 @@ make menuconfig        # change the Buildroot configuration
 
 Releases are built by GitHub Actions (`.github/workflows/release.yml`) on a self-hosted runner with the label `notatv`, so nobody has to build by hand:
 
-1. Raise the version in `VERSION` (e.g. `1.0.2`), write what is new under `## 1.0.2` in [CHANGELOG.md](CHANGELOG.md) (it becomes the release text), and push.
+1. Raise the version in `VERSION` (e.g. `1.0.2`), write what is new under `## 1.0.2` in [CHANGELOG.md](CHANGELOG.md) (it becomes the release text; start it with the short summary quote the boxes show, see the top of the file), and push.
 2. Tag it: `git tag v1.0.2 && git push origin v1.0.2`. The tag must match `VERSION`.
 3. The runner builds in `/opt/notatv` and publishes a release with `notatv-rpi4.img.xz`, `notatv-rpi4-update.tar.gz` and its `.sha256`. Boxes then find it under *Update NotaTV*.
-4. The same run packs the apps (`scripts/apps-catalog.py`) and uploads them, with the catalog `apps-api<N>.json`, to the pre-release `apps` (the App Store). Files with the same name are replaced. Raise an app's `version` in its `manifest.json` when it changes, so boxes are offered the update.
+4. The same run packs the apps (`scripts/apps-catalog.py`) and uploads them, with the catalog `apps-api<N>.json`, to the pre-release `apps` (the App Store). Files with the same name are replaced. Raise an app's `version` in its `manifest.json` when it changes, so boxes are offered the update, and write what is new in its `changes` (see [src/apps/README.md](src/apps/README.md)).
 
 The build folder is kept between releases. Normally only NotaTV's own packages are rebuilt, which takes minutes. Changes to the Makefile, defconfig, packages, kernel fragments, patches or the rpi-ffmpeg commit trigger a full build. The Twitch Client ID comes from the repository secret `TWITCH_CLIENT_ID`.
 
@@ -269,16 +278,24 @@ The build folder is kept between releases. Normally only NotaTV's own packages a
 Code and comments are written in English. User-facing text goes through `T("…")` and the language files.
 
 **Live updates on a running Pi:**
-1. Turn on *Settings → System → Developer mode (SSH)*, then log in with `ssh root@<ip>`. The password is `notatv`.
+1. Turn on *Settings → System → Developer mode (SSH)*, then log in with `ssh root@<ip>`. The password is shown right below the setting - every box makes its own (NotaTV 1.0.2 and older used `notatv`).
 2. Build with `make rpi4` and copy `output-rpi4/target/usr/bin/tvshell` to `/usr/bin/tvshell.new` on the box.
 3. Check that the file is not empty, `mv` it into place and run `killall tvshell`. It restarts by itself.
 4. Before you replace a shared library, compare its dependencies (`readelf -d … | grep NEEDED`) with what is on the box.
+
+**Torn frames?** The display buffer is handed to the screen after `glFlush` (the display waits for the GPU by itself). Should a TV show torn or half-drawn frames, set `kms_finish=1` in `/data/notatv/notatv.conf` and restart: it goes back to `glFinish`.
 
 **UI tests without a TV:**
 `scripts/uitest.sh <dir> "<script>"` runs the UI headless and saves screenshots. Example script: `w:60;s:home;k:right;k:ok;w:30;s:app;q`.
 Build the app packages first (`make -C src/apps`) and run with `TVSHELL_APPS=$PWD/src/apps/out` to include them.
 
 **Making an app:** see [src/apps/README.md](src/apps/README.md).
+
+**A box stuck on an update** ("Restart the box to finish the (previous) update" again and again, also after a restart): the updater in 1.0.0-1.0.2 could not finish an update that changes the kernel. Turn on *Developer mode (SSH)*, log in with `ssh root@<ip>` (password `notatv`) and run the fixed updater once. It finishes the stuck update and restarts the box:
+```
+curl -fsSL https://raw.githubusercontent.com/fjallefar/NotaTV/main/external/board/rpi4/overlay/usr/libexec/notatv/update -o /tmp/update-fix && sh /tmp/update-fix resume
+```
+Then update to the newest version under *Settings → System → Update NotaTV*. If it says "Restart the box to finish the update", restart once more.
 
 **Getting the logs without SSH:** *Settings → System → Get the logs* shows the box's address and code. Open it on a phone or computer and press *Download logs* at the bottom of the page: one `.tar.gz` with all logs, system info and the settings, with passwords, tokens and logins removed. Nothing is sent anywhere by itself. For more detail, turn on *Settings → System → Troubleshooting log* first: every network request is logged, and the logs of the user interface and playback are kept in `/data/notatv/logs` (also across restarts) until you turn it off.
 

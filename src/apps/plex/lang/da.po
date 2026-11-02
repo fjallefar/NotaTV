@@ -291,8 +291,8 @@ msgstr "Fra"
 msgid "Plex cast"
 msgstr "Plex-cast"
 
-msgid "The Plex app on your phone can play on NotaTV (cast button) and control playback. Local network only"
-msgstr "Plex-appen på telefonen kan afspille på NotaTV (cast-knappen) og styre afspilningen. Kun lokalt netværk"
+msgid "The Plex app on your phone can play on NotaTV (cast button) and control playback. Only from your own Plex account, on the local network"
+msgstr "Plex-appen på telefonen kan afspille på NotaTV (cast-knappen) og styre afspilningen. Kun fra din egen Plex-konto, på det lokale netværk"
 
 msgid "Plex subtitles"
 msgstr "Plex-undertekster"
@@ -321,3 +321,23 @@ msgstr "Film og serier fra din Plex-server"
 msgid "CONTINUE IN PLEX"
 msgstr "FORTSÆT I PLEX"
 
+
+
+msgid "Casting and the remote in the Plex app only work from your account or your Plex Home"
+msgstr "Cast og fjernbetjening i Plex-appen virker kun fra din konto eller dit Plex Home"
+
+
+msgid "A server you cast from is no longer saved in the server list"
+msgstr "En server, du caster fra, gemmes ikke længere i serverlisten"
+
+msgid "Only your own Plex account can control the box, and no freezes around playback"
+msgstr "Kun din egen Plex-konto kan styre boksen, og ingen frysninger omkring afspilning"
+
+msgid "A slow server no longer freezes the box before and after a video"
+msgstr "En langsom server får ikke længere boksen til at fryse før og efter en video"
+
+msgid "Intro and credits markers are fetched without stopping the keys"
+msgstr "Markører for intro og rulletekster hentes, uden at tasterne går i stå"
+
+msgid "Loading…"
+msgstr "Henter…"

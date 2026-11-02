@@ -6,7 +6,12 @@
 <apps-out> holds one folder per app (manifest.json, app.so, lang/), as built by src/apps/Makefile.
 For every app this writes <dist>/<id>-<version>-api<N>.tar.gz, and one catalog per app API version,
 <dist>/apps-api<N>.json, with version, file name, SHA256, size and what the App Store shows (name,
-description, icon, colors, order, default) - also translated, from the app's lang/<code>.po.
+description, icon, colors, order, default, and "changes": what is new in this version) - also translated,
+from the app's lang/<code>.po.
+
+"changes" in manifest.json is a very short summary and a few points, shown in the App Store before an update:
+  "changes": {"summary": "Faster start", "points": ["Opens in half the time", "Fixed ..."]}
+Write it again (or remove it) whenever "version" is raised; the texts go in lang/<code>.po like the other texts.
 
 The release workflow uploads <dist> to the GitHub release "apps" (a pre-release), where the boxes
 fetch it: https://github.com/<repo>/releases/download/apps/apps-api<N>.json."""
@@ -60,13 +65,21 @@ def main():
                         ti.uid = ti.gid = 0; ti.uname = ti.gname = 'root'
                         with open(p, 'rb') as fh: t.addfile(ti, fh)
         data = open(out, 'rb').read()
-        entry = {k: m[k] for k in ('id', 'version', 'name', 'desc', 'icon', 'c1', 'c2', 'fg', 'order', 'default') if k in m}
+        entry = {k: m[k] for k in ('id', 'version', 'name', 'desc', 'icon', 'c1', 'c2', 'fg', 'order', 'default', 'changes') if k in m}
+        ch = m.get('changes') or {}
+        assert isinstance(ch, dict) and isinstance(ch.get('summary', ''), str) and isinstance(ch.get('points', []), list), \
+            f'{d}: "changes" must be {{"summary": "...", "points": ["...", ...]}}'
         entry.update(file=name, sha256=hashlib.sha256(data).hexdigest(), size=len(data))
         tr = {}
         for po in sorted(glob.glob(os.path.join(d, 'lang', '*.po'))):
             t = read_po(po)
             lang = os.path.basename(po)[:-3]
             tr[lang] = {k: t[m[k]] for k in ('name', 'desc') if t.get(m.get(k, ''))}
+            if ch:
+                tch = {'summary': t.get(ch.get('summary', ''), '') or ch.get('summary', ''),
+                       'points': [t.get(x, '') or x for x in ch.get('points', [])]}
+                if tch != {'summary': ch.get('summary', ''), 'points': ch.get('points', [])}: tr[lang]['changes'] = tch
+            if not tr[lang]: del tr[lang]
         if tr: entry['i18n'] = tr
         catalogs.setdefault(api, []).append(entry)
         print(f'{name}  {len(data)} bytes')

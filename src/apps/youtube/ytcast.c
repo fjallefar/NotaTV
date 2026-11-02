@@ -532,6 +532,8 @@ static void register_pairing(const char *code) {
 }
 
 typedef struct { int fd; } DConn;
+#define DIAL_MAX_CONN 8 /* connections served at a time (one thread each) */
+static SDL_AtomicInt dial_n;
 static int dial_conn(void *arg) {
     DConn *dc = arg;
     int fd = dc->fd;
@@ -539,7 +541,8 @@ static int dial_conn(void *arg) {
     char buf[8192];
     size_t n = 0;
     struct pollfd p = {fd, POLLIN, 0};
-    while (n < sizeof buf - 1 && poll(&p, 1, 3000) > 0) {
+    Uint64 deadline = SDL_GetTicks() + 6000; /* the whole request within 6 s */
+    while (n < sizeof buf - 1 && SDL_GetTicks() < deadline && poll(&p, 1, 3000) > 0) {
         ssize_t r = recv(fd, buf + n, sizeof buf - 1 - n, 0);
         if (r <= 0) break;
         n += (size_t)r;
@@ -624,6 +627,7 @@ static int dial_conn(void *arg) {
     } else reply(fd, "404 Not Found", "text/plain", NULL, "");
 done:
     close(fd);
+    SDL_AddAtomicInt(&dial_n, -1);
     return 0;
 }
 
@@ -641,11 +645,13 @@ static int dial_thread(void *arg) {
     for (;;) {
         int fd = accept4(s, NULL, NULL, SOCK_CLOEXEC);
         if (fd < 0) { SDL_Delay(100); continue; }
-        DConn *dc = malloc(sizeof *dc);
+        DConn *dc = SDL_GetAtomicInt(&dial_n) < DIAL_MAX_CONN ? malloc(sizeof *dc) : NULL;
+        if (!dc) { close(fd); continue; } /* busy: the phone tries again */
         dc->fd = fd;
+        SDL_AddAtomicInt(&dial_n, 1);
         SDL_Thread *t = SDL_CreateThread(dial_conn, "ytcast-dial", dc);
         if (t) SDL_DetachThread(t);
-        else { close(fd); free(dc); }
+        else { close(fd); free(dc); SDL_AddAtomicInt(&dial_n, -1); }
     }
     return 0;
 }

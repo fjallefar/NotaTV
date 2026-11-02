@@ -20,6 +20,20 @@
 /* ---------- strenge ---------- */
 char *str_dup(const char *s) { return s ? strdup(s) : NULL; }
 
+/* a whole file as a 0-terminated string; NULL if it is missing, unreadable or larger than max bytes */
+char *file_read_all(const char *path, long max) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    char *b = NULL;
+    long n = fseek(f, 0, SEEK_END) == 0 ? ftell(f) : -1;
+    if (n >= 0 && n <= max && fseek(f, 0, SEEK_SET) == 0 && (b = malloc(n + 1))) {
+        if (fread(b, 1, n, f) != (size_t)n) { free(b); b = NULL; }
+        else b[n] = 0;
+    }
+    fclose(f);
+    return b;
+}
+
 char *str_printf(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -185,17 +199,40 @@ static CURL *http_handle(void) {
     return c;
 }
 
+static size_t pow2_at_least(size_t n) {
+    size_t c = 16384;
+    while (c < n) c <<= 1;
+    return c;
+}
 static size_t write_cb(char *ptr, size_t sz, size_t nm, void *ud) {
     HttpBuf *b = ud;
     size_t n = sz * nm;
     if (b->len + n > HTTP_MAX_MEM) return 0; /* aborts the transfer */
-    char *nd = realloc(b->data, b->len + n + 1);
-    if (!nd) return 0;
-    b->data = nd;
+    /* the buffer grows in powers of two (at least 16 KB), so a 50 MB playlist is not copied thousands of times.
+       HttpBuf has no capacity field (apps use it), but the size is always pow2(len + 1): */
+    size_t cap = b->data ? pow2_at_least(b->len + 1) : 0, need = b->len + n + 1;
+    if (need > cap) {
+        char *nd = realloc(b->data, pow2_at_least(need));
+        if (!nd) return 0;
+        b->data = nd;
+    }
     memcpy(b->data + b->len, ptr, n);
     b->len += n;
     b->data[b->len] = 0;
     return n;
+}
+
+/* sign-out: the cookies shared in memory (http_request_cookies) are dropped, and the jar file is read again the
+   next time - so an old session is never sent along or written back to the file */
+void http_cookies_forget(void) {
+    if (!g_ck_share) return;
+    CURL *c = curl_easy_init();
+    if (c) {
+        curl_easy_setopt(c, CURLOPT_SHARE, g_ck_share);
+        curl_easy_setopt(c, CURLOPT_COOKIELIST, "ALL");
+        curl_easy_cleanup(c);
+    }
+    SDL_SetAtomicInt(&g_ck_loaded, 0);
 }
 
 bool http_request(const char *method, const char *url, const char *const *headers,
@@ -262,8 +299,10 @@ bool http_download_ua(const char *url, const char *path, long timeout_s, const c
     FILE *f = fopen(tmp, "wb");
     if (!f) return false;
     CURL *c = http_handle();
+    if (!c) { fclose(f); unlink(tmp); return false; }
     curl_easy_setopt(c, CURLOPT_URL, url);
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(c, CURLOPT_MAXREDIRS, 8L);
     curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 10L);
     curl_easy_setopt(c, CURLOPT_TIMEOUT, timeout_s);
     curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
@@ -272,9 +311,18 @@ bool http_download_ua(const char *url, const char *path, long timeout_s, const c
     curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, file_cb);
     curl_easy_setopt(c, CURLOPT_MAXFILESIZE_LARGE, (curl_off_t)HTTP_MAX_FILE);
     curl_easy_setopt(c, CURLOPT_WRITEDATA, f);
+    /* a copy is there already: only fetched again if it changed on the server (304 = keep it) */
+    struct stat old;
+    bool have_old = stat(path, &old) == 0 && old.st_size > 0;
+    if (have_old) {
+        curl_easy_setopt(c, CURLOPT_TIMECONDITION, (long)CURL_TIMECOND_IFMODSINCE);
+        curl_easy_setopt(c, CURLOPT_TIMEVALUE_LARGE, (curl_off_t)old.st_mtime);
+    }
     CURLcode rc = curl_easy_perform(c);
     long status = 0;
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &status);
+    long unmet = 0;
+    curl_easy_getinfo(c, CURLINFO_CONDITION_UNMET, &unmet);
     if (debug_log_on()) {
         double t = 0;
         curl_easy_getinfo(c, CURLINFO_TOTAL_TIME, &t);
@@ -284,7 +332,12 @@ bool http_download_ua(const char *url, const char *path, long timeout_s, const c
     }
     curl_easy_cleanup(c);
     fclose(f);
-    bool ok = rc == CURLE_OK && (status == 200 || status == 0);
+    if (have_old && rc == CURLE_OK && (status == 304 || unmet)) { /* not changed: the copy is kept as it is */
+        unlink(tmp); /* (its time is not touched: caches made from it go by that time) */
+        return true;
+    }
+    /* status 0 = no HTTP at all (file:// in tests); only accepted for a URL that is not http(s) */
+    bool ok = rc == CURLE_OK && (status == 200 || (status == 0 && strncmp(url, "http", 4)));
     if (ok) rename(tmp, path);
     else {
         { char *lu = log_url(url); SDL_Log("download %s fejlede (%s, %ld)", lu, curl_easy_strerror(rc), status); free(lu); }
@@ -309,6 +362,7 @@ char *url_encode(const char *s) {
     static const char hex[] = "0123456789ABCDEF";
     if (!s) s = "";
     char *r = malloc(strlen(s) * 3 + 1), *w = r;
+    if (!r) return str_dup("");
     for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
         if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') ||
             *p == '-' || *p == '.' || *p == '_' || *p == '~') {
@@ -429,16 +483,46 @@ int cfg_int(const char *key, int def) {
     return v && *v ? atoi(v) : def;
 }
 
+/* The file is written at once (helper scripts read it), but the slow part on an SD card - fsync, 10-200 ms - runs
+   in a thread about a second later, so the main thread and readers of cfg_lock never wait for it. */
+static SDL_AtomicInt cfg_dirty, cfg_generation; /* generation: counted up on every change (callers cache) */
+static int cfg_sync_thread(void *arg) {
+    (void)arg;
+    for (;;) {
+        SDL_Delay(1000);
+        if (!SDL_CompareAndSwapAtomicInt(&cfg_dirty, 1, 0)) continue;
+        int fd = open(cfg_path, O_RDONLY | O_CLOEXEC);
+        if (fd >= 0) { fsync(fd); close(fd); }
+        fd = open(g_data_dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC); /* the rename */
+        if (fd >= 0) { fsync(fd); close(fd); }
+    }
+    return 0;
+}
 static void cfg_save(void) {
+    static bool started;
+    if (!started) {
+        started = true;
+        SDL_Thread *t = SDL_CreateThread(cfg_sync_thread, "cfg-sync", NULL);
+        if (t) SDL_DetachThread(t);
+    }
     char tmp[600];
     snprintf(tmp, sizeof tmp, "%s.tmp", cfg_path);
     FILE *f = fopen(tmp, "w");
     if (!f) { SDL_Log("kan ikke gemme %s: %s", cfg_path, strerror(errno)); return; }
     for (int i = 0; i < n_cfg; i++) fprintf(f, "%s=%s\n", cfg[i].k, cfg[i].v);
-    fflush(f);
-    fsync(fileno(f));
-    fclose(f);
-    rename(tmp, cfg_path);
+    bool ok = fflush(f) == 0;
+    ok = fclose(f) == 0 && ok;
+    if (ok) rename(tmp, cfg_path);
+    else unlink(tmp); /* disk full: keep the old file */
+    SDL_SetAtomicInt(&cfg_dirty, 1);
+    SDL_AddAtomicInt(&cfg_generation, 1);
+}
+int cfg_gen(void) { return SDL_GetAtomicInt(&cfg_generation); }
+/* at shutdown/restart: what was saved reaches the card now */
+void cfg_flush(void) {
+    if (!SDL_CompareAndSwapAtomicInt(&cfg_dirty, 1, 0)) return;
+    int fd = open(cfg_path, O_RDONLY | O_CLOEXEC);
+    if (fd >= 0) { fsync(fd); close(fd); }
 }
 
 /* the configuration is stored as "key=value" per line: a newline in a value (e.g. from the phone's
@@ -516,10 +600,16 @@ char *run_capture(const char *cmd) {
     if (!p) return str_dup("");
     size_t cap = 4096, len = 0;
     char *buf = malloc(cap);
+    if (!buf) { pclose(p); return str_dup(""); }
     size_t n;
     while ((n = fread(buf + len, 1, cap - len - 1, p)) > 0) {
         len += n;
-        if (cap - len < 1024) { cap *= 2; buf = realloc(buf, cap); }
+        if (cap - len < 1024) {
+            char *nb = realloc(buf, cap * 2);
+            if (!nb) break; /* out of memory: what was read so far */
+            buf = nb;
+            cap *= 2;
+        }
     }
     buf[len] = 0;
     pclose(p);
@@ -528,12 +618,43 @@ char *run_capture(const char *cmd) {
 
 /* URL for log files without secrets: values of token/password parameters and Xtream paths
  * (/live|movie|series/<user>/<pass>/...) are replaced by "***". malloc'ed. */
+/* a copy of a setting's value (cfg_get's pointer can be freed by cfg_set on another thread) */
+static void cfg_copy(const char *key, char *out, size_t n) {
+    SDL_LockMutex(cfg_lock);
+    out[0] = 0;
+    for (int i = 0; i < n_cfg; i++)
+        if (strcmp(cfg[i].k, key) == 0) { snprintf(out, n, "%s", cfg[i].v); break; }
+    SDL_UnlockMutex(cfg_lock);
+}
+
+/* every occurrence of secret in s (in place) becomes "***" */
+static void mask_all(char *s, const char *secret) {
+    size_t l = strlen(secret);
+    if (l < 3) return; /* too short to tell apart from ordinary text */
+    for (char *p = strstr(s, secret); p; p = strstr(p + 3, secret)) {
+        memcpy(p, "***", 3);
+        memmove(p + 3, p + l, strlen(p + l) + 1);
+    }
+}
+
 char *log_url(const char *url) {
     if (!url) return str_dup("(null)");
     static const char *keys[] = {"x-plex-token", "token", "api_key", "apikey", "password", "pass", "username", "user", "auth", NULL};
     size_t n = strlen(url);
     char *o = malloc(2 * n + 64), *w = o; /* each masking can make the text at most 1.5x longer */
+    if (!o) return str_dup("(url)");
     const char *p = url, *q = strchr(url, '?');
+    /* user:password@ in the address (M3U links often have it) */
+    const char *sch = strstr(url, "://");
+    if (sch && (!q || sch < q)) {
+        const char *host = sch + 3, *hend = host + strcspn(host, "/?#");
+        const char *at = memchr(host, '@', (size_t)(hend - host));
+        if (at) {
+            memcpy(w, url, (size_t)(host - url)); w += host - url;
+            memcpy(w, "***@", 4); w += 4;
+            p = at + 1;
+        }
+    }
     /* path: Xtream credentials */
     const char *end = q ? q : url + n;
     while (p < end) {
@@ -571,6 +692,13 @@ char *log_url(const char *url) {
         p = amp;
     }
     *w = 0;
+    /* Live TV (Xtream): the short stream form http://server:port/<user>/<password>/<id> has no /live/ to go by */
+    static const char *const cred_keys[] = {"xtream_pass", "xtream_user", NULL};
+    for (int i = 0; cred_keys[i]; i++) {
+        char v[256];
+        cfg_copy(cred_keys[i], v, sizeof v);
+        if (v[0]) mask_all(o, v);
+    }
     return o;
 }
 
@@ -592,11 +720,17 @@ char *run_capture_argv(const char *const *argv) {
     size_t cap = 4096, len = 0;
     char *buf = malloc(cap);
     ssize_t n;
-    while ((n = read(fd[0], buf + len, cap - len - 1)) != 0) {
+    while (buf && (n = read(fd[0], buf + len, cap - len - 1)) != 0) {
         if (n < 0) { if (errno == EINTR) continue; break; }
         len += n;
-        if (cap - len < 1024) { cap *= 2; buf = realloc(buf, cap); }
+        if (cap - len < 1024) {
+            char *nb = realloc(buf, cap * 2);
+            if (!nb) break;
+            buf = nb;
+            cap *= 2;
+        }
     }
+    if (!buf) { close(fd[0]); while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {} return str_dup(""); }
     buf[len] = 0;
     close(fd[0]);
     while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
@@ -646,9 +780,10 @@ const char *tr_msg(const char *msg) {
     if (sep) *sep = 0;
     char *out = ring[ri++ & 3];
     const char *fmt = T(line);
-    bool ok = args; /* only %s and %% in the format */
+    bool ok = args; /* only %s and %% in the format, and at most as many %s as there are arguments (3) */
+    int ns = 0;
     for (const char *p = fmt; ok && (p = strchr(p, '%')); p += 2)
-        if (p[1] != 's' && p[1] != '%') ok = false;
+        if ((p[1] != 's' && p[1] != '%') || (p[1] == 's' && ++ns > 3)) ok = false;
     if (ok) snprintf(out, 512, fmt, a[0], a[1], a[2]);
     else if (args || fmt != line) snprintf(out, 512, "%s", args ? line : fmt);
     else { /* not found: translate the parts "a · b · text: value" one by one (only the text before the colon) */
@@ -685,14 +820,15 @@ const char *lang_media_default(const char *key) {
 /* small files are overwritten with zeros first, then deleted */
 void wipe_file(const char *path) {
     struct stat st;
-    if (stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0 && st.st_size <= (1 << 20)) {
-        FILE *f = fopen(path, "r+");
-        if (f) {
+    /* a symlink is only removed: its target is never overwritten */
+    if (lstat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0 && st.st_size <= (1 << 20)) {
+        int fd = open(path, O_WRONLY | O_NOFOLLOW | O_CLOEXEC);
+        if (fd >= 0) {
             static const char z[4096];
-            for (off_t n = st.st_size; n > 0; n -= (off_t)sizeof z) fwrite(z, 1, n > (off_t)sizeof z ? sizeof z : (size_t)n, f);
-            fflush(f);
-            fsync(fileno(f));
-            fclose(f);
+            for (off_t n = st.st_size; n > 0; n -= (off_t)sizeof z)
+                if (write(fd, z, n > (off_t)sizeof z ? sizeof z : (size_t)n) < 0) break;
+            fsync(fd);
+            close(fd);
         }
     }
     unlink(path);
@@ -717,8 +853,11 @@ void wipe_session_traces(void) {
     wipe_dir("/tmp/tvimg");
     /* mpv-out.log holds the stream URLs with tokens (Plex/Jellyfin), the yt-dlp log searches, and the subtitle
        files and channel logos show what was watched */
+    /* notatv-iptv.m3u has every Live TV stream address (with the Xtream login), notatv-chan.json the channels */
     static const char *const files[] = {"/tmp/mpv.log", "/tmp/mpv-out.log", "/tmp/yt-dlp-search.log", "/tmp/notatv-nowplaying.json",
-                                        "/tmp/notatv-subs.json", "/tmp/notatv-poster.bgra", "/tmp/notatv-poster-hdr.bgra", NULL};
+                                        "/tmp/notatv-subs.json", "/tmp/notatv-poster.bgra", "/tmp/notatv-poster-hdr.bgra",
+                                        "/tmp/notatv-iptv.m3u", "/tmp/notatv-chan.json", "/tmp/notatv-chan.json.part",
+                                        "/tmp/notatv-media.m3u", NULL};
     for (int i = 0; files[i]; i++) wipe_file(files[i]);
     static const char *const pats[] = {"/tmp/notatv-sub-*.srt", "/tmp/notatv-logo-*.bgra", NULL};
     for (int i = 0; pats[i]; i++) {

@@ -6,9 +6,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* The table is read by T() from any thread while an app package may add its texts on the main thread. So:
+   a full table is replaced by a bigger copy (the old one is left, never freed), an entry's text is in place
+   before its id becomes visible, and a text that is replaced is not freed (pointers to it may be in use). */
 typedef struct { char *id, *str; } Entry;
-static Entry *tab;
-static size_t cap, used;
+typedef struct { Entry *e; size_t cap; } Table;
+static Table *tbl;
+static size_t used;
+static bool loading_extra; /* an app's texts never replace the system's own */
 static char cur[8] = "en";
 
 const LangInfo i18n_langs[] = {
@@ -23,24 +28,36 @@ static size_t hash(const char *s) {
 
 static void put(char *id, char *str) {
     if (!*id || !*str) { free(id); free(str); return; }
-    if ((used + 1) * 2 > cap) { /* double and move */
-        size_t ncap = cap ? cap * 2 : 1024;
-        Entry *n = calloc(ncap, sizeof *n);
-        if (!n) { free(id); free(str); return; }
-        for (size_t i = 0; i < cap; i++)
-            if (tab[i].id) {
-                size_t j = hash(tab[i].id) & (ncap - 1);
-                while (n[j].id) j = (j + 1) & (ncap - 1);
-                n[j] = tab[i];
+    Table *t = tbl;
+    if (!t || (used + 1) * 2 > t->cap) { /* a bigger copy; readers keep using the old one until it is published */
+        size_t ncap = t ? t->cap * 2 : 1024;
+        Table *n = calloc(1, sizeof *n);
+        Entry *e = n ? calloc(ncap, sizeof *e) : NULL;
+        if (!e) { free(n); free(id); free(str); return; }
+        for (size_t i = 0; t && i < t->cap; i++)
+            if (t->e[i].id) {
+                size_t j = hash(t->e[i].id) & (ncap - 1);
+                while (e[j].id) j = (j + 1) & (ncap - 1);
+                e[j] = t->e[i];
             }
-        free(tab); tab = n; cap = ncap;
+        n->e = e;
+        n->cap = ncap;
+        __atomic_store_n(&tbl, n, __ATOMIC_RELEASE);
+        t = n;
     }
-    size_t j = hash(id) & (cap - 1);
-    while (tab[j].id) {
-        if (!strcmp(tab[j].id, id)) { free(tab[j].str); tab[j].str = str; free(id); return; }
-        j = (j + 1) & (cap - 1);
+    size_t j = hash(id) & (t->cap - 1);
+    while (t->e[j].id) {
+        if (!strcmp(t->e[j].id, id)) {
+            if (loading_extra) free(str); /* the system's text stays */
+            else __atomic_store_n(&t->e[j].str, str, __ATOMIC_RELEASE); /* the old text is not freed */
+            free(id);
+            return;
+        }
+        j = (j + 1) & (t->cap - 1);
     }
-    tab[j].id = id; tab[j].str = str; used++;
+    t->e[j].str = str;
+    __atomic_store_n(&t->e[j].id, id, __ATOMIC_RELEASE);
+    used++;
 }
 
 /* "..." with C escapes -> appended to buf */
@@ -108,15 +125,20 @@ bool i18n_load_extra(const char *dir) {
     if (!strcmp(cur, "en") || !*cur) return true;
     char path[512];
     snprintf(path, sizeof path, "%s/lang/%s.po", dir, cur);
-    return load_po(path);
+    loading_extra = true;
+    bool ok = load_po(path);
+    loading_extra = false;
+    return ok;
 }
 
 const char *T(const char *s) {
-    if (!s || !used) return s;
-    size_t j = hash(s) & (cap - 1);
-    while (tab[j].id) {
-        if (!strcmp(tab[j].id, s)) return tab[j].str;
-        j = (j + 1) & (cap - 1);
+    Table *t = __atomic_load_n(&tbl, __ATOMIC_ACQUIRE);
+    if (!s || !t) return s;
+    size_t j = hash(s) & (t->cap - 1);
+    const char *id;
+    while ((id = __atomic_load_n(&t->e[j].id, __ATOMIC_ACQUIRE))) {
+        if (!strcmp(id, s)) return __atomic_load_n(&t->e[j].str, __ATOMIC_ACQUIRE);
+        j = (j + 1) & (t->cap - 1);
     }
     return s;
 }

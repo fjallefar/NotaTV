@@ -1,7 +1,9 @@
 /* NotaTV app package "plex" - Plex cast: the box as a Plex player, so "Cast"/"Play on" in Plex apps can start and control
  * playback. GDM discovery (UDP 32412, multicast 239.0.0.250) + Plex Companion over HTTP (port 3005):
  * playMedia/pause/seek/stop, timeline for the app (subscription and long poll) and navigation (arrow keys).
- * Local network only; nothing is sent to plex.tv. The playback itself happens in ui_plex.c (plex_cast_play). */
+ * Local network only. Commands (play, pause, navigation ...) and timeline subscriptions are only taken from this box's
+ * own Plex account or its Plex Home: the app's X-Plex-Token is checked with plex.tv once (plex_token_is_ours).
+ * At most MAX_CONN connections are served at a time. The playback itself happens in plex.c (plex_cast_play). */
 #define _GNU_SOURCE /* accept4 */
 #include "plex.h"
 #include <arpa/inet.h>
@@ -19,6 +21,7 @@
 #define GDM_PORT 32412
 #define GDM_GROUP "239.0.0.250"
 #define CAPS "timeline,playback,navigation,playqueues"
+#define MAX_CONN 16 /* connections served at a time (each has a thread; a timeline poll waits up to 20 s) */
 #define CONTROLLABLE "playPause,stop,stepBack,stepForward,seekTo,skipNext,skipPrevious,volume"
 
 enum { P_NONE, P_PLAY, P_PAUSE, P_RESUME, P_STOP, P_SEEK, P_SEEKREL, P_NEXT, P_PREV, P_VOLUME, P_NAV };
@@ -153,7 +156,7 @@ static void reply(int fd, int code, const char *body, const char *extra_hdrs) {
     int n = snprintf(h, sizeof h,
                      "HTTP/1.1 %d %s\r\nContent-Type: text/xml; charset=utf-8\r\nContent-Length: %zu\r\n"
                      "%sX-Plex-Client-Identifier: %s\r\nConnection: close\r\n%s\r\n",
-                     code, code == 200 ? "OK" : code == 403 ? "Forbidden" : "Not Found", body ? strlen(body) : 0, cors, my_id,
+                     code, code == 200 ? "OK" : code == 401 ? "Unauthorized" : code == 403 ? "Forbidden" : "Not Found", body ? strlen(body) : 0, cors, my_id,
                      extra_hdrs ? extra_hdrs : "");
     send_all(fd, h, (size_t)n);
     if (body) send_all(fd, body, strlen(body));
@@ -188,13 +191,25 @@ static const struct { const char *path; Action a; } NAV[] = {
 };
 
 typedef struct { int fd; char ip[64]; } Conn;
+static SDL_AtomicInt n_conn;
+
+/* a command from this box's own Plex account (or its Plex Home)? */
+static bool authorized(const char *hdrs, const char *q, const char *ip, const char *path) {
+    char tok[300];
+    header(hdrs, "X-Plex-Token", tok, sizeof tok);
+    if (!tok[0]) qparam(q, "X-Plex-Token", tok, sizeof tok);
+    if (plex_token_is_ours(tok)) return true;
+    SDL_Log("plexcast: %s fra %s afvist (%s)", path, ip, tok[0] ? "en anden Plex-konto, eller boksen er ikke logget ind" : "ingen Plex-token");
+    return false;
+}
 
 static int conn_thread(void *arg) {
     Conn *c = arg;
     char buf[8192];
     size_t n = 0;
     struct pollfd p = {c->fd, POLLIN, 0};
-    while (n < sizeof buf - 1 && poll(&p, 1, 5000) > 0) {
+    Uint64 deadline = SDL_GetTicks() + 8000; /* the whole request within 8 s (no slow trickle) */
+    while (n < sizeof buf - 1 && SDL_GetTicks() < deadline && poll(&p, 1, 2000) > 0) {
         ssize_t r = recv(c->fd, buf + n, sizeof buf - 1 - n, 0);
         if (r <= 0) break;
         n += (size_t)r;
@@ -231,6 +246,9 @@ static int conn_thread(void *arg) {
         free(b);
         goto done;
     }
+    /* everything that controls the box or makes it send something: only from the box's own account */
+    bool no_auth = !strcmp(path, "/player/timeline/poll") || !strcmp(path, "/player/timeline/unsubscribe");
+    if (!strncmp(path, "/player/", 8) && !no_auth && !authorized(hdrs, q, c->ip, path)) { reply(c->fd, 401, "", NULL); goto done; }
     if (!strcmp(path, "/player/timeline/subscribe") || !strcmp(path, "/player/timeline/unsubscribe")) {
         subscribe(c->ip, q, hdrs, !strcmp(path, "/player/timeline/subscribe"));
         reply(c->fd, 200, OK_BODY, NULL);
@@ -296,6 +314,7 @@ static int conn_thread(void *arg) {
 done:
     close(c->fd);
     free(c);
+    SDL_AddAtomicInt(&n_conn, -1);
     return 0;
 }
 
@@ -315,13 +334,16 @@ static int http_thread(void *arg) {
         socklen_t fl = sizeof from;
         int fd = accept4(s, (struct sockaddr *)&from, &fl, SOCK_CLOEXEC);
         if (fd < 0) { SDL_Delay(100); continue; }
+        if (SDL_GetAtomicInt(&n_conn) >= MAX_CONN) { close(fd); continue; } /* busy: the app tries again */
         Conn *c = calloc(1, sizeof *c);
+        if (!c) { close(fd); continue; }
+        SDL_AddAtomicInt(&n_conn, 1);
         c->fd = fd;
         inet_ntop(AF_INET6, &from.sin6_addr, c->ip, sizeof c->ip);
         if (!strncmp(c->ip, "::ffff:", 7)) memmove(c->ip, c->ip + 7, strlen(c->ip + 7) + 1);
         SDL_Thread *t = SDL_CreateThread(conn_thread, "plexcast-conn", c);
         if (t) SDL_DetachThread(t);
-        else { close(fd); free(c); }
+        else { close(fd); free(c); SDL_AddAtomicInt(&n_conn, -1); }
     }
     return 0;
 }

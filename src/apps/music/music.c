@@ -614,7 +614,7 @@ static bool music_draw_shelf(float x, float y) {
 }
 static const MusicIface music_iface = {music_bt_state, music_bt_track, music_bt_pos};
 const NotaApp nota_app = {
-    NOTA_API, "music", N_("Music"), N_("Play music from your phone via AirPlay"), "1.0.0", 70, 0,
+    NOTA_API, "music", N_("Music"), N_("Play music from your phone via AirPlay"), APP_VERSION, 70, 0,
     ICON_MUSIC, {250, 45, 85, 255}, {150, 20, 60, 255}, {255, 255, 255, 255},
     .open = music_screen, .init = music_init, .tick = music_tick, .draw_shelf = music_draw_shelf,
     .iface = &music_iface,

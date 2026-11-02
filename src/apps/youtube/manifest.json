@@ -1,6 +1,6 @@
 {
   "id": "youtube",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "api": 2,
   "name": "YouTube",
   "desc": "Search and watch videos on YouTube",
@@ -9,5 +9,12 @@
   "c2": [170, 18, 20],
   "fg": [255, 255, 255],
   "order": 40,
-  "default": true
+  "default": true,
+  "changes": {
+    "summary": "Safer casting from phones",
+    "points": [
+      "At most 8 connections from phones at a time, so the box cannot be overloaded from the network",
+      "Signing in from the phone closes the right screen"
+    ]
+  }
 }

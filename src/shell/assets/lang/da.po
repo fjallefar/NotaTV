@@ -463,8 +463,8 @@ msgstr "IP-adresse"
 msgid "iPhone, iPad and Mac can play music on the TV. Local network only"
 msgstr "iPhone, iPad og Mac kan spille musik på TV'et. Kun på det lokale netværk"
 
-msgid "iPhone/iPad/Mac can mirror the screen to the TV (shown as \"<name> (screen)\"). Local network only"
-msgstr "iPhone/iPad/Mac kan spejle skærmen til TV'et (vises som \"<navn> (skærm)\"). Kun lokalt netværk"
+msgid "iPhone/iPad/Mac can mirror the screen to the TV (shown as \"<name> (screen)\"). The first time, the phone asks for the code below"
+msgstr "iPhone/iPad/Mac kan spejle skærmen til TV'et (vises som \"<navn> (skærm)\"). Første gang beder telefonen om koden herunder"
 
 msgid "January"
 msgstr "januar"
@@ -937,8 +937,6 @@ msgstr "Spansk"
 msgid "Speed"
 msgstr "Hastighed"
 
-msgid "SSH login as root (password: notatv)"
-msgstr "SSH-login som root (kodeord: notatv)"
 
 msgid "Subtitle delay"
 msgstr "Undertekst-forsinkelse"
@@ -1024,8 +1022,8 @@ msgstr "TV'et står i HDR hele tiden - også i menuerne - så det ikke skifter. 
 msgid "The update is missing files"
 msgstr "Opdateringen mangler filer"
 
-msgid "The update will be downloaded and installed. Your settings and logins are kept."
-msgstr "Opdateringen hentes og installeres. Dine indstillinger og logins bevares."
+msgid "The update will be downloaded and installed. Everything you have set up stays as it is."
+msgstr "Opdateringen hentes og installeres. Alt, hvad du har sat op, forbliver uændret."
 
 msgid "This region has no daylight saving time"
 msgstr "Området har ikke sommertid"
@@ -1178,8 +1176,8 @@ msgstr "Sætter den forrige version tilbage…"
 msgid "Undo last update?"
 msgstr "Fortryd seneste opdatering?"
 
-msgid "NotaTV goes back to the version from before the last update. Your settings and logins are kept."
-msgstr "NotaTV går tilbage til versionen fra før den seneste opdatering. Dine indstillinger og logins bevares."
+msgid "NotaTV goes back to the version from before the last update. Everything you have set up stays as it is."
+msgstr "NotaTV går tilbage til versionen fra før den seneste opdatering. Alt, hvad du har sat op, forbliver uændret."
 
 msgid "Undo"
 msgstr "Fortryd"
@@ -1313,8 +1311,8 @@ msgstr "NotaTV %s er klar"
 msgid "You have version %s"
 msgstr "Du har version %s"
 
-msgid "The update takes a few minutes. Then restart the box to use it. Your settings, apps and logins are kept."
-msgstr "Opdateringen tager et par minutter. Genstart derefter boksen for at bruge den. Dine indstillinger, apps og logins bevares."
+msgid "The update takes a few minutes. Then restart the box to start using it. Everything you have set up stays as it is."
+msgstr "Opdateringen tager et par minutter. Genstart derefter boksen for at tage den i brug. Alt, hvad du har sat op, forbliver uændret."
 
 msgid "Update now"
 msgstr "Opdatér nu"
@@ -1496,8 +1494,8 @@ msgstr "Starter…"
 msgid "%d MB of %d MB"
 msgstr "%d MB af %d MB"
 
-msgid "Keep the box turned on until the update is done. Your settings, apps and logins are kept."
-msgstr "Lad boksen være tændt, til opdateringen er færdig. Dine indstillinger, apps og logins bevares."
+msgid "Keep the box turned on until the update is done. Everything you have set up stays as it is."
+msgstr "Lad boksen være tændt, til opdateringen er færdig. Alt, hvad du har sat op, forbliver uændret."
 
 msgid "UPDATE INSTALLED"
 msgstr "OPDATERING INSTALLERET"
@@ -1555,3 +1553,72 @@ msgstr "For stor"
 
 msgid "The server did not send %s in time - check that it is running and the network"
 msgstr "Serveren sendte ikke %s i tide - tjek at den kører, og tjek netværket"
+
+msgid "1 app has an update"
+msgstr "1 app har en opdatering"
+
+msgid "%d apps have an update"
+msgstr "%d apps har en opdatering"
+
+msgid "Updating…"
+msgstr "Opdaterer…"
+
+msgid "Update all"
+msgstr "Opdatér alle"
+
+msgid "New: %s"
+msgstr "Nyt: %s"
+
+msgid "%s after a restart"
+msgstr "%s efter genstart"
+
+msgid "WHAT'S NEW"
+msgstr "NYT I DENNE VERSION"
+
+msgid "Update 1 app"
+msgstr "Opdatér 1 app"
+
+msgid "Update %d apps"
+msgstr "Opdatér %d apps"
+
+msgid "SSH login as root with the password shown below. Every box has its own password"
+msgstr "SSH-login som root med adgangskoden herunder. Hver boks har sin egen adgangskode"
+
+msgid "SSH password"
+msgstr "SSH-adgangskode"
+
+msgid "Log in with ssh root@<the box's address>"
+msgstr "Log ind med ssh root@<boksens adresse>"
+
+msgid "Could not set the SSH password"
+msgstr "Kunne ikke sætte SSH-adgangskoden"
+
+msgid "This takes longer than expected - Back closes it"
+msgstr "Det tager længere tid end ventet - Tilbage lukker den"
+
+msgid "Red"
+msgstr "Rød"
+
+msgid "Green"
+msgstr "Grøn"
+
+msgid "Yellow"
+msgstr "Gul"
+
+msgid "Blue"
+msgstr "Blå"
+
+msgid "Do not change"
+msgstr "Skift ikke"
+
+msgid "The apps keep downloading in the background"
+msgstr "Apps hentes videre i baggrunden"
+
+msgid "Back: continue - the apps keep downloading"
+msgstr "Tilbage: fortsæt - apps hentes videre"
+
+msgid "AirPlay code"
+msgstr "AirPlay-kode"
+
+msgid "Enter %s on your iPhone, iPad or Mac. It is only asked the first time."
+msgstr "Indtast %s på din iPhone, iPad eller Mac. Der spørges kun første gang."

@@ -102,23 +102,39 @@ int input_fds(int *fds, int max) {
 }
 
 /* characters from the keyboard (Danish/US-like layout - enough for URLs and passwords) */
+/* a physical keyboard: the Danish layout when NotaTV is in Danish (æ ø å), otherwise US - one whole layout either way */
 static uint32_t key_char(int code, bool shift) {
-    static const char *row1 = "1234567890";
-    static const char *row1s = "!\"#$%&/()=";
-    if (code >= KEY_1 && code <= KEY_0) return shift ? row1s[code - KEY_1] : row1[code - KEY_1];
-    static const struct { int code; char lo, hi; } map[] = {
+    static const struct { int code; uint32_t lo, hi; } letters[] = {
         {KEY_Q, 'q', 'Q'}, {KEY_W, 'w', 'W'}, {KEY_E, 'e', 'E'}, {KEY_R, 'r', 'R'}, {KEY_T, 't', 'T'},
         {KEY_Y, 'y', 'Y'}, {KEY_U, 'u', 'U'}, {KEY_I, 'i', 'I'}, {KEY_O, 'o', 'O'}, {KEY_P, 'p', 'P'},
         {KEY_A, 'a', 'A'}, {KEY_S, 's', 'S'}, {KEY_D, 'd', 'D'}, {KEY_F, 'f', 'F'}, {KEY_G, 'g', 'G'},
         {KEY_H, 'h', 'H'}, {KEY_J, 'j', 'J'}, {KEY_K, 'k', 'K'}, {KEY_L, 'l', 'L'}, {KEY_Z, 'z', 'Z'},
         {KEY_X, 'x', 'X'}, {KEY_C, 'c', 'C'}, {KEY_V, 'v', 'V'}, {KEY_B, 'b', 'B'}, {KEY_N, 'n', 'N'},
-        {KEY_M, 'm', 'M'}, {KEY_SPACE, ' ', ' '}, {KEY_MINUS, '-', '_'}, {KEY_EQUAL, '=', '+'},
-        {KEY_DOT, '.', ':'}, {KEY_COMMA, ',', ';'}, {KEY_SLASH, '/', '?'}, {KEY_SEMICOLON, ';', ':'},
-        {KEY_APOSTROPHE, '\'', '"'}, {KEY_BACKSLASH, '\\', '|'}, {KEY_GRAVE, '`', '~'},
-        {KEY_LEFTBRACE, '[', '{'}, {KEY_RIGHTBRACE, ']', '}'}, {KEY_102ND, '<', '>'},
+        {KEY_M, 'm', 'M'}, {KEY_SPACE, ' ', ' '},
     };
-    for (size_t i = 0; i < sizeof map / sizeof map[0]; i++)
-        if (map[i].code == code) return shift ? (uint32_t)(unsigned char)map[i].hi : (uint32_t)(unsigned char)map[i].lo;
+    static const struct { int code; uint32_t lo, hi; } us[] = {
+        {KEY_MINUS, '-', '_'}, {KEY_EQUAL, '=', '+'}, {KEY_DOT, '.', '>'}, {KEY_COMMA, ',', '<'}, {KEY_SLASH, '/', '?'},
+        {KEY_SEMICOLON, ';', ':'}, {KEY_APOSTROPHE, '\'', '"'}, {KEY_BACKSLASH, '\\', '|'}, {KEY_GRAVE, '`', '~'},
+        {KEY_LEFTBRACE, '[', '{'}, {KEY_RIGHTBRACE, ']', '}'}, {KEY_102ND, '\\', '|'},
+    }, da[] = {
+        {KEY_MINUS, '+', '?'}, {KEY_EQUAL, 0xB4, '`'}, {KEY_DOT, '.', ':'}, {KEY_COMMA, ',', ';'}, {KEY_SLASH, '-', '_'},
+        {KEY_SEMICOLON, 0xE6, 0xC6}, {KEY_APOSTROPHE, 0xF8, 0xD8}, {KEY_BACKSLASH, '\'', '*'}, {KEY_GRAVE, 0xBD, 0xA7},
+        {KEY_LEFTBRACE, 0xE5, 0xC5}, {KEY_RIGHTBRACE, 0xA8, '^'}, {KEY_102ND, '<', '>'},
+    };
+    bool dk = !strcmp(i18n_lang(), "da");
+    if (code >= KEY_1 && code <= KEY_0) {
+        static const char *row1 = "1234567890", *row1_us = "!@#$%^&*()";
+        static const uint32_t row1_da[] = {'!', '"', '#', 0xA4, '%', '&', '/', '(', ')', '='};
+        int k = code - KEY_1;
+        return !shift ? (uint32_t)row1[k] : dk ? row1_da[k] : (uint32_t)row1_us[k];
+    }
+    for (size_t i = 0; i < sizeof letters / sizeof letters[0]; i++)
+        if (letters[i].code == code) return shift ? letters[i].hi : letters[i].lo;
+    size_t n = dk ? sizeof da / sizeof da[0] : sizeof us / sizeof us[0];
+    for (size_t i = 0; i < n; i++) {
+        int c = dk ? da[i].code : us[i].code;
+        if (c == code) return dk ? (shift ? da[i].hi : da[i].lo) : (shift ? us[i].hi : us[i].lo);
+    }
     return 0;
 }
 
@@ -242,7 +258,7 @@ void input_poll(void) {
     }
     double now = app_time();
     if (held_code && !held_hw_rep) {
-        if (now - held_t0 > 30) held_code = 0; /* lost release message */
+        if (now - held_t0 > 4) held_code = 0; /* lost release message: stop repeating after 4 s */
         else if (now - held_t0 > 0.35 && now - held_last > 0.11) { held_last = now; handle_key(held_code, 2); }
     }
 }
@@ -272,10 +288,11 @@ void input_handle_sdl(const SDL_Event *e) {
     case SDLK_BACKSPACE: input_push(A_BACKSPACE, 0, rep); break;
     case SDLK_HOME: input_push(A_HOME, 0, rep); break;
     case SDLK_F1: input_push(A_INFO, 0, rep); break;
-    case SDLK_F2: input_push(A_RED, 0, rep); break;
-    case SDLK_F3: input_push(A_GREEN, 0, rep); break;
+    /* F2-F5 = the color keys, the same as on the box (A_RED/A_GREEN/A_BLUE are not used anywhere) */
+    case SDLK_F2: input_push(A_MENU, 0, rep); break;
+    case SDLK_F3: input_push(A_INFO, 0, rep); break;
     case SDLK_F4: input_push(A_YELLOW, 0, rep); break;
-    case SDLK_F5: input_push(A_BLUE, 0, rep); break;
+    case SDLK_F5: input_push(A_SEARCH, 0, rep); break;
     case SDLK_F10: input_push(A_MENU, 0, rep); break;
     case SDLK_PAGEUP: input_push(A_CHUP, 0, rep); break;
     case SDLK_PAGEDOWN: input_push(A_CHDOWN, 0, rep); break;

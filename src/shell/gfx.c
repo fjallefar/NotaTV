@@ -309,7 +309,51 @@ void fill_tri(float x1, float y1, float x2, float y2, float x3, float y3, Color 
     st_geom++, SDL_RenderGeometry(R, NULL, v, 3, NULL, 0);
 }
 
+/* a soft shadow as one texture per (radius, spread), drawn as a 9-grid: one draw call instead of 6 overlapping
+   rounded rectangles over the whole tile. The falloff matches the old 6 layers (about 75 % black at the edge). */
+typedef struct { int r, sp, gen; SDL_Texture *t; } ShadowTex;
+static ShadowTex shadow_cache[8];
+static SDL_Texture *shadow_tex(int r, int sp) {
+    for (int i = 0; i < 8; i++)
+        if (shadow_cache[i].t && shadow_cache[i].r == r && shadow_cache[i].sp == sp && shadow_cache[i].gen == g_generation)
+            return shadow_cache[i].t;
+    int c = r + sp, n = 2 * c + 2;
+    uint32_t *px = malloc((size_t)n * n * 4);
+    if (!px) return NULL;
+    for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++) {
+            /* distance from the rounded rectangle inset by sp (its corners have radius r) */
+            float cx = x + 0.5f, cy = y + 0.5f;
+            float qx = fabsf(cx - n / 2.0f) - (n / 2.0f - sp - r), qy = fabsf(cy - n / 2.0f) - (n / 2.0f - sp - r);
+            float d = hypotf(fmaxf(qx, 0), fmaxf(qy, 0)) + fminf(fmaxf(qx, qy), 0) - r;
+            float t = d <= 0 ? 0 : d >= sp ? 1 : d / sp, a = 0.75f * (1 - t) * (1 - t);
+            px[y * n + x] = (uint32_t)(a * 255 + 0.5f) << 24; /* black, alpha */
+        }
+    SDL_Texture *t = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, n, n);
+    if (t) {
+        SDL_UpdateTexture(t, NULL, px, n * 4);
+        SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureScaleMode(t, SDL_SCALEMODE_LINEAR);
+    }
+    free(px);
+    int k = 0;
+    for (int i = 0; i < 8; i++) if (!shadow_cache[i].t || shadow_cache[i].gen != g_generation) { k = i; break; }
+    if (shadow_cache[k].t && shadow_cache[k].gen == g_generation) SDL_DestroyTexture(shadow_cache[k].t);
+    shadow_cache[k] = (ShadowTex){r, sp, g_generation, t};
+    return t;
+}
+
 void draw_shadow(float x, float y, float w, float h, float r, float spread, float alpha) {
+    int ri = (int)roundf(r), si = (int)roundf(spread);
+    SDL_Texture *t = si > 0 && w >= 2 * r && h >= 2 * r ? shadow_tex(ri, si) : NULL;
+    if (t) {
+        float c = (float)(ri + si);
+        SDL_FRect d = {x - si, y - si + spread * 0.35f, w + 2 * si, h + 2 * si};
+        SDL_SetTextureAlphaModFloat(t, alpha);
+        st_geom++;
+        SDL_RenderTexture9Grid(R, t, NULL, c, c, c, c, 1.0f, &d);
+        return;
+    }
     const int layers = 6;
     for (int i = layers; i >= 1; i--) {
         float e = spread * i / layers;
@@ -379,16 +423,23 @@ void layer_free(Layer *l) {
 
 /* ---------- Text ---------- */
 typedef struct { uint32_t cp; int16_t x, y, w, h, xoff, yoff; float adv; int glyph; } Glyph;
-#define ATLAS_SZ 1024
+#define ATLAS_SZ 1024      /* texture size for big text; small sizes (<= ATLAS_SMALL_PX) get 512 x 512 */
+#define ATLAS_SMALL_PX 30
 #define GL_HASH 1024
+#define KERN_HASH 2048     /* kerning pairs looked up once (Inter's GPOS kerning is slow in stb_truetype) */
+typedef struct { int a, b; float k; } Kern;
 typedef struct {
-    int px; FontId font; int gen;
+    int px; FontId font; int gen, sz;
     SDL_Texture *tex;
     int pen_x, pen_y, row_h;
+    unsigned long last_used; /* atlas_tick when last asked for: the least recently used is thrown out */
     Glyph glyphs[GL_HASH];
     bool used[GL_HASH];
+    Kern kern[KERN_HASH];
+    bool kused[KERN_HASH];
     float scale, ascent, lineh;
 } Atlas;
+static unsigned long atlas_tick;
 
 static stbtt_fontinfo fonts[F_COUNT];
 static unsigned char *font_data[F_COUNT];
@@ -399,13 +450,11 @@ static int n_atlas;
 static unsigned char *read_file(const char *path, size_t *len) {
     FILE *f = fopen(path, "rb");
     if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    unsigned char *b = malloc(n + 1);
-    if (fread(b, 1, n, f) != (size_t)n) { free(b); fclose(f); return NULL; }
+    long n = fseek(f, 0, SEEK_END) == 0 ? ftell(f) : -1;
+    unsigned char *b = n >= 0 && fseek(f, 0, SEEK_SET) == 0 ? malloc((size_t)n + 1) : NULL;
+    if (!b || fread(b, 1, (size_t)n, f) != (size_t)n) { free(b); fclose(f); return NULL; }
     fclose(f);
-    if (len) *len = n;
+    if (len) *len = (size_t)n;
     return b;
 }
 
@@ -430,9 +479,11 @@ static Atlas *atlas_get(FontId f, float size) {
     if (size <= 32) size *= 1.06f;
     int px = (int)roundf(size * g_scale);
     if (px < 6) px = 6;
+    atlas_tick++;
     for (int i = 0; i < n_atlas; i++) {
         Atlas *a = atlases[i];
         if (a->font == f && a->px == px) {
+            a->last_used = atlas_tick;
             if (a->gen != g_generation) { /* renderer genskabt */
                 a->tex = NULL;
                 memset(a->used, 0, sizeof a->used);
@@ -442,14 +493,18 @@ static Atlas *atlas_get(FontId f, float size) {
             return a;
         }
     }
-    if (n_atlas == MAX_ATLAS) { /* throw out the oldest */
-        if (atlases[0]->tex && atlases[0]->gen == g_generation) SDL_DestroyTexture(atlases[0]->tex);
-        free(atlases[0]);
-        memmove(atlases, atlases + 1, sizeof(Atlas *) * (MAX_ATLAS - 1));
+    if (n_atlas == MAX_ATLAS) { /* throw out the least recently used (not the oldest: that may be on screen) */
+        int k = 0;
+        for (int i = 1; i < n_atlas; i++) if (atlases[i]->last_used < atlases[k]->last_used) k = i;
+        if (atlases[k]->tex && atlases[k]->gen == g_generation) SDL_DestroyTexture(atlases[k]->tex);
+        free(atlases[k]);
+        memmove(atlases + k, atlases + k + 1, sizeof(Atlas *) * (size_t)(n_atlas - 1 - k));
         n_atlas--;
     }
     Atlas *a = calloc(1, sizeof(Atlas));
-    a->px = px; a->font = f; a->gen = g_generation;
+    if (!a) return atlases[0];
+    a->px = px; a->font = f; a->gen = g_generation; a->last_used = atlas_tick;
+    a->sz = px <= ATLAS_SMALL_PX ? 512 : ATLAS_SZ;
     a->scale = stbtt_ScaleForPixelHeight(&fonts[f], (float)px);
     int asc, desc, gap;
     stbtt_GetFontVMetrics(&fonts[f], &asc, &desc, &gap);
@@ -479,15 +534,16 @@ static Glyph *glyph_get(Atlas *a, uint32_t cp) {
             if (skip) { a->used[i] = true; return g; }
             if (w > 0 && hh > 0) {
                 if (!a->tex) {
-                    a->tex = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, ATLAS_SZ, ATLAS_SZ);
+                    a->tex = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, a->sz, a->sz);
                     SDL_SetTextureBlendMode(a->tex, SDL_BLENDMODE_BLEND);
                     SDL_SetTextureScaleMode(a->tex, SDL_SCALEMODE_LINEAR);
-                    void *zero = calloc(ATLAS_SZ * ATLAS_SZ, 4);
-                    SDL_UpdateTexture(a->tex, NULL, zero, ATLAS_SZ * 4);
+                    void *zero = calloc((size_t)a->sz * a->sz, 4);
+                    if (zero) SDL_UpdateTexture(a->tex, NULL, zero, a->sz * 4);
                     free(zero);
                 }
-                if (a->pen_x + w + 2 > ATLAS_SZ) { a->pen_x = 0; a->pen_y += a->row_h + 2; a->row_h = 0; }
-                if (a->pen_y + hh + 2 > ATLAS_SZ) {
+                if (a->pen_x + w + 2 > a->sz) { a->pen_x = 0; a->pen_y += a->row_h + 2; a->row_h = 0; }
+                if (w + 2 > a->sz || hh + 2 > a->sz) { a->used[i] = true; g->w = g->h = 0; return g; } /* larger than the atlas */
+                if (a->pen_y + hh + 2 > a->sz) {
                     /* atlas full: reset (rare) */
                     memset(a->used, 0, sizeof a->used);
                     a->pen_x = a->pen_y = a->row_h = 0;
@@ -525,17 +581,34 @@ static uint32_t utf8_next(const char **p) {
     return '?';
 }
 
+/* kerning between two glyphs, in atlas pixels (looked up in the font once per pair) */
+static float kern_get(Atlas *a, int g1, int g2) {
+    unsigned h = ((unsigned)g1 * 2654435761u ^ (unsigned)g2 * 40503u) & (KERN_HASH - 1);
+    for (int probe = 0; probe < 8; probe++) {
+        unsigned i = (h + probe) & (KERN_HASH - 1);
+        if (!a->kused[i]) {
+            a->kused[i] = true;
+            a->kern[i] = (Kern){g1, g2, stbtt_GetGlyphKernAdvance(&fonts[a->font], g1, g2) * a->scale};
+            return a->kern[i].k;
+        }
+        if (a->kern[i].a == g1 && a->kern[i].b == g2) return a->kern[i].k;
+    }
+    return stbtt_GetGlyphKernAdvance(&fonts[a->font], g1, g2) * a->scale; /* full around here: not kept */
+}
+
+/* the width one more character adds (with the kerning to the one before); *prev = the glyph before, 0 at the start */
+static float advance_of(Atlas *a, int *prev, uint32_t cp) {
+    Glyph *g = glyph_get(a, cp);
+    if (!g) return 0;
+    float w = (*prev ? kern_get(a, *prev, g->glyph) : 0) + g->adv;
+    *prev = g->glyph;
+    return w;
+}
+
 static float measure_n(Atlas *a, const char *s, const char *end) {
     float w = 0;
     int prev = 0;
-    while (*s && (!end || s < end)) {
-        uint32_t cp = utf8_next(&s);
-        Glyph *g = glyph_get(a, cp);
-        if (!g) continue;
-        if (prev) w += stbtt_GetGlyphKernAdvance(&fonts[a->font], prev, g->glyph) * a->scale;
-        w += g->adv;
-        prev = g->glyph;
-    }
+    while (*s && (!end || s < end)) w += advance_of(a, &prev, utf8_next(&s));
     return w / g_scale;
 }
 
@@ -550,18 +623,18 @@ static void draw_run(Atlas *a, float x, float y, Color c, const char *s, const c
     float base = roundf(y * g_scale + a->ascent);
     int prev = 0;
     c = out_col(c);
-    if (a->tex) {
-        SDL_SetTextureColorMod(a->tex, c.r, c.g, c.b);
-        SDL_SetTextureAlphaMod(a->tex, c.a);
-    }
+    SDL_Texture *colored = NULL; /* the color is set once (again only if the first glyph made the texture) */
     while (*s && (!end || s < end)) {
         uint32_t cp = utf8_next(&s);
         Glyph *g = glyph_get(a, cp);
         if (!g) continue;
-        if (prev) pen += stbtt_GetGlyphKernAdvance(&fonts[a->font], prev, g->glyph) * a->scale;
+        if (prev) pen += kern_get(a, prev, g->glyph);
         if (g->w > 0 && a->tex) {
-            SDL_SetTextureColorMod(a->tex, c.r, c.g, c.b);
-            SDL_SetTextureAlphaMod(a->tex, c.a);
+            if (colored != a->tex) {
+                SDL_SetTextureColorMod(a->tex, c.r, c.g, c.b);
+                SDL_SetTextureAlphaMod(a->tex, c.a);
+                colored = a->tex;
+            }
             SDL_FRect src = {g->x, g->y, g->w, g->h};
             SDL_FRect dst = {roundf(pen + g->xoff) / g_scale, (base + g->yoff) / g_scale, g->w / g_scale, g->h / g_scale};
             SDL_RenderTexture(R, a->tex, &src, &dst);
@@ -586,12 +659,13 @@ float text_draw_clip(FontId f, float size, float x, float y, float maxw, Color c
     Atlas *a = atlas_get(f, size);
     float w = measure_n(a, s, NULL);
     if (w <= maxw) return text_draw(f, size, x, y, c, al, s);
-    float ell = measure_n(a, "…", NULL);
+    float ell = measure_n(a, "…", NULL), run = 0; /* measured as we go (not from the start for every character) */
+    int prev = 0;
     const char *p = s, *best = s;
     while (*p) {
         const char *q = p;
-        utf8_next(&q);
-        if (measure_n(a, s, q) + ell > maxw) break;
+        run += advance_of(a, &prev, utf8_next(&q)) / g_scale;
+        if (run + ell > maxw) break;
         best = q;
         p = q;
     }
@@ -613,10 +687,12 @@ int text_draw_wrap(FontId f, float size, float x, float y, float w, int maxlines
     while (*p && lines < maxlines) {
         while (*p == ' ') p++;
         const char *line = p, *brk = NULL, *q = p;
+        float run = 0; /* the line's width so far, added up character by character */
+        int prev = 0;
         while (*q && *q != '\n') {
             const char *nx = q;
-            utf8_next(&nx);
-            if (measure_n(a, line, nx) > w) break;
+            run += advance_of(a, &prev, utf8_next(&nx)) / g_scale;
+            if (run > w) break;
             if (*q == ' ') brk = q;
             q = nx;
         }
@@ -647,9 +723,10 @@ struct Image {
     char *url;
     ImgState state;
     int w, h;
-    unsigned char *pixels; /* RGBA, freed once the texture is made */
+    unsigned char *pixels; /* RGBA, freed once the texture is made (fetched again from /tmp/tvimg if it is lost) */
     unsigned char *hdr_pixels; /* the same image converted to HDR (made in the background thread) */
     bool skipped;              /* skipped in the queue (was not on screen) - requested again */
+    int pending;               /* jobs on their way for this image (it is never freed before they are done) */
     SDL_Texture *tex;
     int gen;
     double last_used;
@@ -715,22 +792,20 @@ static unsigned long hash_str(const char *s) {
     return h;
 }
 
-static void img_work(void *arg) {
-    Image *im = arg;
-    unsigned char *data = NULL;
+/* fetch (cache in /tmp/tvimg) and decode an image; any thread. *hdr gets an HDR copy when the menus are in HDR */
+static unsigned char *img_fetch(const char *url, int *ow, int *oh, unsigned char **hdr) {
+    unsigned char *data = NULL, *out = NULL;
     size_t len = 0;
-    /* not shown for a while (scrolled away): skip, so the queue is not blocked - the image is requested
-       again if it comes back on screen */
-    if (app_time() - im->last_used > 2.0) { im->skipped = true; return; }
-    if (strncmp(im->url, "http", 4) == 0) {
+    if (hdr) *hdr = NULL;
+    if (strncmp(url, "http", 4) == 0) {
         char path[256];
         mkdir("/tmp/tvimg", 0755);
-        snprintf(path, sizeof path, "/tmp/tvimg/%016lx", hash_str(im->url));
+        snprintf(path, sizeof path, "/tmp/tvimg/%016lx", hash_str(url));
         data = read_file(path, &len);
         if (data) utimes(path, NULL); /* used: the cleanup deletes the oldest first */
         if (!data) {
             HttpBuf b = {0};
-            if (http_request("GET", im->url, NULL, NULL, &b, 8) && b.status == 200 && b.len > 0 && b.len <= IMG_MAX_BYTES) {
+            if (http_request("GET", url, NULL, NULL, &b, 8) && b.status == 200 && b.len > 0 && b.len <= IMG_MAX_BYTES) {
                 FILE *f = fopen(path, "wb");
                 if (f) { fwrite(b.data, 1, b.len, f); fclose(f); }
                 data = (unsigned char *)b.data;
@@ -740,7 +815,7 @@ static void img_work(void *arg) {
             http_free(&b);
         }
     } else {
-        data = read_file(im->url, &len);
+        data = read_file(url, &len);
     }
     if (data && len > IMG_MAX_BYTES) { free(data); data = NULL; }
     if (data) {
@@ -750,18 +825,50 @@ static void img_work(void *arg) {
         if (stbi_info_from_memory(data, (int)len, &w, &h, &n) && (long)w * h <= IMG_MAX_PIXELS)
             px = stbi_load_from_memory(data, (int)len, &w, &h, &n, 4);
         if (px) {
-            im->pixels = px; im->w = w; im->h = h;
+            out = px; *ow = w; *oh = h;
             /* HDR conversion here in the background thread - on the main thread scrolling stutters */
-            if (g_hdr) im->hdr_pixels = hdr_copy(px, w, h);
+            if (g_hdr && hdr) *hdr = hdr_copy(px, w, h);
         }
         free(data);
     }
+    return out;
+}
+
+/* the worker only fills in the job; the Image itself is only changed on the main thread (img_done) */
+typedef struct { Image *im; char *url; bool skipped; unsigned char *px, *hdr; int w, h; } ImgJob;
+
+static void img_work(void *arg) {
+    ImgJob *j = arg;
+    /* not shown for a while (scrolled away): skip, so the queue is not blocked - the image is requested
+       again if it comes back on screen. (last_used is only read here; the Image stays while the job is pending.) */
+    if (app_time() - j->im->last_used > 2.0) { j->skipped = true; return; }
+    j->px = img_fetch(j->url, &j->w, &j->h, &j->hdr);
 }
 
 static void img_done(void *arg) {
-    Image *im = arg;
-    if (im->skipped) return; /* stays IMG_LOADING; img_get requests it again when needed */
-    im->state = im->pixels ? IMG_READY : IMG_FAILED;
+    ImgJob *j = arg;
+    Image *im = j->im;
+    im->pending--;
+    if (j->skipped) im->skipped = true; /* stays IMG_LOADING; img_get requests it again when needed */
+    else if (im->state == IMG_LOADING && !im->pixels) {
+        im->pixels = j->px; im->hdr_pixels = j->hdr; im->w = j->w; im->h = j->h;
+        im->state = im->pixels ? IMG_READY : IMG_FAILED;
+        j->px = j->hdr = NULL;
+    }
+    stbi_image_free(j->px);
+    free(j->hdr);
+    free(j->url);
+    free(j);
+}
+
+static void img_submit(Image *im) {
+    ImgJob *j = calloc(1, sizeof *j);
+    if (!j) return;
+    j->im = im;
+    j->url = str_dup(im->url);
+    im->skipped = false;
+    im->pending++;
+    job_submit_q(JQ_IMAGE, img_work, img_done, j);
 }
 
 Image *img_get(const char *url) {
@@ -769,7 +876,7 @@ Image *img_get(const char *url) {
     for (Image *im = img_list; im; im = im->next)
         if (strcmp(im->url, url) == 0) {
             im->last_used = app_time();
-            if (im->skipped) { im->skipped = false; job_submit_q(JQ_IMAGE, img_work, img_done, im); }
+            if (im->skipped && !im->pending) img_submit(im);
             return im;
         }
     Image *im = calloc(1, sizeof *im);
@@ -779,7 +886,7 @@ Image *img_get(const char *url) {
     im->next = img_list;
     img_list = im;
     img_count++;
-    job_submit_q(JQ_IMAGE, img_work, img_done, im);
+    img_submit(im);
     return im;
 }
 
@@ -789,7 +896,11 @@ static SDL_Texture *img_tex(Image *im) {
     if (!im || im->state != IMG_READY) return NULL;
     st_imgs++;
     if (im->tex && im->gen == g_generation) return im->tex;
-    if (!im->pixels) return NULL;
+    if (!im->pixels) { /* the texture is gone (renderer made again, HDR switched): load the image again */
+        im->tex = NULL;
+        if (!im->pending) { im->state = IMG_LOADING; img_submit(im); }
+        return NULL;
+    }
     st_tex_new++;
     im->tex = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, im->w, im->h);
     if (!im->tex) return NULL;
@@ -800,6 +911,10 @@ static SDL_Texture *img_tex(Image *im) {
     SDL_SetTextureBlendMode(im->tex, SDL_BLENDMODE_BLEND);
     SDL_SetTextureScaleMode(im->tex, SDL_SCALEMODE_LINEAR);
     im->gen = g_generation;
+    /* the pixels are on the GPU now: a full-screen background no longer takes 8 MB (+8 MB HDR) of RAM as well */
+    stbi_image_free(im->pixels);
+    free(im->hdr_pixels);
+    im->pixels = im->hdr_pixels = NULL;
     return im->tex;
 }
 
@@ -859,7 +974,7 @@ bool draw_title_logo(const char *url, float x, float y, float maxw, float maxh, 
 bool img_cached(const char *url) {
     if (!url || !*url) return false;
     for (Image *im = img_list; im; im = im->next)
-        if (!strcmp(im->url, url)) return im->state == IMG_READY && im->pixels;
+        if (!strcmp(im->url, url) && im->state == IMG_READY && im->pixels) return true; /* else: on disk? */
     if (strncmp(url, "http", 4)) return access(url, R_OK) == 0;
     char path[256];
     snprintf(path, sizeof path, "/tmp/tvimg/%016lx", hash_str(url));
@@ -874,19 +989,11 @@ bool img_export_bgra(const char *url, const char *path, int maxw, int maxh, int 
 bool img_export_bgra_ex(const char *url, const char *path, int maxw, int maxh, int *ow, int *oh, bool hdr) {
     if (hdr) hdr_init_lut();
     if (!url || !*url) return false;
-    unsigned char *px = NULL;
+    /* any thread: never looks at the image list (main thread only); fetched from /tmp/tvimg when it was shown before */
     int w = 0, h = 0;
-    bool owned = false;
-    for (Image *im = img_list; im; im = im->next)
-        if (!strcmp(im->url, url) && im->state == IMG_READY && im->pixels) { px = im->pixels; w = im->w; h = im->h; break; }
-    if (!px) { /* not in the cache yet: fetch synchronously (small image) */
-        Image tmp = {0};
-        tmp.url = (char *)url;
-        img_work(&tmp);
-        if (!tmp.pixels) return false;
-        px = tmp.pixels; w = tmp.w; h = tmp.h;
-        owned = true;
-    }
+    unsigned char *px = img_fetch(url, &w, &h, NULL);
+    if (!px) return false;
+    bool owned = true;
     float sc = fminf((float)maxw / w, (float)maxh / h);
     if (sc > 1) sc = 1;
     int dw = (int)(w * sc), dh = (int)(h * sc);
@@ -920,7 +1027,7 @@ void img_cache_trim(void) {
     Image **pp = &img_list;
     while (*pp) {
         Image *im = *pp;
-        if ((im->state != IMG_LOADING || im->skipped) && now - im->last_used > 60) {
+        if (!im->pending && (im->state != IMG_LOADING || im->skipped) && now - im->last_used > 60) {
             *pp = im->next;
             if (im->tex && im->gen == g_generation) SDL_DestroyTexture(im->tex);
             stbi_image_free(im->pixels);
@@ -1071,6 +1178,7 @@ void draw_icon(IconId id, float cx, float cy, float s, Color c) {
 
 /* ---------- Init ---------- */
 bool gfx_init(SDL_Renderer *r, int out_w, int out_h) {
+    hdr_init_lut(); /* once here, so image exports in other threads only read it */
     R = r;
     g_generation++;
     g_scale = (float)out_h / UI_H;
@@ -1107,8 +1215,12 @@ void draw_qr(const char *text, float x, float y, float size) {
     int n = qrcodegen_getSize(qr);
     float quiet = 2, cell = size / (n + quiet * 2);
     fill_rrect(x, y, size, size, 16, RGB(255, 255, 255));
-    for (int r = 0; r < n; r++)
-        for (int c = 0; c < n; c++)
-            if (qrcodegen_getModule(qr, c, r))
-                fill_rect(x + (c + quiet) * cell, y + (r + quiet) * cell, cell + 0.5f, cell + 0.5f, RGB(0, 0, 0));
+    for (int r = 0; r < n; r++) /* a run of dark modules in a row is one rectangle (was one call per module) */
+        for (int c = 0; c < n;) {
+            if (!qrcodegen_getModule(qr, c, r)) { c++; continue; }
+            int e = c;
+            while (e < n && qrcodegen_getModule(qr, e, r)) e++;
+            fill_rect(x + (c + quiet) * cell, y + (r + quiet) * cell, (e - c) * cell + 0.5f, cell + 0.5f, RGB(0, 0, 0));
+            c = e;
+        }
 }

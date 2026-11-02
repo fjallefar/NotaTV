@@ -9,9 +9,17 @@ CONFW=/data/notatv/wpa_supplicant.conf
 # even with a strong signal. Also set in dhcp-script after every (re)connection, where the driver may turn it on again.
 nopower() { command -v iw >/dev/null && iw dev $W set power_save off 2>/dev/null; return 0; }
 
+# the Wi-Fi rules (allowed channels and power) of the country chosen in the setup guide, not always Denmark's
+wifi_country() {
+	c=$(cfg_get tz_country DK | tr 'a-z' 'A-Z')
+	case "$c" in [A-Z][A-Z]) echo "$c" ;; *) echo DK ;; esac
+}
+
 ensure() {
 	[ -n "$W" ] || { echo "No Wi-Fi adapter found"; exit 1; }
-	[ -f $CONFW ] || printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=1\ncountry=DK\n' > $CONFW
+	[ -f $CONFW ] || printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=1\ncountry=%s\n' "$(wifi_country)" > $CONFW
+	c=$(wifi_country)
+	grep -q "^country=$c\$" $CONFW || { sed "s/^country=.*/country=$c/" $CONFW > $CONFW.new && mv $CONFW.new $CONFW; }
 	if ! wpa_cli -i $W ping >/dev/null 2>&1; then
 		ip link set $W up
 		wpa_supplicant -B -i $W -c $CONFW -D nl80211 >/dev/null 2>&1

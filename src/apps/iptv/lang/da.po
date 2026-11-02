@@ -306,3 +306,12 @@ msgstr "Se live-tv og kanaler fra din IPTV-udbyder"
 msgid "Recent channels"
 msgstr "Seneste kanaler"
 
+
+msgid "Big channel lists and program guides load much faster"
+msgstr "Store kanallister og programguider indlæses meget hurtigere"
+
+msgid "Channel groups and the program guide are matched in a fraction of the time"
+msgstr "Kanalgrupper og programguiden kobles på en brøkdel af tiden"
+
+msgid "The program guide is only downloaded again when it has changed"
+msgstr "Programguiden hentes kun igen, når den er ændret"

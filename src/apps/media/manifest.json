@@ -1,6 +1,6 @@
 {
   "id": "media",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "Media",
   "desc": "Movies, music and pictures from USB and network",
@@ -9,5 +9,11 @@
   "c2": [75, 42, 179],
   "fg": [255, 255, 255],
   "order": 90,
-  "default": true
+  "default": true,
+  "changes": {
+    "summary": "Folders with odd file names play correctly",
+    "points": [
+      "A file name with a line break no longer breaks the playlist of a folder"
+    ]
+  }
 }

@@ -1394,7 +1394,11 @@ static void login_update(Screen *s, float dt) {
         l->cfg_seen = app_cfg_gen();
         login_scan(l);
         const char *p = cfg_get("yt_profile", "");
-        if (*p && strcmp(p, l->last_prof)) { app_toast(T("Signed in as %s"), p); app_pop(); }
+        if (*p && strcmp(p, l->last_prof)) {
+            app_toast(T("Signed in as %s"), p);
+            if (app_close) app_close(s);
+            else if (app_top() == s) app_pop(); /* NotaTV 1.0.2 and older */
+        }
     }
 }
 
@@ -1602,7 +1606,7 @@ static bool yt_inbox(const char *name, const char *val) {
     return true;
 }
 const NotaApp nota_app = {
-    NOTA_API, "youtube", "YouTube", N_("Search and watch videos on YouTube"), "1.0.0", 40, 0,
+    NOTA_API, "youtube", "YouTube", N_("Search and watch videos on YouTube"), APP_VERSION, 40, 0,
     ICON_YOUTUBE, {229, 45, 39, 255}, {170, 18, 20, 255}, {255, 255, 255, 255},
     .open = youtube_screen, .init = ytcast_apply, .tick = ytcast_tick, .apply = ytcast_apply, .forget = youtube_forget_all,
     .settings = yt_items, .n_settings = sizeof yt_items / sizeof yt_items[0],

@@ -2,44 +2,27 @@
 # Phone page: receives forms and puts values into tvshell's inbox.
 # Replies and messages are English (translated on the page and on the TV); arguments after \037.
 # Protection: POST only, max 512 KB, PIN (chosen on the TV in the setup guide / Settings → Network),
-# lockout after 10 wrong PINs in 10 min. Server addresses, logins and cookies are only saved once they are
+# lockout after 10 wrong PINs in 10 min (libexec/notatv/cgi.sh). Server addresses, logins and cookies are only saved once they are
 # approved on the TV (tvshell shows a confirmation dialog).
+. /usr/libexec/notatv/cgi.sh
 IN=/tmp/notatv-inbox
-CONF=/data/notatv/notatv.conf
-FAIL=/tmp/notatv-phone-fail
 MAX=524288
-
-reply() { printf 'Status: %s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\n' "$1" "$2"; exit 0; }
-cfg() { sed -n "s/^$1=//p" "$CONF" 2>/dev/null | head -1; }
 
 [ "$REQUEST_METHOD" = POST ] || reply "405 Method Not Allowed" "Only POST"
 len=${CONTENT_LENGTH:-0}
 case "$len" in ''|*[!0-9]*) reply "411 Length Required" "Missing length" ;; esac
 [ "$len" -le $MAX ] || reply "413 Payload Too Large" "Too large (max. 512 KB)"
 [ "$(cfg phone_enabled)" = 0 ] && reply "403 Forbidden" "The phone page is turned off on the TV"
-pin=$(cfg phone_pin)
-[ -n "$pin" ] || reply "403 Forbidden" "Choose a code on the TV first: Settings → Network → Phone page"
 
 # the sender's address for messages on the TV: "[::ffff:10.0.0.5]" -> "10.0.0.5"
 FROM=$(echo "$REMOTE_ADDR" | sed 's/^\[//; s/\]$//; s/^::ffff://')
-now=$(date +%s)
-# lockout: attempts older than 10 min do not count
-if [ -f "$FAIL" ]; then
-	awk -v n="$now" '$1 > n - 600' "$FAIL" > "$FAIL.tmp" 2>/dev/null; mv "$FAIL.tmp" "$FAIL"
-	[ "$(wc -l < "$FAIL")" -ge 10 ] && reply "429 Too Many Requests" "Too many wrong codes - try again in 10 minutes"
-fi
-
 mkdir -p $IN
 data=$(head -c "$len")
-urldecode() { printf '%b' "$(echo "$1" | sed 's/+/ /g; s/%\([0-9A-Fa-f][0-9A-Fa-f]\)/\\x\1/g')"; }
 getval() { echo "$data" | tr '&' '\n' | grep "^$1=" | head -1 | cut -d= -f2-; }
 toast() { printf '%s\n' "$1" > $IN/.t.tmp && mv $IN/.t.tmp $IN/_toast; }
 
-if [ "$(urldecode "$(getval _pin)")" != "$pin" ]; then
-	echo "$now" >> "$FAIL"
-	n=$(wc -l < "$FAIL")
-	[ "$n" -ge 3 ] && toast "$(printf 'Wrong code from the phone page (%%s)\037%s' "$FROM")"
-	sleep 1
+if ! pin_check "$(urldecode "$(getval _pin)")"; then
+	[ "$WRONG" -ge 3 ] && toast "$(printf 'Wrong code from the phone page (%%s)\037%s' "$FROM")"
 	reply "401 Unauthorized" "Wrong code"
 fi
 

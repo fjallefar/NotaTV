@@ -256,7 +256,14 @@ void kms_present_frame(SDL_Renderer *ren) {
     glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)rf);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)df);
     if (sc) glEnable(GL_SCISSOR_TEST);
-    glFinish(); /* the GPU must be done before the display reads the buffer */
+    /* The display must not show the buffer before the GPU is done. vc4 (display) waits for v3d's fence on the buffer
+       by itself before the flip (implicit sync), so glFlush is enough and the CPU can start on the next frame
+       meanwhile. kms_finish=1 in notatv.conf goes back to glFinish (stalls the CPU every frame), should a TV show
+       torn frames. */
+    static int finish = -1;
+    if (finish < 0) finish = cfg_int("kms_finish", 0) != 0;
+    if (finish) glFinish();
+    else glFlush();
     wait_flip(); /* at most one page flip at a time (= vsync) */
     drmModeAtomicReq *rq = drmModeAtomicAlloc();
     drmModeAtomicAddProperty(rq, K.plane, K.p_fb, b->fb);

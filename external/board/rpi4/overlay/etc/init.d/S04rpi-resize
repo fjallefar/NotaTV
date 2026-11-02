@@ -1,7 +1,8 @@
 #!/bin/sh
 # NotaTV Pi: grow the data partition (NOTADATA, last partition) to the rest of the drive on first boot (SD or USB)
 [ "$1" = start ] || exit 0
-dev=$(findfs LABEL=NOTADATA 2>/dev/null) || exit 0
+. /usr/libexec/notatv/lib.sh
+dev=$(data_dev) || exit 0 # only on the system's own disk (never a USB stick with the same label)
 P=${dev##*/}
 [ -e /sys/class/block/$P/partition ] || exit 0
 N=$(cat /sys/class/block/$P/partition)

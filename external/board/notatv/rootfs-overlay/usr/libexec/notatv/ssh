@@ -1,11 +1,40 @@
 #!/bin/sh
-# developer mode: on | off  (host keys are stored on the data partition)
+# developer mode: on | off | password  (host keys and the password are stored on the data partition)
+#   on        start dropbear; root's password is the box's own random password (made the first time)
+#   password  print that password (made if there is none yet) - shown in Settings → System while it is on
+# The password is never the same on two boxes and is not written anywhere else, so nobody on the network can log
+# in just because they know NotaTV. The image's own root password is only for the serial console.
+PW=/data/notatv/ssh-password
+
+password() {
+	if [ ! -s $PW ]; then
+		mkdir -p /data/notatv
+		p=$(tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' < /dev/urandom 2>/dev/null | head -c 10)
+		[ ${#p} = 10 ] || return 1
+		(umask 077; printf '%s\n' "$p" > $PW.$$) && { ln $PW.$$ $PW 2>/dev/null; rm -f $PW.$$; } # ln: the first one wins
+	fi
+	cat $PW
+}
+
+# root's entry in /etc/shadow gets the password (only rewritten when it is not already that password)
+set_root() {
+	p=$(password) || return 1
+	cur=$(awk -F: '$1 == "root" { print $2 }' /etc/shadow)
+	salt=$(echo "$cur" | awk -F'$' 'NF >= 4 { print $3 }')
+	[ -n "$salt" ] && [ "$(mkpasswd -m sha512 "$p" "$salt" 2>/dev/null)" = "$cur" ] && return 0
+	h=$(mkpasswd -m sha512 "$p" 2>/dev/null) && [ -n "$h" ] || return 1
+	awk -F: -v OFS=: -v h="$h" '$1 == "root" { $2 = h } { print }' /etc/shadow > /etc/shadow.new &&
+		chmod 600 /etc/shadow.new && mv /etc/shadow.new /etc/shadow
+}
+
 case "$1" in
 on)
 	mkdir -p /data/notatv/dropbear
 	# /etc/dropbear -> /data/notatv/dropbear is set in the image (post-build), so the rootfs is not changed here
 	[ -s /data/notatv/dropbear/dropbear_ed25519_host_key ] || { rm -f /data/notatv/dropbear/dropbear_ed25519_host_key; dropbearkey -t ed25519 -f /data/notatv/dropbear/dropbear_ed25519_host_key >/dev/null 2>&1; }
+	set_root || { echo "Could not set the SSH password"; exit 1; }
 	pidof dropbear >/dev/null || dropbear -R -p 22
 	;;
 off) killall -q dropbear ;;
+password) password ;;
 esac

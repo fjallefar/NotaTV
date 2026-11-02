@@ -323,6 +323,7 @@ static void draw_apps(const Setup *v, float x, float y, float a) {
         snprintf(t, sizeof t, T("Installing apps… %d of %d"), done + 1 > total ? total : done + 1, total);
         text_draw(F_BOLD, 34, x + 140, y + 54, color_alpha(C_TEXT, a), AL_LEFT, t);
         text_draw_clip(F_REG, 28, x + 140, y + 108, RIGHT_W - 180, color_alpha(C_TEXT2, a), AL_LEFT, cur);
+        text_draw(F_REG, 22, x + 40, y + 216, color_alpha(C_TEXT3, a), AL_LEFT, T("Back: continue - the apps keep downloading"));
         fill_rrect(x + 40, y + 164, RIGHT_W - 80, 8, 4, RGBA(255, 255, 255, (uint8_t)(30 * a)));
         if (total) fill_rrect(x + 40, y + 164, (RIGHT_W - 80) * done / total, 8, 4, color_alpha(C_ACCENT, a));
         return;
@@ -511,7 +512,12 @@ static bool apps_nav(Setup *v, const InputEvent *ev) {
 static bool setup_input(Screen *s, const InputEvent *ev) {
     Setup *v = s->st;
     if (ev->a == A_BACK) {
-        if (v->installing) return true;
+        if (v->installing) { /* do not wait (a slow connection can take long): the downloads go on in the background */
+            v->installing = false;
+            app_toast(T("The apps keep downloading in the background"));
+            next_step(v);
+            return true;
+        }
         if (v->step > 0) go(v, v->step - 1);
         else if (cfg_int("setup_done", 0)) app_pop(); /* run again from Settings: Back on the first step leaves */
         return true;

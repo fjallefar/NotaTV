@@ -21,7 +21,29 @@ mask() {
 		-e 's#"(access_token|refresh_token|AccessToken|token|authToken|password|Pw|api_key|apiKey)" *: *"[^"]*"#"\1":"***"#g' \
 		-e 's#/(live|movie|series|timeshift)/[^/ ]+/[^/ ]+/#/\1/***/***/#g' \
 		-e 's#(://)[^/@ :]+:[^/@ ]+@#\1***:***@#g' \
-		-e 's#(Cookie: *)[^"]*#\1***#g'
+		-e 's#(Cookie: *)[^"]*#\1***#g' \
+		-e 's#(-pin +)[0-9]{4}#\1****#g' |
+	secrets
+}
+
+# the secret values saved in the settings (Xtream login, tokens, passwords ...) wherever they appear, also where
+# no pattern catches them (e.g. the short Xtream address http://server:port/<user>/<password>/<id>)
+secrets() {
+	awk -v conf="$CONF" '
+		BEGIN {
+			while ((getline line < conf) > 0) {
+				k = tolower(substr(line, 1, index(line, "=") - 1)); v = substr(line, index(line, "=") + 1)
+				if (k ~ /token|pass|key|secret|cookie|xtream_user|_user$|apikey/ && length(v) >= 5) s[++n] = v
+			}
+		}
+		{
+			for (i = 1; i <= n; i++) {
+				out = ""; rest = $0
+				while ((p = index(rest, s[i])) > 0) { out = out substr(rest, 1, p - 1) "***"; rest = substr(rest, p + length(s[i])) }
+				$0 = out rest
+			}
+			print
+		}'
 }
 
 # settings: names and values, except the secret ones and account details

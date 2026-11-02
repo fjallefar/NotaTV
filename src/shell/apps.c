@@ -6,6 +6,7 @@
  *
  * App packages: a folder per app, named after its id, with
  *   manifest.json   {"id": "twitch", "version": "1.0.0", "api": 2, "name": ..., "icon": ..., ...}
+ *                   (the version here is the app's version; src/apps/Makefile gives it to the code as APP_VERSION)
  *   app.so          exports `const NotaApp nota_app`
  *   lang/<code>.po  the app's own translations (optional)
  * NotaTV comes without apps: they are downloaded from the App Store (appcat.c) into <data>/apps-pkg/<id>/ and
@@ -44,6 +45,8 @@ typedef struct {
     const NotaApp *a;
     char pkg[256];   /* package folder ("" = built in) */
     char data[300];  /* <data>/apps/<id> */
+    char ver[24];    /* the version that runs: from manifest.json (app.so of older packages has "1.0.0" fixed) */
+    char next[24];   /* a newer version downloaded while this one ran: used after a restart ("" = none) */
     bool inited;
 } Entry;
 static Entry reg[MAX_APPS];
@@ -67,11 +70,13 @@ static bool id_ok(const char *id) {
     return true;
 }
 
-static void add(const NotaApp *a, const char *pkg) {
+static void add(const NotaApp *a, const char *pkg, const char *ver) {
     if (n_reg >= MAX_APPS || !id_ok(a->id) || app_find(a->id)) return;
     Entry *e = &reg[n_reg++];
+    memset(e, 0, sizeof *e);
     e->a = a;
     snprintf(e->pkg, sizeof e->pkg, "%s", pkg ? pkg : "");
+    snprintf(e->ver, sizeof e->ver, "%s", ver && *ver ? ver : a->version ? a->version : "");
     snprintf(e->data, sizeof e->data, "%s/apps/%s", data_dir(), a->id);
     /* sorted by order (stable: the same order keeps the order they were added in) */
     for (int i = n_reg - 1; i > 0 && reg[i - 1].a->order > reg[i].a->order; i--) {
@@ -79,29 +84,17 @@ static void add(const NotaApp *a, const char *pkg) {
     }
 }
 
-static char *read_file(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char *b = n >= 0 && n < (1 << 16) ? malloc(n + 1) : NULL;
-    if (b && fread(b, 1, n, f) != (size_t)n) { free(b); b = NULL; }
-    if (b) b[n] = 0;
-    fclose(f);
-    return b;
-}
-
 /* one package folder: check the manifest, load app.so and register the app it exports */
 static const NotaApp *load_pkg(const char *dir, const char *name) {
     const NotaApp *got = NULL;
     char path[512];
     snprintf(path, sizeof path, "%s/manifest.json", dir);
-    char *txt = read_file(path);
+    char *txt = file_read_all(path, 1 << 16);
     cJSON *m = txt ? cJSON_Parse(txt) : NULL;
     free(txt);
     if (!m) { SDL_Log("app %s: no manifest.json", dir); return NULL; }
     const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(m, "id"));
+    const char *ver = cJSON_GetStringValue(cJSON_GetObjectItem(m, "version"));
     int api = cJSON_GetNumberValue(cJSON_GetObjectItem(m, "api"));
     if (!id_ok(id) || strcmp(id, name)) SDL_Log("app %s: the id in manifest.json must be the folder name", dir);
     else if (api != NOTA_API) SDL_Log("app %s: built for app API %d, this NotaTV has %d - skipped", id, api, NOTA_API);
@@ -116,10 +109,10 @@ static const NotaApp *load_pkg(const char *dir, const char *name) {
             dlclose(h);
         } else {
             i18n_load_extra(dir);
-            add(a, dir);
+            add(a, dir, ver);
             got = a;
             gen++;
-            SDL_Log("app %s %s loaded from %s", id, a->version ? a->version : "", dir);
+            SDL_Log("app %s %s loaded from %s", id, app_version(a), dir);
         }
     }
     cJSON_Delete(m);
@@ -156,7 +149,7 @@ static void scan(const char *root) {
 
 void apps_init(void) {
     static const NotaApp *const builtin[] = {&app_appstore, &app_settings};
-    for (size_t i = 0; i < sizeof builtin / sizeof builtin[0]; i++) add(builtin[i], NULL);
+    for (size_t i = 0; i < sizeof builtin / sizeof builtin[0]; i++) add(builtin[i], NULL, NULL);
     scan(apps_pkg_root()); /* downloaded from the App Store */
     const char *env = getenv("TVSHELL_APPS");
     if (env && *env) {
@@ -183,6 +176,12 @@ bool app_installed(const NotaApp *a) {
 bool app_on(const char *id) { return app_installed(app_find(id)); }
 bool app_packaged(const NotaApp *a) { Entry *e = entry(a); return e && e->pkg[0]; }
 const char *app_pkg_dir(const NotaApp *a) { Entry *e = entry(a); return e ? e->pkg : ""; }
+const char *app_version(const NotaApp *a) { Entry *e = entry(a); return e ? e->ver : ""; }
+const char *app_next_version(const NotaApp *a) { Entry *e = entry(a); return e ? e->next : ""; }
+void app_set_next_version(const NotaApp *a, const char *ver) {
+    Entry *e = entry(a);
+    if (e) snprintf(e->next, sizeof e->next, "%s", ver && strcmp(ver, e->ver) ? ver : "");
+}
 
 const char *app_data(const NotaApp *a) {
     Entry *e = entry(a);
@@ -246,6 +245,7 @@ void app_uninstall(const NotaApp *a) {
     }
     struct stat st;
     if (stat(e->data, &st) == 0) { wipe_dir(e->data); rmdir(e->data); }
+    e->next[0] = 0;
     wipe_session_traces();
     /* the downloaded package goes too (deleted, never overwritten: its app.so stays mapped until the next start) */
     size_t rl = strlen(apps_pkg_root());

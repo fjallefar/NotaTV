@@ -1,6 +1,6 @@
 {
   "id": "seerr",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "api": 2,
   "name": "Seerr",
   "desc": "Find and request movies and shows for Plex",
@@ -9,5 +9,12 @@
   "c2": [55, 48, 163],
   "fg": [255, 255, 255],
   "order": 60,
-  "default": true
+  "default": true,
+  "changes": {
+    "summary": "Signing out removes the whole session",
+    "points": [
+      "After you sign out, the old login is no longer kept in memory or written back to the box",
+      "Settings say where the Netflix Top 10 row comes from"
+    ]
+  }
 }

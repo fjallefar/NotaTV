@@ -1,6 +1,6 @@
 #!/bin/sh
 # Updating NotaTV on Raspberry Pi from GitHub releases.
-#   check     "NY <version>" | "NYESTE <version>" | error text
+#   check     "NY <version>" | "NYESTE <version>" | error text; the release (JSON) is saved in /tmp/notatv-update-release.json
 #   install   download, verify and install crash-safe; prints "OK" (reboot afterwards)
 #   rollback  put back the files the last update replaced; prints "OK" (reboot afterwards)
 #             (also run automatically by session if the user interface keeps crashing right after an update)
@@ -20,6 +20,11 @@
 #   (/usr/share/notatv/files.list) says NotaTV put it there
 # - writes never go through a symlink that leads out of the root filesystem (e.g. /root/.config -> /data)
 # - the boot partition is the first partition of the disk the root filesystem is on (never another disk)
+# - the kernel set (Image, *.dtb, overlays/) is never changed file by file: there are two sets, one in the root
+#   of the boot partition and one in nota-b/, and the firmware uses the one notatv-slot.txt names (os_prefix,
+#   included from config.txt). An update fills the set that is not in use and then switches with one write of
+#   that small file (same size, one sector). A power cut leaves either the old or the new set complete, and
+#   "Undo last update" switches back. Firmware files (start4.elf, fixup4.dat) are replaced as before.
 . /usr/libexec/notatv/lib.sh
 
 ASSET=notatv-rpi4-update.tar.gz
@@ -31,7 +36,9 @@ BST=.notatv-new                 # staged files on the boot partition ($BOOT/$BST
 LIST=/usr/share/notatv/files.list
 VERIFY=/data/notatv/update-verify
 STATE=/tmp/notatv-update-state  # progress for the user interface: "<percent>" or "dl <bytes total> <file>"
-KEEP_BOOT='config.txt cmdline.txt tryboot.txt'
+KEEP_BOOT='config.txt cmdline.txt tryboot.txt notatv-slot.txt'
+SLOTF=notatv-slot.txt           # on the boot partition: which kernel set the firmware loads
+SLOTB=nota-b/                   # the second kernel set (the first is in the root)
 
 die() { log "update: $*"; echo "$*"; exit 1; }
 state() { echo "$*" > $STATE; }
@@ -56,6 +63,22 @@ newer() {
 	awk -v a="$1" -v b="$2" 'BEGIN { n = split(a, x, "."); m = split(b, y, "."); if (m > n) n = m
 		for (i = 1; i <= n; i++) { if (x[i] + 0 > y[i] + 0) exit 0; if (x[i] + 0 < y[i] + 0) exit 1 } exit 1 }'
 }
+# dir_of path: the folder of a relative path ("Image" -> ".", "overlays/x.dtbo" -> "overlays").
+# Not "${f%/*}": for a name without "/" that gives the name itself, so "mkdir -p" made a FOLDER named after the
+# file (1.0.0/1.0.1: the kernel was staged as .notatv-new/Image/Image and the update could never finish)
+dir_of() { case "$1" in */*) echo "${1%/*}" ;; *) echo . ;; esac; }
+# a file the old updater (1.0.0/1.0.1) put one folder too deep (X/X): the real file
+legacy() { if [ -d "$1" ] && [ ! -L "$1" ] && [ -f "$1/${1##*/}" ]; then echo "$1/${1##*/}"; else echo "$1"; fi; }
+# undo that in a whole tree (staging, backup): X/X -> X
+unnest() {
+	[ -d "$1" ] || return 0
+	find "$1" -mindepth 1 -type d | sort -r | while IFS= read -r d; do
+		n=${d##*/}
+		[ -f "$d/$n" ] && [ "$(ls -A "$d" | wc -l)" = 1 ] || continue
+		mv "$d/$n" "$d.unnest" && rmdir "$d" && mv "$d.unnest" "$d"
+	done
+}
+
 free_kb() { df -Pk "$1" 2>/dev/null | awk 'NR == 2 { print $4 }'; }
 size_kb() { du -sk "$1" 2>/dev/null | awk '{ print $1 }'; }
 
@@ -120,14 +143,58 @@ safe_target() {
 
 # put staged file $1 at $2 with one rename; a symlink at $2 is replaced, never followed
 place() {
-	mkdir -p "${2%/*}" || return 1
+	d=${2%/*}; [ -n "$d" ] || d=/
+	mkdir -p "$d" || return 1
 	[ -L "$2" ] && { rm -f "$2" || return 1; }
 	mv -f "$1" "$2"
 }
 
+# ---------------------------------------------------------------- kernel sets
+kset() { case "$1" in Image|*.dtb|overlays/*) return 0 ;; esac; return 1; } # part of the kernel set?
+# the set in use: "" (root) or "nota-b/" - only when config.txt really includes the slot file
+active_slot() {
+	grep -q "^include $SLOTF" "$BOOT/config.txt" 2>/dev/null || { echo ""; return; }
+	sed -n 's/^os_prefix=\(.*\)$/\1/p' "$BOOT/$SLOTF" 2>/dev/null | head -1
+}
+other_slot() { [ "$1" = "$SLOTB" ] && echo "" || echo "$SLOTB"; }
+# the slot file, always 128 bytes: rewritten in place it is one sector on the card
+slot_text() {
+	{ if [ -n "$1" ]; then printf 'os_prefix=%s\n' "$1"; else printf '# kernel set: the root of the boot partition\n'; fi
+	  printf '# written by the NotaTV updater - do not edit\n'; } | awk '{ s = s $0 "\n" } END { printf "%s", s; for (i = length(s); i < 127; i++) printf "#"; printf "\n" }'
+}
+set_slot() {
+	f="$BOOT/$SLOTF"
+	if [ -f "$f" ] && [ "$(wc -c < "$f")" = 128 ]; then
+		slot_text "$1" | dd of="$f" bs=128 count=1 conv=notrunc 2>/dev/null || return 1
+	else
+		slot_text "$1" > "$f.new" && mv -f "$f.new" "$f" || return 1
+	fi
+	sync
+}
+# a box from before the kernel sets: the slot file (root set) first, then config.txt includes it - both boot the
+# same way, whichever state a power cut leaves
+slot_migrate() {
+	grep -q "^include $SLOTF" "$BOOT/config.txt" 2>/dev/null && return 0
+	[ -f "$BOOT/$SLOTF" ] || set_slot "" || return 1
+	{ cat "$BOOT/config.txt"; printf '\n[all]\n# the kernel set in use (the NotaTV updater switches it)\ninclude %s\n' "$SLOTF"; } > "$BOOT/config.txt.new" &&
+		sync && mv -f "$BOOT/config.txt.new" "$BOOT/config.txt" && sync || return 1
+	# an overclock test waiting for its tryboot (libexec/notatv/oc) must load the same set
+	if [ -f "$BOOT/tryboot.txt" ] && ! grep -q "^include $SLOTF" "$BOOT/tryboot.txt"; then
+		{ cat "$BOOT/tryboot.txt"; printf '\n[all]\ninclude %s\n' "$SLOTF"; } > "$BOOT/tryboot.txt.new" &&
+			mv -f "$BOOT/tryboot.txt.new" "$BOOT/tryboot.txt"
+	fi
+	sync
+}
+# remove the kernel set at prefix $1 (never the one in use)
+kset_clear() {
+	if [ -n "$1" ]; then rm -rf "$BOOT/$1"
+	else rm -rf "$BOOT/Image" "$BOOT/overlays"; rm -f "$BOOT"/*.dtb; fi
+}
+
 # ---------------------------------------------------------------- journal
 # $ST/root.list   files to put in place, staged in $ST/new/<path>
-# $ST/boot.list   files to put on the boot partition, staged in $BOOT/$BST/<path>
+# $ST/boot.list   firmware files to put on the boot partition, staged in $BOOT/$BST/<path>
+# $ST/slot        the kernel set to switch to ("" or nota-b/, already complete on the boot partition)
 # $ST/remove.list files to delete
 # $ST/boot-remove.list files to delete on the boot partition (rollback of files an update added)
 # $ST/version     the version being installed (for the log)
@@ -141,7 +208,12 @@ discard() { # throw away an unfinished staging (nothing on the system was change
 }
 
 apply() { # finish a committed change; can be run again any number of times
-	if [ -s "$ST/boot.list" ] || [ -s "$ST/boot-remove.list" ]; then mount_boot || return 1; fi
+	if [ -s "$ST/boot.list" ] || [ -s "$ST/boot-remove.list" ] || [ -f "$ST/slot" ]; then mount_boot || return 1; fi
+	# the kernel set first: one small write
+	if [ -f "$ST/slot" ]; then
+		want=$(cat "$ST/slot")
+		[ "$(active_slot)" = "$want" ] || set_slot "$want" || return 1
+	fi
 	while IFS= read -r f; do
 		[ -e "$ST/new/$f" ] || [ -L "$ST/new/$f" ] || continue # already in place
 		place "$ST/new/$f" "/$f" || return 1
@@ -149,7 +221,8 @@ apply() { # finish a committed change; can be run again any number of times
 	if [ -s "$ST/boot.list" ]; then
 		while IFS= read -r f; do
 			[ -e "$BOOT/$BST/$f" ] || continue
-			mkdir -p "$BOOT/${f%/*}" && mv -f "$BOOT/$BST/$f" "$BOOT/$f" || return 1
+			src=$(legacy "$BOOT/$BST/$f") # staged by 1.0.0/1.0.1 as X/X
+			mkdir -p "$BOOT/$(dir_of "$f")" && mv -f "$src" "$BOOT/$f" || return 1
 		done < "$ST/boot.list"
 	fi
 	[ -s "$ST/boot-remove.list" ] && while IFS= read -r f; do
@@ -162,18 +235,18 @@ apply() { # finish a committed change; can be run again any number of times
 	done < "$ST/remove.list"
 	sync
 	rm -rf "$BOOT/$BST"; umount_boot
-	log "update: $(cat "$ST/version" 2>/dev/null) is in place"
+	log "update: $(cat "$ST/version" 2>/dev/null) is in place$([ -f "$ST/slot" ] && echo " (kernel set: /$(cat "$ST/slot"))")"
 	rm -rf "$ST"; sync
 }
 
 # stage SRC: stage the files listed in $ST/root.list from SRC/rootfs and $ST/boot.list from SRC/boot
 stage() {
 	while IFS= read -r f; do
-		mkdir -p "$ST/new/${f%/*}" && cp -a "$1/rootfs/$f" "$ST/new/$f" || return 1
+		mkdir -p "$ST/new/$(dir_of "$f")" && cp -a "$1/rootfs/$f" "$ST/new/$f" || return 1
 	done < "$ST/root.list"
 	if [ -s "$ST/boot.list" ]; then
 		while IFS= read -r f; do
-			mkdir -p "$BOOT/$BST/${f%/*}" && cp "$1/boot/$f" "$BOOT/$BST/$f" || return 1
+			mkdir -p "$BOOT/$BST/$(dir_of "$f")" && cp "$1/boot/$f" "$BOOT/$BST/$f" || return 1
 		done < "$ST/boot.list"
 	fi
 	sync
@@ -280,14 +353,28 @@ install() {
 		done > "$ST/remove.list"
 	fi
 	bneed=0
+	slot_migrate || { discard 1; die "The update could not be installed - nothing was changed"; }
+	CURSLOT=$(active_slot); NEWSLOT=$(other_slot "$CURSLOT")
 	(cd $N/boot && find . ! -type d) | sed 's,^\./,,' | while IFS= read -r f; do
 		case " $KEEP_BOOT " in *" $f "*) continue ;; esac
 		case "$f" in ''|/*|*..*) continue ;; esac
+		kset "$f" && continue # the kernel set goes in as a whole (below)
 		cmp -s "$N/boot/$f" "$BOOT/$f" || echo "$f"
 	done > "$ST/boot.list"
 	while IFS= read -r f; do bneed=$((bneed + $(size_kb "$N/boot/$f") + 4)); done < "$ST/boot.list"
+	# a new kernel set only if something in it differs from the set in use
+	(cd $N/boot && find . ! -type d) | sed 's,^\./,,' | while IFS= read -r f; do
+		kset "$f" && ! cmp -s "$N/boot/$f" "$BOOT/$CURSLOT$f" && echo "$f"
+	done > $DL/kset.diff
+	kneed=0
+	if [ -s $DL/kset.diff ]; then
+		kneed=$(du -sk $N/boot | awk '{ print $1 }')
+		kfree=$(( $(free_kb $BOOT) + $(cd "$BOOT" && du -sk ${NEWSLOT:-Image overlays} ${NEWSLOT:+} 2>/dev/null | awk '{ s += $1 } END { print s + 0 }') ))
+		[ -z "$NEWSLOT" ] && kfree=$((kfree + $(du -sk "$BOOT"/*.dtb 2>/dev/null | awk '{ s += $1 } END { print s + 0 }')))
+		[ "$kfree" -gt $((kneed + bneed + 1024)) ] 2>/dev/null || { discard 1; die "Not enough free space for the update"; }
+	fi
 	[ "$(free_kb /)" -gt $((need + 20000)) ] 2>/dev/null || { discard 1; die "Not enough free space for the update"; }
-	[ "$(free_kb $BOOT)" -gt $((bneed + 1024)) ] 2>/dev/null || { discard 1; die "Not enough free space for the update"; }
+	[ "$(free_kb $BOOT)" -gt $((bneed + 1024)) ] 2>/dev/null || [ -s $DL/kset.diff ] || { discard 1; die "Not enough free space for the update"; }
 
 	# backup of everything that will be replaced or removed (for rollback)
 	state 97
@@ -297,17 +384,29 @@ install() {
 	ok=1
 	cat "$ST/root.list" "$ST/remove.list" | while IFS= read -r f; do
 		if [ -e "/$f" ] || [ -L "/$f" ]; then
-			mkdir -p "$BK/root/${f%/*}" && cp -a "/$f" "$BK/root/$f" || exit 1
+			mkdir -p "$BK/root/$(dir_of "$f")" && cp -a "/$f" "$BK/root/$f" || exit 1
 		else echo "$f" >> $BK/added.list; fi
 	done || ok=
 	while IFS= read -r f; do
-		if [ -e "$BOOT/$f" ]; then mkdir -p "$BK/boot/${f%/*}" && cp "$BOOT/$f" "$BK/boot/$f" || { ok=; break; }
+		if [ -e "$BOOT/$f" ]; then mkdir -p "$BK/boot/$(dir_of "$f")" && cp "$BOOT/$f" "$BK/boot/$f" || { ok=; break; }
 		else echo "$f" >> $BK/boot-added.list; fi
 	done < "$ST/boot.list"
 	echo "$CUR" > $BK/version
+	printf '%s\n' "$CURSLOT" > $BK/slot # the old kernel set stays complete: "Undo" switches back to it
 	[ -n "$ok" ] || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }
 
 	# stage, commit, switch
+	if [ -s $DL/kset.diff ]; then # the new kernel set, complete, in the set that is not in use
+		kset_clear "$NEWSLOT"
+		(cd $N/boot && find . ! -type d) | sed 's,^\./,,' | while IFS= read -r f; do
+			kset "$f" || continue
+			mkdir -p "$BOOT/$NEWSLOT$(dir_of "$f")" && cp "$N/boot/$f" "$BOOT/$NEWSLOT$f" || exit 1
+		done || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }
+		# the firmware reads cmdline.txt from the set too (os_prefix)
+		[ -n "$NEWSLOT" ] && { cp "$BOOT/cmdline.txt" "$BOOT/${NEWSLOT}cmdline.txt" || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }; }
+		sync
+		printf '%s' "$NEWSLOT" > "$ST/slot"
+	fi
 	stage $N || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }
 	sync
 	commit "$VER" || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }
@@ -324,6 +423,7 @@ install() {
 rollback() {
 	data_ok
 	[ -f $BK/version ] && [ -d $BK/root ] || die "No earlier version saved"
+	unnest $BK/boot # a backup made by 1.0.0/1.0.1 has the kernel as Image/Image
 	[ -e "$ST/COMMIT" ] && { apply || die "Restart the box to finish the previous update"; }
 	discard
 	mount_boot || die "The boot partition was not found"
@@ -333,7 +433,16 @@ rollback() {
 	while IFS= read -r f; do
 		{ [ -L "/$f" ] || [ -f "/$f" ]; } && safe_target "$f" && echo "$f"
 	done < $BK/added.list > "$ST/remove.list"
-	(cd $BK/boot && find . ! -type d) | sed 's,^\./,,' > "$ST/boot.list"
+	# a backup from an updater without kernel sets has the kernel among its files: put back like the rest
+	(cd $BK/boot && find . ! -type d) | sed 's,^\./,,' | while IFS= read -r f; do
+		[ -f $BK/slot ] && kset "$f" && continue
+		echo "$f"
+	done > "$ST/boot.list"
+	# the kernel set from before the update is still complete: switch back to it
+	if [ -f $BK/slot ]; then
+		old=$(cat $BK/slot)
+		[ -s "$BOOT/${old}Image" ] && [ "$(active_slot)" != "$old" ] && printf '%s' "$old" > "$ST/slot"
+	fi
 	cp $BK/boot-added.list "$ST/boot-remove.list" 2>/dev/null
 	mkdir -p $ST/src && ln -s $BK/root $ST/src/rootfs && ln -s $BK/boot $ST/src/boot || { discard 1; die "The update could not be installed - nothing was changed"; }
 	stage $ST/src || { discard 1; die "The update could not be installed - nothing was changed"; }
@@ -349,21 +458,35 @@ rollback() {
 resume() {
 	if [ -e "$ST/COMMIT" ]; then
 		printf "%s\n" "NotaTV: finishing the update" > /dev/console
-		apply || log "update: could not finish the update at boot"
+		kernel=; { [ -s "$ST/boot.list" ] || [ -f "$ST/slot" ]; } && kernel=1
+		if apply; then
+			# the kernel/firmware changed: start once more, so the box runs the new one (not the old one with new files)
+			[ -n "$kernel" ] && { log "update: boot files changed - restarting"; sync; reboot; sleep 30; }
+		else
+			log "update: could not finish the update at boot"
+		fi
 	elif [ -d "$ST" ]; then
 		discard
 	fi
 	# leftovers from the first updater (1.0.0/1.0.1): it left "*.tvnew" symlinks inside folders that
 	# symlinks point to, a full copy of the system as backup, and half-copied files after a power cut
 	if [ -d $BK ] && [ ! -f $BK/version ]; then rm -rf $BK; fi
-	find / -xdev -name '*.tvnew' ! -type d -exec rm -f {} \; 2>/dev/null
-	data_mounted && find /data/notatv -maxdepth 3 -name '*.tvnew' -type l -exec rm -f {} \; 2>/dev/null
+	# (searched once per box, not at every boot: a flag in /data says it is done)
+	if ! [ -f /data/notatv/.tvnew-cleaned ]; then
+		find / -xdev -name '*.tvnew' ! -type d -exec rm -f {} \; 2>/dev/null
+		if data_mounted; then
+			find /data/notatv -maxdepth 3 -name '*.tvnew' -type l -exec rm -f {} \; 2>/dev/null
+			touch /data/notatv/.tvnew-cleaned
+		fi
+	fi
 	return 0
 }
 
 case "$1" in
 check)
 	latest
+	# the release (its text has the short "what is new" the update card shows, see CHANGELOG.md)
+	printf '%s' "$J" > /tmp/notatv-update-release.json.tmp && mv /tmp/notatv-update-release.json.tmp /tmp/notatv-update-release.json
 	if newer "$VER" "$(current)"; then echo "NY $VER"; else echo "NYESTE $(current)"; fi
 	;;
 install) lock; install ;;

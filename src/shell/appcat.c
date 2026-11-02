@@ -68,16 +68,6 @@ static const char *base_url(char *buf, size_t n) {
     return buf;
 }
 
-static char *sq(const char *s) { /* shell quoting */
-    size_t n = strlen(s);
-    char *o = malloc(n * 4 + 3), *w = o;
-    *w++ = '\'';
-    for (; *s; s++) { if (*s == '\'') { memcpy(w, "'\\''", 4); w += 4; } else *w++ = *s; }
-    *w++ = '\'';
-    *w = 0;
-    return o;
-}
-
 /* ---------- the catalog ---------- */
 CatState appcat_state(void) { return state; }
 const char *appcat_error(void) { return cat_err; }
@@ -104,11 +94,11 @@ static void cat_work(void *arg) {
     CatJob *j = arg;
     char url[400];
     if (!base_url(url, sizeof url)) { j->out = str_dup("No App Store is set up"); return; }
-    char *u = sq(url);
-    char *cmd = str_printf("%s/apppkg catalog %s %d 2>/dev/null", helper_path(), u, NOTA_API);
-    j->out = run_capture(cmd);
-    free(cmd);
-    free(u);
+    char prog[300], api[16];
+    snprintf(prog, sizeof prog, "%s/apppkg", helper_path());
+    snprintf(api, sizeof api, "%d", NOTA_API);
+    const char *argv[] = {prog, "catalog", url, api, NULL}; /* no shell in between */
+    j->out = run_capture_argv(argv);
 }
 static void cat_done(void *arg) {
     CatJob *j = arg;
@@ -139,7 +129,21 @@ static void cat_done(void *arg) {
             c->order = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(a, "order"));
             c->def = cJSON_IsTrue(cJSON_GetObjectItem(a, "default"));
             c->size = (long)cJSON_GetNumberValue(cJSON_GetObjectItem(a, "size"));
-            if (c->id[0] && c->file[0] && strlen(c->sha) == 64) n_cat++;
+            /* what is new: {"summary": "...", "points": ["...", ...]}, translated in i18n.<lang>.changes */
+            cJSON *ch = cJSON_GetObjectItem(tr, "changes");
+            if (!cJSON_IsObject(ch)) ch = cJSON_GetObjectItem(a, "changes");
+            snprintf(c->news, sizeof c->news, "%s", jstr(ch, "summary"));
+            cJSON *pt;
+            cJSON_ArrayForEach(pt, cJSON_GetObjectItem(ch, "points")) {
+                if (c->n_points >= 4) break;
+                if (cJSON_IsString(pt) && *pt->valuestring) snprintf(c->points[c->n_points++], sizeof c->points[0], "%s", pt->valuestring);
+            }
+            /* only what apppkg would take anyway: a plain id, a plain file name and a hex SHA256 */
+            bool ok = c->id[0] && strlen(c->id) <= 32 && c->file[0] && strlen(c->sha) == 64;
+            for (const char *p = c->id; ok && *p; p++) ok = (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '_';
+            for (const char *p = c->sha; ok && *p; p++) ok = (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f');
+            for (const char *p = c->file; ok && *p; p++) ok = (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || strchr("._-", *p);
+            if (ok) n_cat++;
         }
         state = CAT_OK;
         cat_err[0] = 0;
@@ -158,7 +162,14 @@ void appcat_refresh(void) {
 bool appcat_has_update(const char *id) {
     const NotaApp *a = app_find(id);
     const CatApp *c = appcat_find(id);
-    return a && c && app_installed(a) && version_cmp(c->version, a->version) > 0;
+    if (!a || !c || !app_installed(a)) return false;
+    const char *have = *app_next_version(a) ? app_next_version(a) : app_version(a); /* downloaded, waiting for a restart */
+    return version_cmp(c->version, have) > 0;
+}
+int appcat_updates(void) {
+    int n = 0;
+    for (int i = 0; i < appcat_count(); i++) if (appcat_has_update(cat[i].id)) n++;
+    return n;
 }
 bool appcat_restart_needed(void) { return restart_needed; }
 
@@ -185,10 +196,10 @@ bool appcat_busy(int *done, int *total, const char **current) {
 typedef struct { char id[40], url[400], file[128], sha[72]; char *out; } InstJob;
 static void inst_work(void *arg) {
     InstJob *j = arg;
-    char *u = sq(j->url), *d = sq(apps_pkg_root()), *f = sq(j->file);
-    char *cmd = str_printf("%s/apppkg install %s %s %s %s %s 2>&1", helper_path(), u, d, j->id, f, j->sha);
-    j->out = run_capture(cmd);
-    free(cmd); free(u); free(d); free(f);
+    char prog[300];
+    snprintf(prog, sizeof prog, "%s/apppkg", helper_path());
+    const char *argv[] = {prog, "install", j->url, apps_pkg_root(), j->id, j->file, j->sha, NULL}; /* no shell */
+    j->out = run_capture_argv(argv);
 }
 static void start_next(void);
 static void inst_done(void *arg) {
@@ -202,7 +213,8 @@ static void inst_done(void *arg) {
     if (!strcmp(last, "OK")) {
         const NotaApp *a = app_find(j->id);
         if (a) { /* already loaded (an update, or installed again): the new code is used after a restart */
-            if (c && version_cmp(c->version, a->version) != 0) restart_needed = true;
+            if (c) app_set_next_version(a, c->version);
+            if (*app_next_version(a)) restart_needed = true;
         } else a = apps_load_pkg(j->id);
         if (a) app_install(a);
         else app_toast(T("%s could not be started on this version of NotaTV"), c ? c->name : j->id);
@@ -237,6 +249,10 @@ void appcat_install(const char *id) {
     snprintf(queue[q_n++], sizeof queue[0], "%s", id);
     q_total++;
     start_next();
+}
+
+void appcat_update_all(void) {
+    for (int i = 0; i < appcat_count(); i++) if (appcat_has_update(cat[i].id)) appcat_install(cat[i].id);
 }
 
 /* ---------- boxes from before the App Store ---------- */

@@ -432,3 +432,21 @@ msgstr "Lukker sessionen hos Seerr og sletter adresse og login fra boksen"
 msgid "Find and request movies and shows for Plex"
 msgstr "Find og anmod om film og serier til Plex"
 
+
+msgid "Signing out removes the whole session"
+msgstr "Log ud fjerner hele sessionen"
+
+msgid "After you sign out, the old login is no longer kept in memory or written back to the box"
+msgstr "Når du logger ud, bliver det gamle login ikke længere i hukommelsen eller skrevet tilbage på boksen"
+
+msgid "netflix.com, once a day"
+msgstr "netflix.com, én gang om dagen"
+
+msgid "Netflix Top 10 row"
+msgstr "Rækken Netflix Top 10"
+
+msgid "The row is fetched from Netflix's public top 10 list for your country. Nothing about you is sent"
+msgstr "Rækken hentes fra Netflix' offentlige top 10-liste for dit land. Intet om dig sendes med"
+
+msgid "Settings say where the Netflix Top 10 row comes from"
+msgstr "Indstillingerne fortæller, hvor rækken Netflix Top 10 kommer fra"

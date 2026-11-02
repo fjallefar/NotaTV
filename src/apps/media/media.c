@@ -152,14 +152,16 @@ static void play_entry(Media *m, int idx) {
     Entry *e = &m->e[idx];
     char full[4096];
     snprintf(full, sizeof full, "%s/%s", m->path, e->name);
-    if (has_ext(e->name, audio_ext) || has_ext(e->name, image_ext)) {
+    /* a name with a line break cannot be a line in the playlist: such a file is played on its own */
+    bool plain = !strpbrk(e->name, "\r\n");
+    if (plain && (has_ext(e->name, audio_ext) || has_ext(e->name, image_ext))) {
         /* play the whole folder as a playlist from the chosen file */
         const char **kind = has_ext(e->name, audio_ext) ? audio_ext : image_ext;
         const char *pl = "/tmp/notatv-media.m3u";
         FILE *f = fopen(pl, "w");
         int start = 0, k = 0;
         for (int i = 0; f && i < m->n; i++) {
-            if (m->e[i].dir || !has_ext(m->e[i].name, kind)) continue;
+            if (m->e[i].dir || !has_ext(m->e[i].name, kind) || strpbrk(m->e[i].name, "\r\n")) continue;
             if (i == idx) start = k;
             fprintf(f, "%s/%s\n", m->path, m->e[i].name);
             k++;
@@ -229,7 +231,7 @@ Screen *media_screen(void) { return media_at(NULL); }
 
 /* ---------- the app (see NotaApp in tv.h) ---------- */
 const NotaApp nota_app = {
-    NOTA_API, "media", N_("Media"), N_("Movies, music and pictures from USB and network"), "1.0.0", 90, 0,
+    NOTA_API, "media", N_("Media"), N_("Movies, music and pictures from USB and network"), APP_VERSION, 90, 0,
     ICON_FOLDER, {123, 77, 255, 255}, {75, 42, 179, 255}, {255, 255, 255, 255},
     .open = media_screen,
 };

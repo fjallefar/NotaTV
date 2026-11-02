@@ -87,9 +87,20 @@ static void get_str(const char *path, const char *iface, const char *name, char 
     dbus_message_unref(r);
 }
 
+/* name and icon per device, asked from BlueZ once (each D-Bus call blocks the main thread up to 400 ms) */
+static struct { char path[128], name[128], icon[64]; } dev_cache[16];
+static int dev_cache_n;
+static int dev_info(const char *dev_path) {
+    for (int i = 0; i < dev_cache_n; i++) if (!strcmp(dev_cache[i].path, dev_path)) return i;
+    int k = dev_cache_n < 16 ? dev_cache_n++ : (int)(SDL_GetTicks() % 16);
+    snprintf(dev_cache[k].path, sizeof dev_cache[k].path, "%s", dev_path);
+    get_str(dev_path, "org.bluez.Device1", "Alias", dev_cache[k].name, sizeof dev_cache[k].name);
+    get_str(dev_path, "org.bluez.Device1", "Icon", dev_cache[k].icon, sizeof dev_cache[k].icon);
+    return k;
+}
 static void device_name(const char *dev_path, char *out, size_t n) {
-    get_str(dev_path, "org.bluez.Device1", "Alias", out, n);
-    if (!out[0]) snprintf(out, n, T("a phone"));
+    snprintf(out, n, "%s", dev_cache[dev_info(dev_path)].name);
+    if (!out[0]) snprintf(out, n, "%s", T("a phone"));
 }
 
 /* /org/bluez/hci0/dev_XX_XX/... -> /org/bluez/hci0/dev_XX_XX */
@@ -274,7 +285,7 @@ static void handle_props(const char *path, const char *iface, DBusMessageIter di
                 MUSIC(bt_state, false, false, NULL, false);
             } else if (b && strcmp(transport_dev, dev)) { /* connected: show it right away (the audio comes when something plays) */
                 char name[128], icon[64];
-                get_str(dev, "org.bluez.Device1", "Icon", icon, sizeof icon);
+                snprintf(icon, sizeof icon, "%s", dev_cache[dev_info(dev)].icon);
                 if (!strncmp(icon, "input", 5)) { dbus_message_iter_next(&dict); continue; } /* keyboard/controller: not music */
                 device_name(dev, name, sizeof name);
                 snprintf(transport_dev, sizeof transport_dev, "%s", dev);
@@ -384,6 +395,7 @@ void bt_tick(void) {
     if (pair_until > 0 && app_time() >= pair_until) { /* pairing mode expired */
         pair_until = 0;
         set_bool(ADAPTER, "org.bluez.Adapter1", "Discoverable", false);
+        set_bool(ADAPTER, "org.bluez.Adapter1", "Pairable", false);
         set_bool(ADAPTER, "org.bluez.Adapter1", "Connectable", cfg_int("bt_enabled", 1) != 0);
     }
     /* only when in use: turn off when nothing is connected and the grace period has expired */
@@ -414,7 +426,9 @@ void bt_apply(void) {
         for (int i = 0; i < n; i++) input |= d[i].input;
     }
     set_bool(ADAPTER, "org.bluez.Adapter1", "Powered", enabled);
-    set_bool(ADAPTER, "org.bluez.Adapter1", "Pairable", on);
+    /* new devices can only pair in pairing mode (Bluetooth → Pair); a connected phone does not make the box
+       pairable for everyone nearby */
+    set_bool(ADAPTER, "org.bluez.Adapter1", "Pairable", enabled && pair_until > 0);
     /* paired phones must be able to connect by themselves (e.g. "NotaTV" in Spotify's device list), even when the TV is not visible */
     set_bool(ADAPTER, "org.bluez.Adapter1", "Connectable", on || input);
     if (!on) set_bool(ADAPTER, "org.bluez.Adapter1", "Discoverable", false);
@@ -597,6 +611,7 @@ static void pair_leave(Screen *s) {
     if (pair_until > 0) {
         pair_until = 0;
         set_bool(ADAPTER, "org.bluez.Adapter1", "Discoverable", false);
+        set_bool(ADAPTER, "org.bluez.Adapter1", "Pairable", false);
         set_bool(ADAPTER, "org.bluez.Adapter1", "Connectable", cfg_int("bt_enabled", 1) != 0); /* turning off visibility also turns this off */
     }
 }

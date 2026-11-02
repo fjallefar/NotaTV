@@ -212,18 +212,51 @@ typedef struct {
     Channel *ch;
     int n, cap;
     char **groups;
-    int n_groups;
+    int n_groups, cap_groups;
+    int *ghash, ghash_cap; /* group name -> index + 1 (open addressing; 0 = empty) */
     char *epg;
     char err[200];
 } ParseOut;
 
 static int group_cmp(const void *a, const void *b) { return strcasecmp(*(char *const *)a, *(char *const *)b); }
 
+static unsigned long str_hash(const char *s) {
+    unsigned long h = 5381;
+    while (*s) h = h * 33 + (unsigned char)*s++;
+    return h;
+}
+/* (a hash, not a search through all groups for every channel: 20,000 channels x 1,000 groups was 20 million
+   string compares on every load) */
 static int group_index(ParseOut *o, const char *g) {
-    for (int i = 0; i < o->n_groups; i++)
-        if (!strcmp(o->groups[i], g)) return i;
-    o->groups = realloc(o->groups, sizeof(char *) * (o->n_groups + 1));
+    if (o->ghash_cap && o->n_groups * 2 < o->ghash_cap) {
+        for (unsigned long j = str_hash(g) & (o->ghash_cap - 1); o->ghash[j]; j = (j + 1) & (o->ghash_cap - 1))
+            if (!strcmp(o->groups[o->ghash[j] - 1], g)) return o->ghash[j] - 1;
+    } else { /* (re)build the hash twice as big, then look again */
+        int ncap = o->ghash_cap ? o->ghash_cap * 2 : 256;
+        int *nh = calloc((size_t)ncap, sizeof(int));
+        if (nh) {
+            for (int i = 0; i < o->n_groups; i++) {
+                unsigned long j = str_hash(o->groups[i]) & (ncap - 1);
+                while (nh[j]) j = (j + 1) & (ncap - 1);
+                nh[j] = i + 1;
+            }
+            free(o->ghash);
+            o->ghash = nh;
+            o->ghash_cap = ncap;
+            return group_index(o, g);
+        }
+        for (int i = 0; i < o->n_groups; i++) if (!strcmp(o->groups[i], g)) return i;
+    }
+    if (o->n_groups == o->cap_groups) {
+        o->cap_groups = o->cap_groups ? o->cap_groups * 2 : 64;
+        o->groups = realloc(o->groups, sizeof(char *) * (size_t)o->cap_groups);
+    }
     o->groups[o->n_groups] = strdup(g);
+    if (o->ghash_cap) {
+        unsigned long j = str_hash(g) & (o->ghash_cap - 1);
+        while (o->ghash[j]) j = (j + 1) & (o->ghash_cap - 1);
+        o->ghash[j] = o->n_groups + 1;
+    }
     return o->n_groups++;
 }
 
@@ -290,8 +323,14 @@ static void parse_m3u(const char *path, ParseOut *o) {
     for (int i = 0; i < o->n; i++)
         if (!o->ch[i].num) o->ch[i].num = i + 1;
     qsort(o->groups, o->n_groups, sizeof(char *), group_cmp);
+    free(o->ghash);
+    o->ghash = NULL;
+    o->ghash_cap = 0;
     if (o->n == 0) snprintf(o->err, sizeof o->err, T("No channels found in the playlist"));
 }
+
+static char **gsort_names;
+static int gidx_cmp(const void *a, const void *b) { return strcmp(gsort_names[*(const int *)a], gsort_names[*(const int *)b]); }
 
 static void free_channels(Channel *ch, int n) {
     for (int i = 0; i < n; i++) {
@@ -524,9 +563,21 @@ static void load_done(void *arg) {
         D.short_epg = !*cfg_get("iptv_epg", "") && with_sid > D.n_ch / 2;
         free(D.gcount);
         D.gcount = calloc(D.n_groups + 1, sizeof(int));
-        for (int g = 0; g < D.n_groups; g++)
-            for (int c = 0; c < D.n_ch; c++)
-                if (!strcmp(D.ch[c].group, D.groups[g])) D.gcount[g]++;
+        { /* channels per group: one sorted copy of the group names and a binary search per channel */
+            int *ord = malloc(sizeof(int) * (size_t)(D.n_groups + 1));
+            for (int g = 0; g < D.n_groups; g++) ord[g] = g;
+            gsort_names = D.groups;
+            qsort(ord, (size_t)D.n_groups, sizeof(int), gidx_cmp);
+            for (int c = 0; c < D.n_ch; c++) {
+                int lo = 0, hi = D.n_groups - 1;
+                while (lo <= hi) {
+                    int mid = (lo + hi) / 2, r = strcmp(D.ch[c].group, D.groups[ord[mid]]);
+                    if (!r) { D.gcount[ord[mid]]++; break; }
+                    if (r < 0) hi = mid - 1; else lo = mid + 1;
+                }
+            }
+            free(ord);
+        }
         epg_start();
     }
     free(j->url);
@@ -557,9 +608,11 @@ typedef struct {
     int n_ch;
     IdMap *map;
     int n_map, cap_map;
-    bool map_dirty;
+    int n_sorted;     /* map[0..n_sorted) is sorted; what <channel> elements add later is merged in when needed */
     char **names;     /* normalized channel names (name matching when the tvg-id does not fit) */
     char **tvgids;
+    int *by_id, n_by_id; /* channel indexes sorted by tvg-id / by normalized name, for binary search */
+    int *by_name;
     bool *exact;      /* the channel's tvg-id exists in the guide */
     /* results per channel */
     Prog **progs;
@@ -603,7 +656,32 @@ static char *norm_name(const char *in) {
 static void map_add(EpgJob *j, const char *id, int idx) {
     if (j->n_map == j->cap_map) { j->cap_map = j->cap_map ? j->cap_map * 2 : 64; j->map = realloc(j->map, sizeof(IdMap) * j->cap_map); }
     j->map[j->n_map++] = (IdMap){strdup(id), idx};
-    j->map_dirty = true;
+}
+
+/* the entries added since the last sort are sorted and merged into the sorted part (not the whole map again) */
+static void map_sort(EpgJob *j) {
+    if (j->n_sorted >= j->n_map) return;
+    int a = j->n_sorted, n = j->n_map;
+    qsort(j->map + a, (size_t)(n - a), sizeof(IdMap), idmap_cmp);
+    IdMap *m = malloc(sizeof(IdMap) * (size_t)n);
+    if (!m) { qsort(j->map, (size_t)n, sizeof(IdMap), idmap_cmp); j->n_sorted = n; return; }
+    int x = 0, y = a, k = 0;
+    while (x < a && y < n) m[k++] = idmap_cmp(&j->map[x], &j->map[y]) <= 0 ? j->map[x++] : j->map[y++];
+    while (x < a) m[k++] = j->map[x++];
+    while (y < n) m[k++] = j->map[y++];
+    memcpy(j->map, m, sizeof(IdMap) * (size_t)n);
+    free(m);
+    j->n_sorted = n;
+}
+
+/* first position in idx[0..n) (sorted by key[idx]) whose key is >= s */
+static int lower_bound(char **key, const int *idx, int n, const char *s) {
+    int lo = 0, hi = n;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (strcmp(key[idx[mid]], s) < 0) lo = mid + 1; else hi = mid;
+    }
+    return lo;
 }
 
 /* <channel id="X"><display-name>Name</display-name>... */
@@ -612,8 +690,9 @@ static void epg_channel(EpgJob *j, const char *el, const char *el_end) {
     if (!tag_end || tag_end > el_end) return;
     char *id = xml_attr(el, tag_end, "id");
     if (!id) return;
-    for (int i = 0; i < j->n_ch; i++)
-        if (j->tvgids[i] && !strcmp(j->tvgids[i], id)) j->exact[i] = true;
+    /* binary searches (was: every channel for every <channel> and every display-name - minutes on the Pi) */
+    for (int k = lower_bound(j->tvgids, j->by_id, j->n_by_id, id); k < j->n_by_id && !strcmp(j->tvgids[j->by_id[k]], id); k++)
+        j->exact[j->by_id[k]] = true;
     for (const char *d = strstr(tag_end, "<display-name"); d && d < el_end; d = strstr(d + 1, "<display-name")) {
         const char *t = strchr(d, '>');
         if (!t || t > el_end) break;
@@ -624,9 +703,10 @@ static void epg_channel(EpgJob *j, const char *el, const char *el_end) {
         char *n = norm_name(nm);
         free(nm);
         if (*n)
-            for (int i = 0; i < j->n_ch; i++)
-                if (!j->exact[i] && j->names[i] && !strcmp(j->names[i], n) && (!j->tvgids[i] || strcmp(j->tvgids[i], id)))
-                    map_add(j, id, i);
+            for (int k = lower_bound(j->names, j->by_name, j->n_ch, n); k < j->n_ch && !strcmp(j->names[j->by_name[k]], n); k++) {
+                int i = j->by_name[k];
+                if (!j->exact[i] && (!j->tvgids[i] || strcmp(j->tvgids[i], id))) map_add(j, id, i);
+            }
         free(n);
     }
     free(id);
@@ -676,7 +756,7 @@ static char *xml_attr(const char *tag, const char *end, const char *key) {
 }
 
 static void epg_handle(EpgJob *j, const char *el, const char *el_end, time_t lo, time_t hi) {
-    if (j->map_dirty) { qsort(j->map, j->n_map, sizeof(IdMap), idmap_cmp); j->map_dirty = false; }
+    map_sort(j);
     const char *tag_end = strchr(el, '>');
     if (!tag_end || tag_end > el_end) return;
     char *chid = xml_attr(el, tag_end, "channel");
@@ -862,6 +942,8 @@ static void epg_done(void *arg) {
     for (int i = 0; i < j->n_ch; i++) { free(j->names[i]); free(j->tvgids[i]); }
     free(j->names);
     free(j->tvgids);
+    free(j->by_id);
+    free(j->by_name);
     free(j->exact);
     free(j->progs);
     free(j->n_progs);
@@ -869,6 +951,9 @@ static void epg_done(void *arg) {
     free(j->url);
     free(j);
 }
+
+static char **sort_keys; /* for key_idx_cmp (qsort has no context; only used on the main thread) */
+static int key_idx_cmp(const void *a, const void *b) { return strcmp(sort_keys[*(const int *)a], sort_keys[*(const int *)b]); }
 
 static void epg_start(void) {
     if (D.short_epg) { D.epg_msg[0] = 0; return; } /* fetched per channel, see epg_want */
@@ -895,7 +980,18 @@ static void epg_start(void) {
     }
     j->names_hash = hsh;
     qsort(j->map, j->n_map, sizeof(IdMap), idmap_cmp);
-    j->map_dirty = false;
+    j->n_sorted = j->n_map;
+    /* indexes sorted by tvg-id and by name (the strings do not change while the job runs) */
+    j->by_id = malloc(sizeof(int) * (size_t)(D.n_ch + 1));
+    j->by_name = malloc(sizeof(int) * (size_t)(D.n_ch + 1));
+    for (int i = 0; i < D.n_ch; i++) {
+        if (j->tvgids[i]) j->by_id[j->n_by_id++] = i;
+        j->by_name[i] = i;
+    }
+    sort_keys = j->tvgids;
+    qsort(j->by_id, (size_t)j->n_by_id, sizeof(int), key_idx_cmp);
+    sort_keys = j->names;
+    qsort(j->by_name, (size_t)D.n_ch, sizeof(int), key_idx_cmp);
     D.epg_loading = true;
     snprintf(D.epg_msg, sizeof D.epg_msg, T("Loading program guide…"));
     job_submit_q(JQ_SLOW, epg_work, epg_done, j);
@@ -1953,7 +2049,7 @@ static bool iptv_draw_shelf(float x, float y) {
     return true;
 }
 const NotaApp nota_app = {
-    NOTA_API, "iptv", N_("Live TV"), N_("Watch live TV and channels from your IPTV provider"), "1.0.0", 10, APP_ROW_LOGOS,
+    NOTA_API, "iptv", N_("Live TV"), N_("Watch live TV and channels from your IPTV provider"), APP_VERSION, 10, APP_ROW_LOGOS,
     ICON_TV, {43, 95, 217, 255}, {22, 52, 140, 255}, {255, 255, 255, 255},
     .open = iptv_screen, .forget = iptv_forget_all,
     .settings = live_items, .n_settings = sizeof live_items / sizeof live_items[0],

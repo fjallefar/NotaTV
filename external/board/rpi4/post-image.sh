@@ -1,6 +1,11 @@
 #!/bin/sh
 # NotaTV Pi 4: build the SD card image (boot + rootfs + data)
 set -e
+# which kernel set the firmware loads (see libexec/notatv/update): the root one; always 128 bytes, so the updater
+# can switch it with one write
+{ printf '# kernel set: the root of the boot partition\n# written by the NotaTV updater - do not edit\n'; } |
+	awk '{ s = s $0 "\n" } END { printf "%s", s; for (i = length(s); i < 127; i++) printf "#"; printf "\n" }' \
+	> "$BINARIES_DIR/rpi-firmware/notatv-slot.txt"
 support/scripts/genimage.sh -c "$BR2_EXTERNAL_NOTATV_PATH/board/rpi4/genimage.cfg"
 cp "$BINARIES_DIR/notatv-rpi4.img" "$BR2_EXTERNAL_NOTATV_PATH/../notatv-rpi4.img"
 echo "NotaTV Pi 4-image: $BINARIES_DIR/notatv-rpi4.img ($(du -h "$BINARIES_DIR/notatv-rpi4.img" | cut -f1))"

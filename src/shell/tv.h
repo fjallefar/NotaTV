@@ -8,6 +8,10 @@
 #include <stddef.h>
 #include "i18n.h"
 
+/* A function added to this header after the current NOTA_API (below) came out is marked NOTA_NEW: an app must
+   check that it is there before calling it (if (app_close) ...), because an older NotaTV with the same NOTA_API
+   gives NULL. That way an app can use it and still run on boxes that are not updated yet. */
+#define NOTA_NEW __attribute__((weak))
 #ifndef TV_VERSION
 #define TV_VERSION "dev" /* set from VERSION by the build (tvshell.mk / Makefile) */
 #endif
@@ -138,6 +142,7 @@ bool http_request_cookies(const char *method, const char *url, const char *const
 bool http_download(const char *url, const char *path, long timeout_s);
 bool http_download_ua(const char *url, const char *path, long timeout_s, const char *ua);
 void http_free(HttpBuf *b);
+void http_cookies_forget(void) NOTA_NEW; /* sign-out: drop the cookies http_request_cookies keeps in memory */
 char *url_encode(const char *s);
 
 /* ---------- Configuration ---------- */
@@ -146,6 +151,8 @@ const char *cfg_get(const char *key, const char *def);
 int cfg_int(const char *key, int def);
 void cfg_set(const char *key, const char *val);
 void cfg_set_int(const char *key, int v);
+int cfg_gen(void);   /* changes whenever a setting changes - for values read every frame */
+void cfg_flush(void); /* fsync the settings now (shutdown); cfg_set leaves that to a thread */
 void cfg_unset(const char *key); /* the default applies again */
 const char *data_dir(void);
 /* troubleshooting log (Settings → System, cfg debug_log): more details (every network request), and the logs of
@@ -251,6 +258,8 @@ void app_push(Screen *s);
 void app_pop(void);
 void app_home(void);
 Screen *app_top(void);
+void app_close(Screen *s) NOTA_NEW;      /* close s even when it is not on top (e.g. from its own update()) */
+void app_replace(Screen *s, Screen *with) NOTA_NEW; /* with takes s's place in the stack (freed if s is gone) */
 void app_toast(const char *fmt, ...);
 void app_request_redraw(void);
 double app_time(void);
@@ -272,6 +281,9 @@ void app_cfg_changed(void); /* count it up (e.g. an app saved something that cam
  * app.so + lang/<code>.po) that are loaded at start. app.so exports `const NotaApp nota_app` and may use everything
  * in this header (tvshell exports its symbols). Bump NOTA_API whenever anything an app uses here changes. */
 #define NOTA_API 2
+#ifndef APP_VERSION
+#define APP_VERSION "0" /* an app's version, from its manifest.json (src/apps/Makefile) */
+#endif
 
 /* one line in Settings (also used by apps for their own settings) */
 typedef enum { IT_INFO, IT_TOGGLE, IT_CYCLE, IT_ACTION, IT_TEXT, IT_SUB } ItemType; /* IT_SUB: opens sub-section number .sub */
@@ -305,13 +317,15 @@ typedef struct NotaApp {
     int api;                   /* NOTA_API when the app was built */
     const char *id;            /* short, unique: "twitch" (folder name, cfg app_<id>, data folder) */
     const char *name, *desc;   /* English source text (translated with T) */
-    const char *version;       /* app version, e.g. "1.0.0" */
+    const char *version;       /* app version: APP_VERSION (from manifest.json, set by src/apps/Makefile) */
     int order;                 /* place on the home screen (lowest first) */
     unsigned flags;
     IconId icon;
     Color c1, c2, fg;          /* tile gradient and icon color */
     Screen *(*open)(void);
-    void (*init)(void);        /* once at start, when installed (also after install) */
+    void (*init)(void);        /* once per run of tvshell, when installed (also after install). Not again after an
+                                  uninstall + install in the same run: forget() must leave the app ready to be used
+                                  again (threads/mutexes made in init stay) */
     void (*tick)(void);        /* every frame while installed (background services) */
     void (*apply)(void);       /* installed/uninstalled or settings changed: start/stop background services */
     void (*forget)(void);      /* delete everything saved (sign out, uninstall); NULL = nothing saved */
@@ -348,6 +362,9 @@ bool app_installed(const NotaApp *a);
 bool app_on(const char *id);             /* installed (false for unknown ids) */
 bool app_packaged(const NotaApp *a);     /* loaded from a package (not compiled into tvshell) */
 const char *app_pkg_dir(const NotaApp *a); /* the package folder ("" for built-in apps) */
+const char *app_version(const NotaApp *a);      /* the version that runs (from manifest.json) */
+const char *app_next_version(const NotaApp *a); /* a newer version downloaded, used after a restart ("" = none) */
+void app_set_next_version(const NotaApp *a, const char *ver);
 const char *app_data(const NotaApp *a);  /* the app's own data folder, created when asked for */
 void app_install(const NotaApp *a);
 void app_uninstall(const NotaApp *a);    /* forget() + the data folder is wiped; background services stop */
@@ -363,6 +380,9 @@ typedef struct {
     int order;
     bool def;  /* was on by default in NotaTV 1.0 (used when moving such boxes to App Store apps) */
     long size; /* bytes */
+    /* what is new in this version (manifest "changes", translated): one short line and a few points */
+    char news[200], points[4][160];
+    int n_points;
 } CatApp;
 typedef enum { CAT_NONE, CAT_LOADING, CAT_OK, CAT_ERROR } CatState;
 CatState appcat_state(void);
@@ -371,7 +391,9 @@ void appcat_refresh(void);                 /* fetch the catalog (in the backgrou
 int appcat_count(void);
 const CatApp *appcat_at(int i);
 const CatApp *appcat_find(const char *id);
-bool appcat_has_update(const char *id);    /* installed, and the catalog has a newer version */
+bool appcat_has_update(const char *id);    /* installed, and the catalog has a newer version (not downloaded yet) */
+int appcat_updates(void);                  /* how many installed apps have an update */
+void appcat_update_all(void);              /* queue every update */
 void appcat_install(const char *id);       /* download + load + install (queued, one at a time) */
 int appcat_pending(const char *id);        /* 0 = not queued, 1 = waiting, 2 = being installed */
 bool appcat_busy(int *done, int *total, const char **current); /* installs left; progress of this round */
@@ -383,6 +405,10 @@ void apps_tick(void);
 int apps_gen(void);                      /* changes when apps are loaded, installed or uninstalled */
 bool apps_inbox(const char *name, const char *val); /* gives an inbox message to the app that takes it */
 Screen *appstore_screen(void);
+/* what is new in a system update (the summary at the top of its release text, update_notice.c) */
+#define UPDATE_NEWS_MAX 5
+typedef struct { char summary[300], points[UPDATE_NEWS_MAX][200]; int n; } UpdateNews;
+bool update_news(const char *ver, UpdateNews *n); /* false = the release says nothing short (or is not known) */
 
 /* shared UI helpers */
 float anim_to(float cur, float target, float dt, float speed);
@@ -403,6 +429,7 @@ void draw_buttons(float cx, float y, const char *const *labels, int n, int sel);
 bool buttons_nav(int *sel, int n, const InputEvent *ev);
 char *fmt_duration(double secs, char *buf, size_t n);
 char *str_dup(const char *s);
+char *file_read_all(const char *path, long max); /* whole file, 0-terminated; NULL if missing or > max */
 char *str_printf(const char *fmt, ...);
 void str_trim(char *s);
 
@@ -413,6 +440,9 @@ void keyboard_inject(const char *text);
 typedef void (*ConfirmDone)(void *ud, bool yes);
 void confirm_open(const char *title, const char *msg, const char *yes, const char *no,
                   ConfirmDone cb, void *ud);
+/* "what's new": a small heading, a title, one short summary and up to 8 points; no = "" gives one button */
+void notes_open(const char *kicker, const char *title, const char *summary, const char *const *points, int n,
+                const char *yes, const char *no, ConfirmDone cb, void *ud);
 typedef void (*ChoiceDone)(void *ud, int idx); /* -1 = cancelled */
 void choice_open(const char *title, const char *const *items, int n, int sel, ChoiceDone cb, void *ud);
 
@@ -455,6 +485,7 @@ Screen *settings_screen(void);
 void settings_wifi(void);         /* search for and choose Wi-Fi (from Settings) */
 void settings_apply_name(void);   /* device name changed: restart AirPlay/CEC/BT/DLNA */
 void update_install_open(const char *ver); /* update_notice.c: install the GitHub update with a progress bar, then offer a restart */
+void app_background_tick(bool playing); /* main.c: jobs, inbox, Bluetooth, installs (+ services when not playing) */
 void update_tick(void);           /* update_notice.c: looks for updates on GitHub and reminds every other day */
 Screen *setup_screen(void);       /* setup guide (first boot) */
 const char *phone_pin(void);      /* code for the phone page (created if missing) */
@@ -489,6 +520,7 @@ void netdisc_start(DiscKind kind, DiscDone cb, void *ud);
 /* screen mirroring (mirror.c): AirPlay via UxPlay + Android (own app, MPEG-TS on port 7400) */
 void mirror_tick(void);
 void mirror_apply(void);
+const char *airplay_pin(void); /* the code a phone enters the first time it mirrors (made once per box) */
 typedef struct { char path[128], name[128]; bool connected, input; } BtDevice; /* input: controller/keyboard (Icon input-*) */
 int bt_devices(BtDevice *out, int max); /* paired devices (blocking, short timeout) */
 void bt_connect(const char *path);      /* the box calls the phone: the music moves to the TV */

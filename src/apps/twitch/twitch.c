@@ -3,8 +3,10 @@
  * Playback via mpv/yt-dlp. Built as app.so (see src/apps/README.md); the descriptor nota_app is at the bottom. */
 #include "tv.h"
 #include "vendor/cJSON.h"
+#include <curl/curl.h>
 #include <errno.h>
 #include <netdb.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -471,43 +473,57 @@ static void chat_line(Chat *c, char *line) {
     SDL_UnlockMutex(c->mu);
 }
 
-static int chat_connect(void) {
-    struct addrinfo hints = {0}, *res = NULL;
-    hints.ai_socktype = SOCK_STREAM;
-    if (getaddrinfo("irc.chat.twitch.tv", "6667", &hints, &res) != 0) return -1;
-    int fd = -1;
-    for (struct addrinfo *a = res; a && fd < 0; a = a->ai_next) {
-        fd = socket(a->ai_family, a->ai_socktype | SOCK_CLOEXEC, a->ai_protocol);
-        if (fd >= 0 && connect(fd, a->ai_addr, a->ai_addrlen) != 0) { close(fd); fd = -1; }
+/* the chat over TLS (port 6697; anonymous reading, but nothing goes over the network in clear text): libcurl
+   makes the connection (CONNECT_ONLY) and then just moves bytes - no own TLS code */
+static CURL *chat_connect(void) {
+    CURL *c = curl_easy_init();
+    if (!c) return NULL;
+    curl_easy_setopt(c, CURLOPT_URL, "https://irc.chat.twitch.tv:6697");
+    curl_easy_setopt(c, CURLOPT_CONNECT_ONLY, 1L);
+    curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
+    if (curl_easy_perform(c) != CURLE_OK) { curl_easy_cleanup(c); return NULL; }
+    return c;
+}
+static bool chat_send(CURL *c, const char *s, size_t n) {
+    size_t off = 0;
+    for (int tries = 0; off < n && tries < 100; tries++) {
+        size_t sent = 0;
+        CURLcode r = curl_easy_send(c, s + off, n - off, &sent);
+        if (r == CURLE_OK) { off += sent; continue; }
+        if (r != CURLE_AGAIN) return false;
+        SDL_Delay(10);
     }
-    freeaddrinfo(res);
-    if (fd >= 0) {
-        struct timeval tv = {1, 0}; /* so the stop flag is checked every second */
-        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-    }
-    return fd;
+    return off == n;
 }
 
 static int chat_thread(void *arg) {
     Chat *c = arg;
     while (!SDL_GetAtomicInt(&c->stop)) {
-        int fd = chat_connect();
-        if (fd < 0) { for (int i = 0; i < 5 && !SDL_GetAtomicInt(&c->stop); i++) SDL_Delay(1000); continue; }
+        CURL *h = chat_connect();
+        if (!h) { for (int i = 0; i < 5 && !SDL_GetAtomicInt(&c->stop); i++) SDL_Delay(1000); continue; }
+        curl_socket_t fd = CURL_SOCKET_BAD;
+        curl_easy_getinfo(h, CURLINFO_ACTIVESOCKET, &fd);
         char hello[200];
         int hl = snprintf(hello, sizeof hello, "CAP REQ :twitch.tv/tags\r\nNICK justinfan%d\r\nJOIN #%s\r\n", 10000 + rand() % 80000, c->chan);
-        if (send(fd, hello, (size_t)hl, MSG_NOSIGNAL) != hl) { close(fd); continue; }
+        if (fd == CURL_SOCKET_BAD || !chat_send(h, hello, (size_t)hl)) { curl_easy_cleanup(h); continue; }
         char buf[16384];
         size_t len = 0;
         while (!SDL_GetAtomicInt(&c->stop)) {
-            ssize_t n = recv(fd, buf + len, sizeof buf - 1 - len, 0);
-            if (n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) break;
-            if (n < 0) continue;
-            len += (size_t)n;
+            size_t n = 0;
+            CURLcode r = curl_easy_recv(h, buf + len, sizeof buf - 1 - len, &n);
+            if (r == CURLE_AGAIN) { /* wait for data, but check the stop flag every second */
+                struct pollfd p = {fd, POLLIN, 0};
+                poll(&p, 1, 1000);
+                continue;
+            }
+            if (r != CURLE_OK || n == 0) break; /* closed or an error: connect again */
+            len += n;
             buf[len] = 0;
             char *p = buf, *e;
             while ((e = strstr(p, "\r\n"))) {
                 *e = 0;
-                if (!strncmp(p, "PING", 4)) { char pong[300]; int pl = snprintf(pong, sizeof pong, "PONG%s\r\n", p + 4); send(fd, pong, (size_t)pl, MSG_NOSIGNAL); }
+                if (!strncmp(p, "PING", 4)) { char pong[300]; int pl = snprintf(pong, sizeof pong, "PONG%s\r\n", p + 4); chat_send(h, pong, (size_t)pl); }
                 else chat_line(c, p);
                 p = e + 2;
             }
@@ -515,7 +531,7 @@ static int chat_thread(void *arg) {
             memmove(buf, p, len + 1);
             if (len >= sizeof buf - 1) len = 0; /* unreasonably long line */
         }
-        close(fd);
+        curl_easy_cleanup(h);
     }
     /* the thread owns the chat: clean up here, so the main thread never waits on a hanging connect() */
     for (int i = 0; i < c->qn; i++) free(c->q[i]);
@@ -805,7 +821,7 @@ static const Item tw_items[] = {
      .locked = tw_signed_out},
 };
 const NotaApp nota_app = {
-    NOTA_API, "twitch", "Twitch", N_("Live streams from the channels you follow and all of Twitch"), "1.0.0", 50, 0,
+    NOTA_API, "twitch", "Twitch", N_("Live streams from the channels you follow and all of Twitch"), APP_VERSION, 50, 0,
     ICON_PLAY, {145, 70, 255, 255}, {88, 38, 170, 255}, {255, 255, 255, 255},
     .open = twitch_screen, .forget = twitch_forget,
     .settings = tw_items, .n_settings = sizeof tw_items / sizeof tw_items[0],

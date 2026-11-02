@@ -53,6 +53,7 @@ typedef struct {
     char id[96], name[128], uri[300], token[300], owner[128];
     char hidden[256]; /* fravalgte biblioteker: ",1,4," */
     bool owned, enabled;
+    bool cast_only; /* a server only known from Plex cast (shared with the account): used, never saved */
 } PSrv;
 static PSrv S[MAX_SRV];
 static int nS;
@@ -65,6 +66,7 @@ static void srv_save(void) {
     char names[400] = "";
     const char *first_uri = "";
     for (int i = 0; i < nS; i++) {
+        if (S[i].cast_only) continue;
         cJSON *o = cJSON_CreateObject();
         cJSON_AddStringToObject(o, "id", S[i].id);
         cJSON_AddStringToObject(o, "name", S[i].name);
@@ -489,20 +491,40 @@ static void srv_ping(int si, const char *fmt, ...) {
 
 /* the final timeline/scrobble when playback ends: waits for the server (briefly), so the lists that are refreshed
    straight afterwards already show the new "watched"/"continue" state */
-static void srv_ping_sync(int si, const char *fmt, ...) {
+/* (sent in order in a thread; the menu waits at most ~1.5 s for them - a slow server does not freeze the box) */
+typedef struct { char *url[2], *token; SDL_AtomicInt done, refs; } EndPing;
+static void endping_unref(EndPing *e) {
+    if (SDL_AddAtomicInt(&e->refs, -1) != 1) return;
+    for (int i = 0; i < 2; i++) free(e->url[i]);
+    free(e->token);
+    free(e);
+}
+static int endping_thread(void *arg) {
+    EndPing *e = arg;
+    for (int i = 0; i < 2 && e->url[i]; i++) {
+        Hdrs H;
+        HttpBuf b;
+        http_request("GET", e->url[i], plex_headers(&H, e->token), NULL, &b, 4);
+        http_free(&b);
+    }
+    SDL_SetAtomicInt(&e->done, 1);
+    endping_unref(e);
+    return 0;
+}
+static void srv_ping_end(int si, const char *timeline_path, const char *scrobble_path) {
     if (!srv_ok(si)) return;
-    va_list ap;
-    va_start(ap, fmt);
-    char *path = NULL;
-    if (vasprintf(&path, fmt, ap) < 0) { va_end(ap); return; }
-    va_end(ap);
-    char *url = str_printf("%s%s", S[si].uri, path);
-    Hdrs H;
-    HttpBuf b;
-    http_request("GET", url, plex_headers(&H, S[si].token), NULL, &b, 4);
-    http_free(&b);
-    free(url);
-    free(path);
+    EndPing *e = calloc(1, sizeof *e);
+    if (!e) return;
+    e->url[0] = str_printf("%s%s", S[si].uri, timeline_path);
+    if (scrobble_path) e->url[1] = str_printf("%s%s", S[si].uri, scrobble_path);
+    e->token = str_dup(S[si].token);
+    SDL_SetAtomicInt(&e->refs, 2);
+    SDL_Thread *t = SDL_CreateThread(endping_thread, "plex-end", e);
+    if (!t) { endping_unref(e); endping_unref(e); return; }
+    SDL_DetachThread(t);
+    Uint64 until = SDL_GetTicks() + 1500;
+    while (!SDL_GetAtomicInt(&e->done) && SDL_GetTicks() < until) SDL_Delay(20);
+    endping_unref(e);
 }
 
 /* raised after every playback: the open lists reload themselves (see browse_update) */
@@ -595,10 +617,12 @@ static void plex_progress(void *ud, double pos, double dur, bool ended, bool pau
     dur += p->offset > 0 ? p->offset : 0;
     if (p->it && p->it->duration > 0) dur = p->it->duration;
     if (ended) {
-        srv_ping_sync(p->srv, "/:/timeline?ratingKey=%s&key=/library/metadata/%s&state=stopped&time=%d&duration=%d",
-                      p->rating_key, p->rating_key, (int)(pos * 1000), (int)(dur * 1000));
-        if (plex_watched(p, pos, dur))
-            srv_ping_sync(p->srv, "/:/scrobble?identifier=com.plexapp.plugins.library&key=%s", p->rating_key);
+        char *tl = str_printf("/:/timeline?ratingKey=%s&key=/library/metadata/%s&state=stopped&time=%d&duration=%d",
+                              p->rating_key, p->rating_key, (int)(pos * 1000), (int)(dur * 1000));
+        char *sc = plex_watched(p, pos, dur) ? str_printf("/:/scrobble?identifier=com.plexapp.plugins.library&key=%s", p->rating_key) : NULL;
+        srv_ping_end(p->srv, tl, sc);
+        free(tl);
+        free(sc);
         return;
     }
     srv_ping(p->srv, "/:/timeline?ratingKey=%s&key=/library/metadata/%s&state=%s&time=%d&duration=%d",
@@ -686,12 +710,45 @@ static void plex_skip_info(void *ud, PlaySkip *sk) {
 
 /* List responses (the episode list behind "next episode", play queues from cast) have no stream info. Fetch the
    full item before playback, so Plex's subtitle and audio choice, the subtitle files and HDR are known. */
-static void plex_ensure_full(PItem *it) {
-    if (it->full || !it->rating_key || !srv_ok(it->srv)) return;
-    char *url = str_printf("%s/library/metadata/%s", S[it->srv].uri, it->rating_key);
+typedef struct { char *url, *token; HttpBuf b; bool ok; SDL_AtomicInt done, refs; } FullJob;
+static void fulljob_unref(FullJob *f) {
+    if (SDL_AddAtomicInt(&f->refs, -1) != 1) return;
+    http_free(&f->b);
+    free(f->url);
+    free(f->token);
+    free(f);
+}
+static int fulljob_thread(void *arg) {
+    FullJob *f = arg;
     Hdrs H;
-    HttpBuf b;
-    if (http_request("GET", url, plex_headers(&H, S[it->srv].token), NULL, &b, 6) && b.data) {
+    f->ok = http_request("GET", f->url, plex_headers(&H, f->token), NULL, &f->b, 6) && f->b.data;
+    SDL_SetAtomicInt(&f->done, 1);
+    fulljob_unref(f);
+    return 0;
+}
+/* false = Back was pressed while waiting */
+static bool plex_ensure_full(PItem *it) {
+    if (it->full || !it->rating_key || !srv_ok(it->srv)) return true;
+    char *url = str_printf("%s/library/metadata/%s", S[it->srv].uri, it->rating_key);
+    /* fetched in a thread with the usual spinner ("Loading…" after 0.3 s); Back cancels */
+    FullJob *f = calloc(1, sizeof *f);
+    if (!f) { free(url); return true; }
+    f->url = url;
+    f->token = str_dup(S[it->srv].token);
+    SDL_SetAtomicInt(&f->refs, 2);
+    SDL_Thread *t = SDL_CreateThread(fulljob_thread, "plex-full", f);
+    if (!t) { fulljob_unref(f); fulljob_unref(f); return true; }
+    SDL_DetachThread(t);
+    double t0 = app_time();
+    bool cancelled = false;
+    while (!SDL_GetAtomicInt(&f->done) && !cancelled) cancelled = app_wait_frame(app_time() - t0 > 0.3 ? T("Loading…") : NULL);
+    if (cancelled) { fulljob_unref(f); return false; }
+    HttpBuf b = f->b;
+    bool ok = f->ok;
+    memset(&f->b, 0, sizeof f->b);
+    url = NULL;
+    fulljob_unref(f);
+    if (ok) {
         cJSON *j = cJSON_Parse(b.data);
         cJSON *mc = j ? cJSON_GetObjectItem(j, "MediaContainer") : NULL;
         PItem *items = NULL;
@@ -712,13 +769,13 @@ static void plex_ensure_full(PItem *it) {
         cJSON_Delete(j);
     }
     http_free(&b);
-    free(url);
+    return true;
 }
 
 /* true = played to the end (or "Next episode" was pressed). watched (optional): counted as watched. next (optional):
    receives the next episode when it is known, also when playback was stopped early. */
 static bool plex_play(PItem *it, double start, bool *watched, PItem *next) {
-    plex_ensure_full(it);
+    if (!plex_ensure_full(it)) return false; /* Back while it was fetched */
     if (!it->part || !srv_ok(it->srv)) { app_toast(T("No playable file")); return false; }
     bool ended = false;
     PSrv *sv = &S[it->srv];
@@ -980,6 +1037,7 @@ static int cast_srv(const PlexCastMedia *m) {
     snprintf(s->name, sizeof s->name, "Plex");
     snprintf(s->uri, sizeof s->uri, "%s://%s:%d", m->protocol, m->address, m->port);
     snprintf(s->token, sizeof s->token, "%s", m->token);
+    s->cast_only = true;
     return nS++;
 }
 
@@ -1050,6 +1108,100 @@ void plex_cast_play(const PlexCastMedia *m) {
     } else snprintf(path, sizeof path, "%s", m->key);
     app_toast(T("Plex: playing from your phone…"));
     if (!srv_get(si, path, cast_cb, q)) free(q);
+}
+
+/* ---------- Plex cast: is a command from this box's own Plex account? ----------
+ * Plex apps send their own X-Plex-Token with every command. plex.tv tells whose token it is (/api/v2/user); it is
+ * accepted when that is the account the box is signed in with, or a user in its Plex Home. Without that, anyone on
+ * the network could use the box's remote control (Plex cast) - also to reach Settings. Answers are kept in memory
+ * (yes 12 hours, no 10 minutes), so plex.tv is asked once per phone, not per command. Runs on plexcast's threads. */
+#define TOKC_N 16
+static struct { char tok[300]; bool ok; double until; } tokc[TOKC_N];
+static char own_uuid[16][64], own_for[300];
+static int n_own;
+static double own_until;
+static SDL_Mutex *tok_mu;
+
+static bool plextv_get(const char *path, const char *token, cJSON **out) {
+    char url[200];
+    snprintf(url, sizeof url, "https://plex.tv%s", path);
+    Hdrs H;
+    HttpBuf b;
+    *out = NULL;
+    if (http_request("GET", url, plex_headers(&H, token), NULL, &b, 8) && b.status == 200 && b.data) *out = cJSON_Parse(b.data);
+    http_free(&b);
+    return *out != NULL;
+}
+
+/* the account's own user and its Plex Home users (uuid) */
+static bool own_users(const char *acct) {
+    if (n_own && !strcmp(own_for, acct) && app_time() < own_until) return true;
+    char u[16][64];
+    int n = 0;
+    cJSON *j;
+    if (plextv_get("/api/v2/user", acct, &j)) {
+        char *id = jstr(j, "uuid");
+        if (id && *id) snprintf(u[n++], sizeof u[0], "%s", id);
+        free(id);
+        cJSON_Delete(j);
+    }
+    if (!n) return false;
+    if (plextv_get("/api/v2/home/users", acct, &j)) {
+        cJSON *arr = cJSON_IsArray(j) ? j : cJSON_GetObjectItem(j, "users"), *e;
+        cJSON_ArrayForEach(e, arr) {
+            char *id = jstr(e, "uuid");
+            if (id && *id && n < 16) snprintf(u[n++], sizeof u[0], "%s", id);
+            free(id);
+        }
+        cJSON_Delete(j);
+    }
+    SDL_LockMutex(tok_mu);
+    memcpy(own_uuid, u, sizeof u);
+    n_own = n;
+    snprintf(own_for, sizeof own_for, "%s", acct);
+    own_until = app_time() + 12 * 3600;
+    SDL_UnlockMutex(tok_mu);
+    return true;
+}
+
+bool plex_token_is_ours(const char *tok) {
+    if (!tok_mu || !tok || !*tok || strlen(tok) >= sizeof tokc[0].tok) return false;
+    char acct[300];
+    snprintf(acct, sizeof acct, "%s", cfg_get("plex_token", ""));
+    if (!acct[0]) return false; /* not signed in: nobody controls the box through Plex */
+    double now = app_time();
+    SDL_LockMutex(tok_mu);
+    for (int i = 0; i < TOKC_N; i++)
+        if (tokc[i].until > now && !strcmp(tokc[i].tok, tok)) { bool ok = tokc[i].ok; SDL_UnlockMutex(tok_mu); return ok; }
+    SDL_UnlockMutex(tok_mu);
+    bool ok = !strcmp(tok, acct);
+    if (!ok && own_users(acct)) {
+        cJSON *j;
+        char *id = NULL;
+        if (plextv_get("/api/v2/user", tok, &j)) { id = jstr(j, "uuid"); cJSON_Delete(j); }
+        SDL_LockMutex(tok_mu);
+        for (int i = 0; id && i < n_own; i++) if (!strcmp(own_uuid[i], id)) ok = true;
+        SDL_UnlockMutex(tok_mu);
+        free(id);
+    }
+    SDL_LockMutex(tok_mu);
+    int k = 0;
+    for (int i = 1; i < TOKC_N; i++) if (tokc[i].until < tokc[k].until) k = i; /* the oldest */
+    snprintf(tokc[k].tok, sizeof tokc[k].tok, "%s", tok);
+    tokc[k].ok = ok;
+    tokc[k].until = now + (ok ? 12 * 3600 : 600);
+    SDL_UnlockMutex(tok_mu);
+    return ok;
+}
+
+static void tok_forget(void) {
+    if (!tok_mu) return;
+    SDL_LockMutex(tok_mu);
+    memset(tokc, 0, sizeof tokc);
+    memset(own_uuid, 0, sizeof own_uuid);
+    memset(own_for, 0, sizeof own_for);
+    n_own = 0;
+    SDL_UnlockMutex(tok_mu);
 }
 
 /* ================= serverfund ================= */
@@ -1247,7 +1399,10 @@ static void link_update(Screen *s, float dt) {
         l->req = req_send("GET", u, NULL, pin_cb, NULL);
         free(u);
     }
-    if (l->step == 2) { app_pop(); app_push(plex_screen()); }
+    if (l->step == 2) { /* replace s itself, also when e.g. the server list is on top */
+        if (app_replace) { l->step = 3; app_replace(s, plex_screen()); }
+        else if (app_top() == s) { l->step = 3; app_pop(); app_push(plex_screen()); } /* NotaTV 1.0.2 and older */
+    }
 }
 
 static int link_buttons(Link *l, const char **b) {
@@ -2250,6 +2405,7 @@ void plex_forget(void) {
     deck_gen++; /* answers on their way are ignored */
     for (int i = 0; i < IMGU_N; i++) { free(imgu[i].path); free(imgu[i].url); }
     memset(imgu, 0, sizeof imgu);
+    tok_forget();
     wipe_session_traces();
 }
 
@@ -2627,7 +2783,7 @@ static const char *const plexsub_o[] = {"plex", "player", "off", NULL}, *const p
 static void act_plex_logout(void) { app_ask_signout("Plex", plex_forget); }
 static const char *plex_signed_out(void) { return *cfg_get("plex_token", "") ? NULL : ITEM_HIDDEN; }
 static const Item plex_items[] = {
-    {N_("Plex cast"), IT_TOGGLE, "plexcast_enabled", "1", set_onoff, .changed = plexcast_apply, .help = N_("The Plex app on your phone can play on NotaTV (cast button) and control playback. Local network only")},
+    {N_("Plex cast"), IT_TOGGLE, "plexcast_enabled", "1", set_onoff, .changed = plexcast_apply, .help = N_("The Plex app on your phone can play on NotaTV (cast button) and control playback. Only from your own Plex account, on the local network")},
     {N_("Plex subtitles"), IT_CYCLE, "plex_subs", "plex", plexsub_o, plexsub_l,
      .help = N_("Follow Plex: the subtitle track chosen in Plex, otherwise none. Language setting: the player picks by Subtitle language under Picture and sound. Off: never")},
     {N_("Home screen (Plex and Jellyfin)"), IT_CYCLE, "plex_home_style", "hero", plexst_o, plexst_l, .help = N_("Hero: a featured title at the top. Focus: background and info follow the selected title")},
@@ -2639,9 +2795,13 @@ static const Item plex_items[] = {
 };
 
 static void plex_row_open(const HomeItem *it, int idx) { (void)idx; if (it->key) plex_play_key(it->key); }
-static void plex_app_apply(void) { plexcast_apply(); }
+static void plex_app_apply(void) {
+    plex_client_id(); /* made here on the main thread, never first from a worker */
+    if (!tok_mu) tok_mu = SDL_CreateMutex();
+    plexcast_apply();
+}
 const NotaApp nota_app = {
-    NOTA_API, "plex", "Plex", N_("Movies and shows from your Plex server"), "1.0.0", 20, 0,
+    NOTA_API, "plex", "Plex", N_("Movies and shows from your Plex server"), APP_VERSION, 20, 0,
     ICON_PLEX, {40, 40, 44, 255}, {22, 22, 26, 255}, {229, 160, 13, 255},
     .open = plex_screen, .init = plex_app_apply, .tick = plexcast_tick, .apply = plex_app_apply, .forget = plex_forget,
     .settings = plex_items, .n_settings = sizeof plex_items / sizeof plex_items[0],

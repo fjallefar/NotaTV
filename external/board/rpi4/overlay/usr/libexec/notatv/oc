@@ -19,7 +19,7 @@ PENDING=/data/notatv/oc-pending
 mount_boot() {
 	mountpoint -q $BOOT && return 0
 	mkdir -p $BOOT
-	mount "$(findfs LABEL=NOTABOOT)" $BOOT
+	mount "$(boot_dev)" $BOOT # the system's own boot partition (not a USB stick with the same label)
 }
 
 tryboot_active() {

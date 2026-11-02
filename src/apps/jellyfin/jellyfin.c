@@ -1704,7 +1704,7 @@ static const Item jf_items[] = {
 /* installed/uninstalled: give the "Play on" thread a new snapshot now (it stops when the app is gone) */
 static void jellyfin_app_apply(void) { next_conf = 0; jellyfin_remote_tick(); }
 const NotaApp nota_app = {
-    NOTA_API, "jellyfin", "Jellyfin", N_("Movies and shows from your Jellyfin server"), "1.0.0", 30, APP_DEFAULT_OFF,
+    NOTA_API, "jellyfin", "Jellyfin", N_("Movies and shows from your Jellyfin server"), APP_VERSION, 30, APP_DEFAULT_OFF,
     ICON_FILM, {0, 164, 220, 255}, {120, 70, 190, 255}, {255, 255, 255, 255},
     .open = jellyfin_screen, .tick = jellyfin_remote_tick, .apply = jellyfin_app_apply, .forget = jellyfin_forget,
     .settings = jf_items, .n_settings = sizeof jf_items / sizeof jf_items[0],

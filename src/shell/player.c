@@ -1,4 +1,5 @@
 /* NotaTV shell - player: mpv as a child process, controlled via JSON IPC */
+#define _GNU_SOURCE /* execvpe */
 #include "tv.h"
 #include "vendor/cJSON.h"
 #include <errno.h>
@@ -20,10 +21,26 @@
 
 static int ipc_fd = -1;
 
+/* the whole line, also when the (non-blocking) socket only takes part of it; waits at most ~0.5 s */
 static void ipc_send(const char *json) {
     if (ipc_fd < 0) return;
     size_t n = strlen(json);
-    if (write(ipc_fd, json, n) < 0 || write(ipc_fd, "\n", 1) < 0) SDL_Log("ipc: write fejlede");
+    char *line = malloc(n + 1);
+    if (!line) return;
+    memcpy(line, json, n);
+    line[n++] = '\n';
+    size_t off = 0;
+    for (int tries = 0; off < n && tries < 50;) {
+        ssize_t w = write(ipc_fd, line + off, n - off);
+        if (w > 0) { off += (size_t)w; continue; }
+        if (w < 0 && errno == EINTR) continue;
+        if (w < 0 && errno != EAGAIN && errno != EWOULDBLOCK) break;
+        struct pollfd p = {ipc_fd, POLLOUT, 0};
+        poll(&p, 1, 10);
+        tries++;
+    }
+    if (off < n) SDL_Log("ipc: write fejlede");
+    free(line);
 }
 
 static void ipc_cmd(const char *const *args) {
@@ -159,7 +176,8 @@ static bool probe_video_wait(const char *url) {
         if (cancelled) return false;
     }
     free(last_url);
-    last_url = url ? str_dup(url) : NULL;
+    /* only a result with a frame rate is kept: a failed probe (e.g. the network was down) is tried again next time */
+    last_url = url && fps > 0 ? str_dup(url) : NULL;
     last_fps = fps;
     last_hdr = hdr;
     last_w = w;
@@ -194,6 +212,19 @@ static pid_t spawn_mpv(char **argv) {
        Read before fork: cfg uses a mutex that another thread may hold. */
     bool apple_hdr = strcmp(cfg_get("hdr_meta", "apple"), "film") != 0;
     bool keep_hdr = hdr_cfg("hdr_always", 0);
+    /* mpv's environment is built here, before fork: setenv in the child of a program with many threads is not safe */
+    extern char **environ;
+    size_t ne = 0;
+    while (environ[ne]) ne++;
+    char **env = malloc(sizeof(char *) * (ne + 3));
+    if (!env) return -1;
+    size_t k = 0;
+    for (size_t i = 0; i < ne; i++)
+        if (strncmp(environ[i], "NOTATV_HDR_STATIC=", 18) && strncmp(environ[i], "NOTATV_KEEP_HDR=", 16)) env[k++] = environ[i];
+    if (apple_hdr) env[k++] = "NOTATV_HDR_STATIC=1000,0.005,4000,1000";
+    /* "always HDR": mpv must not set the TV back to SDR when it closes */
+    if (keep_hdr) env[k++] = "NOTATV_KEEP_HDR=1";
+    env[k] = NULL;
     pid_t pid = fork();
     if (pid == 0) {
         int dn = open("/dev/null", O_RDWR);
@@ -201,14 +232,10 @@ static pid_t spawn_mpv(char **argv) {
         int lf = open("/tmp/mpv-out.log", O_WRONLY | O_CREAT | O_TRUNC, 0600); /* has URLs with tokens */
         if (lf >= 0) { fchmod(lf, 0600); dup2(lf, 1); dup2(lf, 2); }
         setsid();
-        if (apple_hdr) setenv("NOTATV_HDR_STATIC", "1000,0.005,4000,1000", 1);
-        else unsetenv("NOTATV_HDR_STATIC");
-        /* "always HDR": mpv must not set the TV back to SDR when it closes */
-        if (keep_hdr) setenv("NOTATV_KEEP_HDR", "1", 1);
-        else unsetenv("NOTATV_KEEP_HDR");
-        execvp("mpv", argv);
+        execvpe("mpv", argv, env);
         _exit(127);
     }
+    free(env);
     return pid;
 }
 
@@ -235,6 +262,7 @@ typedef struct {
     double scrub_t;
     int scrub_n, scrub_dir;
     PlaySkip skip;         /* markers and "next episode" (rq->skip_info) */
+    bool skip_ready;       /* skip is filled in (the thread is done) */
     bool skip_probed;
     int prompt;            /* button on screen: 0 none, 1 skip intro, 2 skip credits, 3 next episode */
     double prompt_to;      /* where the button leads: seconds, or -1 = the end (finish) */
@@ -326,17 +354,21 @@ static void zap(const PlayRequest *rq, MpvState *st, int d) {
     if (rq->channel_preview) rq->channel_preview(rq->ud, st->zap);
 }
 
+static char ipc_buf[65536];
+static size_t ipc_blen; /* reset with every new connection (no half line from the previous mpv) */
+static bool ipc_skip;   /* a line longer than the buffer: dropped up to its end */
 static void ipc_read(MpvState *st, const PlayRequest *rq) {
-    static char buf[65536];
-    static size_t blen;
+    char *buf = ipc_buf;
     for (;;) {
-        ssize_t n = read(ipc_fd, buf + blen, sizeof buf - blen - 1);
+        if (ipc_blen >= sizeof ipc_buf - 1) { ipc_blen = 0; ipc_skip = true; } /* full without a line end */
+        ssize_t n = read(ipc_fd, buf + ipc_blen, sizeof ipc_buf - ipc_blen - 1);
         if (n <= 0) break;
-        blen += n;
-        buf[blen] = 0;
+        ipc_blen += n;
+        buf[ipc_blen] = 0;
         char *line = buf, *nl;
         while ((nl = strchr(line, '\n'))) {
             *nl = 0;
+            if (ipc_skip) { ipc_skip = false; line = nl + 1; continue; } /* the end of a too long line */
             cJSON *j = cJSON_Parse(line);
             if (j) {
                 cJSON *ev = cJSON_GetObjectItem(j, "event");
@@ -379,8 +411,8 @@ static void ipc_read(MpvState *st, const PlayRequest *rq) {
             }
             line = nl + 1;
         }
-        blen = strlen(line);
-        memmove(buf, line, blen + 1);
+        ipc_blen = strlen(line);
+        memmove(buf, line, ipc_blen + 1);
     }
 }
 
@@ -581,7 +613,111 @@ static void handle_action(const InputEvent *ev, const PlayRequest *rq, MpvState 
     (void)st;
 }
 
+/* /tmp/notatv-nowplaying.json for the OSD script (written whole, so it never reads half a file) */
+static void write_nowplaying(const char *js) {
+    FILE *f = fopen("/tmp/notatv-nowplaying.json.tmp", "w");
+    if (!f) return;
+    fputs(js, f);
+    if (fclose(f) == 0) rename("/tmp/notatv-nowplaying.json.tmp", "/tmp/notatv-nowplaying.json");
+}
+static SDL_AtomicInt np_gen; /* counted up per playback: a late poster never lands in the next one's file */
+typedef struct { char *url, *json; int gen; } PosterJob;
+static int poster_thread(void *arg) {
+    PosterJob *pj = arg;
+    int pw, ph;
+    /* two versions: the OSD script picks the HDR version when the TV is in HDR (PQ) */
+    if (img_export_bgra(pj->url, "/tmp/notatv-poster.bgra", 420, 630, &pw, &ph)) {
+        cJSON *m = cJSON_Parse(pj->json);
+        if (m) {
+            if (img_export_bgra_ex(pj->url, "/tmp/notatv-poster-hdr.bgra", 420, 630, &pw, &ph, true))
+                cJSON_AddStringToObject(m, "poster_hdr", "/tmp/notatv-poster-hdr.bgra");
+            cJSON_AddStringToObject(m, "poster", "/tmp/notatv-poster.bgra");
+            cJSON_AddNumberToObject(m, "poster_w", pw);
+            cJSON_AddNumberToObject(m, "poster_h", ph);
+            char *js = cJSON_PrintUnformatted(m);
+            if (js && SDL_GetAtomicInt(&np_gen) == pj->gen) write_nowplaying(js);
+            free(js);
+            cJSON_Delete(m);
+        }
+    }
+    free(pj->url);
+    free(pj->json);
+    free(pj);
+    return 0;
+}
+
+/* rq->skip_info (markers, next episode) in a thread; the result is copied in the playback loop */
+static struct {
+    bool running;
+    SDL_Thread *t;
+    SDL_AtomicInt done;
+    const PlayRequest *rq;
+    PlaySkip out;
+} skipjob;
+static int skip_thread(void *arg) {
+    (void)arg;
+    skipjob.rq->skip_info(skipjob.rq->ud, &skipjob.out);
+    SDL_SetAtomicInt(&skipjob.done, 1);
+    return 0;
+}
+static void skip_start(const PlayRequest *rq) {
+    memset(&skipjob.out, 0, sizeof skipjob.out);
+    skipjob.rq = rq;
+    SDL_SetAtomicInt(&skipjob.done, 0);
+    skipjob.t = SDL_CreateThread(skip_thread, "skipinfo", NULL);
+    skipjob.running = skipjob.t != NULL;
+}
+
+/* OpenSubtitles search/download for the playback (one thread at a time) */
+static struct {
+    bool running, fetch;
+    SDL_Thread *t;
+    SDL_AtomicInt done;
+    const PlayRequest *rq;
+    int idx, n;
+    char **labels, *path;
+} subjob;
+static int sub_thread(void *arg) {
+    (void)arg;
+    if (subjob.fetch) subjob.path = subjob.rq->sub_fetch(subjob.rq->ud, subjob.idx);
+    else subjob.n = subjob.rq->sub_search(subjob.rq->ud, &subjob.labels);
+    SDL_SetAtomicInt(&subjob.done, 1);
+    return 0;
+}
+static void sub_start(const PlayRequest *rq, bool fetch, int idx) {
+    subjob.rq = rq;
+    subjob.fetch = fetch;
+    subjob.idx = idx;
+    subjob.n = 0;
+    subjob.labels = NULL;
+    subjob.path = NULL;
+    SDL_SetAtomicInt(&subjob.done, 0);
+    subjob.t = SDL_CreateThread(sub_thread, "subs", NULL);
+    subjob.running = subjob.t != NULL;
+    if (!subjob.running) player_osd(T("Could not download subtitles"), 3000);
+}
+
+static PlayResult player_run_inner(const PlayRequest *rq);
+
+/* AirPlay/Bluetooth music pauses while a video plays. In the background (shell + script + D-Bus took time off
+   the start of every video and the way back to the menu). */
 PlayResult player_run(const PlayRequest *rq) {
+    static bool active;
+    if (active) { /* e.g. a background job that wants to play while something plays: never two players at once */
+        SDL_Log("player: spiller allerede - %s ignoreret", rq && rq->title ? rq->title : "afspilning");
+        PlayResult r = {0};
+        r.cancelled = true;
+        return r;
+    }
+    active = true;
+    run_cmd("%s/music pause >/dev/null 2>&1 &", helper_path());
+    PlayResult res = player_run_inner(rq);
+    run_cmd("%s/music resume >/dev/null 2>&1 &", helper_path());
+    active = false;
+    return res;
+}
+
+static PlayResult player_run_inner(const PlayRequest *rq) {
     PlayResult res = {0};
     unlink(SOCK_PATH);
     { /* the previous playback's log is kept as .1 (e.g. the one that failed, before you tried again) */
@@ -590,7 +726,6 @@ PlayResult player_run(const PlayRequest *rq) {
         free(old);
     }
     bt_media("Pause"); /* Bluetooth: pause the phone, so the music does not keep playing into nothing */
-    run_cmd("%s/music pause >/dev/null 2>&1", helper_path());
 
     /* frame rate and HDR are only checked if they are used */
     bool want_rate = cfg_int("match_rate", 1) && input_evdev_active() && !rq->is_live;
@@ -644,18 +779,22 @@ PlayResult player_run(const PlayRequest *rq) {
         if (rq->speed) cJSON_AddBoolToObject(m, "speed", true);
         if (rq->channel) cJSON_AddStringToObject(m, "channel", rq->channel);
         if (rq->sub_search) cJSON_AddBoolToObject(m, "subsearch", true);
-        int pw, ph;
-        /* two versions: the OSD script picks the HDR version when the TV is in HDR (PQ) */
-        if (rq->poster && img_export_bgra(rq->poster, "/tmp/notatv-poster.bgra", 420, 630, &pw, &ph)) {
-            if (img_export_bgra_ex(rq->poster, "/tmp/notatv-poster-hdr.bgra", 420, 630, &pw, &ph, true))
-                cJSON_AddStringToObject(m, "poster_hdr", "/tmp/notatv-poster-hdr.bgra");
-            cJSON_AddStringToObject(m, "poster", "/tmp/notatv-poster.bgra");
-            cJSON_AddNumberToObject(m, "poster_w", pw);
-            cJSON_AddNumberToObject(m, "poster_h", ph);
-        }
         char *js = cJSON_PrintUnformatted(m);
-        FILE *f = fopen("/tmp/notatv-nowplaying.json", "w");
-        if (f) { fputs(js, f); fclose(f); }
+        write_nowplaying(js);
+        /* the poster (for the pause screen) is made in a thread while mpv starts - it may have to be fetched */
+        int gen = SDL_AddAtomicInt(&np_gen, 1) + 1;
+        if (rq->poster) {
+            PosterJob *pj = calloc(1, sizeof *pj);
+            if (pj) {
+                pj->url = str_dup(rq->poster);
+                pj->json = js;
+                js = NULL;
+                pj->gen = gen;
+                SDL_Thread *t = SDL_CreateThread(poster_thread, "poster", pj);
+                if (t) SDL_DetachThread(t);
+                else { free(pj->url); free(pj->json); free(pj); }
+            }
+        }
         free(js);
         cJSON_Delete(m);
     }
@@ -681,6 +820,8 @@ PlayResult player_run(const PlayRequest *rq) {
         double started = app_time();
         /* connect IPC (up to 8 s) */
         ipc_fd = -1;
+        ipc_blen = 0;
+        ipc_skip = false;
         while (app_time() - started < 8) {
             ipc_fd = ipc_connect();
             if (ipc_fd >= 0) break;
@@ -707,11 +848,18 @@ PlayResult player_run(const PlayRequest *rq) {
             if (ipc_fd >= 0) pfd[nf++] = (struct pollfd){ipc_fd, POLLIN, 0};
             poll(pfd, nf, 100);
             if (ipc_fd >= 0) ipc_read(&st, rq);
-            if (!rq->is_live && rq->skip_info && !st.skip_probed && st.have_dur && st.pos > 3) {
+            /* markers and next episode: fetched in a thread (a slow server must not freeze the keys) */
+            if (!rq->is_live && rq->skip_info && !skipjob.running && !st.skip_probed && st.have_dur && st.pos > 3) {
                 st.skip_probed = true;
-                rq->skip_info(rq->ud, &st.skip);
+                skip_start(rq);
             }
-            if (st.skip_probed) skip_update(&st);
+            if (skipjob.running && SDL_GetAtomicInt(&skipjob.done)) {
+                SDL_WaitThread(skipjob.t, NULL);
+                skipjob.running = false;
+                st.skip = skipjob.out;
+                st.skip_ready = true;
+            }
+            if (st.skip_ready) skip_update(&st);
             input_poll();
             if (!input_evdev_active()) { /* PC development: SDL events (mpv has its own window) */
                 SDL_Event e;
@@ -720,6 +868,7 @@ PlayResult player_run(const PlayRequest *rq) {
             InputEvent ev;
             while (input_next(&ev)) handle_action(&ev, rq, &st, &quit, digits, &digit_t);
             if (rq->tick) rq->tick(rq->ud);
+            app_background_tick(true); /* jobs, phone page, Bluetooth, App Store installs keep running */
             if (st.scrub >= 0 && app_time() - st.scrub_t > 0.7) {
                 char a[32];
                 snprintf(a, sizeof a, "%.1f", st.scrub);
@@ -763,32 +912,49 @@ PlayResult player_run(const PlayRequest *rq) {
                 quit = true;
                 continue;
             }
-            if (st.subsearch && rq->sub_search) {
+            /* OpenSubtitles: search and download in a thread (up to 15 s) - the keys and mpv's menu keep working.
+               One at a time; the thread's result is taken here when it is done. */
+            if (!subjob.running && st.subsearch && rq->sub_search) {
                 st.subsearch = false;
-                char **labels = NULL;
-                int n = rq->sub_search(rq->ud, &labels); /* blocks briefly; mpv keeps playing */
-                cJSON *arr = cJSON_CreateArray();
-                for (int i = 0; i < n; i++) { cJSON_AddItemToArray(arr, cJSON_CreateString(labels[i])); free(labels[i]); }
-                free(labels);
-                char *js = cJSON_PrintUnformatted(arr);
-                cJSON_Delete(arr);
-                FILE *f = fopen("/tmp/notatv-subs.json", "w");
-                if (f) { fputs(js, f); fclose(f); }
-                free(js);
-                CMD("script-message", "notatv-subresults");
-            }
-            if (st.subpick >= 0 && rq->sub_fetch) {
+                sub_start(rq, false, 0);
+            } else if (!subjob.running && st.subpick >= 0 && rq->sub_fetch) {
                 int idx = st.subpick;
                 st.subpick = -1;
-                char *path = rq->sub_fetch(rq->ud, idx);
-                if (path) { CMD("sub-add", path, "select"); player_osd(T("Subtitles loaded"), 2000); free(path); }
+                sub_start(rq, true, idx);
+            }
+            if (subjob.running && SDL_GetAtomicInt(&subjob.done)) {
+                SDL_WaitThread(subjob.t, NULL);
+                subjob.running = false;
+                if (!subjob.fetch) {
+                    cJSON *arr = cJSON_CreateArray();
+                    for (int i = 0; i < subjob.n; i++) { cJSON_AddItemToArray(arr, cJSON_CreateString(subjob.labels[i])); free(subjob.labels[i]); }
+                    free(subjob.labels);
+                    char *js = cJSON_PrintUnformatted(arr);
+                    cJSON_Delete(arr);
+                    FILE *f = fopen("/tmp/notatv-subs.json", "w");
+                    if (f) { fputs(js, f); fclose(f); }
+                    free(js);
+                    CMD("script-message", "notatv-subresults");
+                } else if (subjob.path) { CMD("sub-add", subjob.path, "select"); player_osd(T("Subtitles loaded"), 2000); free(subjob.path); }
                 else player_osd(T("Could not download subtitles"), 3000);
+                subjob.labels = NULL;
+                subjob.path = NULL;
             }
             if (rq->progress && app_time() - last_prog > 10 && st.have_dur) {
                 rq->progress(rq->ud, st.pos, st.dur, false, st.paused);
                 last_prog = app_time();
             }
             if (waitpid(pid, &status, WNOHANG) == pid) pid = -1;
+        }
+        if (skipjob.running) { SDL_WaitThread(skipjob.t, NULL); skipjob.running = false; } /* rq->ud outlives it */
+        if (subjob.running) { /* rq->ud must outlive the thread */
+            SDL_WaitThread(subjob.t, NULL);
+            subjob.running = false;
+            for (int i = 0; i < subjob.n; i++) free(subjob.labels[i]);
+            free(subjob.labels);
+            free(subjob.path);
+            subjob.labels = NULL;
+            subjob.path = NULL;
         }
         if (ipc_fd >= 0) close(ipc_fd);
         ipc_fd = -1;
@@ -808,7 +974,6 @@ PlayResult player_run(const PlayRequest *rq) {
     res.eof = st.eof || (st.dur > 0 && st.pos > st.dur - 3);
     if (rq->progress && st.have_dur) rq->progress(rq->ud, st.pos, st.dur, true, false);
     if (video_off) app_video_resume();
-    run_cmd("%s/music resume >/dev/null 2>&1", helper_path());
     if (!user_quit && !res.quality[0] && !res.goto_channel && res.exit_code != 0 && !st.have_dur) {
         /* mpv's log says why: a server that never answered is worth saying (it is not the box) */
         bool no_answer = false, http_error = false; /* an answer like 401/404 is not "did not answer" */

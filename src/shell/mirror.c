@@ -43,8 +43,28 @@ static void ux_stop(void) {
     ux_pid = -1;
 }
 
+/* The box's own 4-digit AirPlay code (made once): a phone that mirrors for the first time must enter it, so a
+   neighbour on a shared Wi-Fi cannot just put their screen on the TV. Trusted phones are kept in a register. */
+const char *airplay_pin(void) {
+    static char pin[8];
+    const char *c = cfg_get("airplay_pin", "");
+    if (strlen(c) == 4) { snprintf(pin, sizeof pin, "%s", c); return pin; }
+    unsigned r = 0;
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (!f || fread(&r, sizeof r, 1, f) != 1) r = (unsigned)SDL_GetTicks() * 2654435761u;
+    if (f) fclose(f);
+    snprintf(pin, sizeof pin, "%04u", r % 10000);
+    cfg_set("airplay_pin", pin);
+    return pin;
+}
+
 static void ux_start(void) {
     if (access("/usr/bin/uxplay", X_OK) != 0) return;
+    char pin[8], reg[320];
+    snprintf(pin, sizeof pin, "%s", airplay_pin());
+    snprintf(reg, sizeof reg, "%s/uxplay.register", data_dir());
+    int rf = open(reg, O_WRONLY | O_CREAT | O_CLOEXEC, 0600); /* UxPlay wants it to exist and be writable */
+    if (rf >= 0) close(rf);
     snprintf(ux_name, sizeof ux_name, "%s", cfg_get("device_name", "NotaTV"));
     char name[160], port[16];
     snprintf(name, sizeof name, T("%s (screen)"), ux_name); /* AirPlay audio has the name without "(screen)" (shairport-sync) */
@@ -64,7 +84,7 @@ static void ux_start(void) {
         prctl(PR_SET_PDEATHSIG, SIGTERM);
         if (getppid() == 1) _exit(0);
         execl("/usr/bin/uxplay", "uxplay", "-n", name, "-nh", "-p", port, "-s", "1920x1080@60", "-fps", "60", "-nohold",
-              "-as", "alsasink device=default", "-vrtp", vrtp, (char *)NULL);
+              "-pin", pin, "-reg", reg, "-as", "alsasink device=default", "-vrtp", vrtp, (char *)NULL);
         _exit(127);
     }
     ux_pid = pid;
@@ -170,6 +190,7 @@ static int android_thread(void *arg) {
 
 /* ---------- playback (main thread) ---------- */
 static bool stop_airplay;
+static bool ap_blocked; /* Back during mirroring: wait for the phone to disconnect */
 static double since_disconnect;
 
 static void airplay_tick(void *ud) {
@@ -229,7 +250,35 @@ static void play_airplay(void) {
     SDL_UnlockMutex(mu);
     close(p[0]);
     close(p[1]);
-    /* the user closed with Back while the phone is still mirroring: wait for new video before starting again */
+    /* closed with Back while the phone still mirrors: no new start until the phone has disconnected (otherwise
+       the next video packet would start it again right away) */
+    if (airplay_connected()) ap_blocked = true;
+}
+
+/* UxPlay logs "PAIR-PIN-START" when a phone asks for the code: show it on the TV */
+static void pin_watch(void) {
+    static double next;
+    static long off;
+    if (app_time() < next) return;
+    next = app_time() + 1;
+    FILE *f = fopen("/tmp/uxplay.log", "r");
+    if (!f) { off = 0; return; }
+    fseek(f, 0, SEEK_END);
+    long end = ftell(f);
+    if (end < off) off = 0; /* a new UxPlay (new log) */
+    if (end > off) {
+        fseek(f, off, SEEK_SET);
+        char line[512];
+        bool asked = false;
+        while (fgets(line, sizeof line, f)) if (strstr(line, "PAIR-PIN-START")) asked = true;
+        off = end;
+        if (asked) {
+            char t[160];
+            snprintf(t, sizeof t, T("Enter %s on your iPhone, iPad or Mac. It is only asked the first time."), airplay_pin());
+            confirm_open(T("AirPlay code"), t, "OK", "", NULL, NULL);
+        }
+    }
+    fclose(f);
 }
 
 static void play_android(int fd) {
@@ -267,11 +316,18 @@ void mirror_tick(void) {
         ux_next_try = app_time() + 15;
         ux_start();
     }
+    if (ux_pid > 0) pin_watch();
     SDL_LockMutex(mu);
+    if (ap_blocked) { /* drop the video until the phone disconnects */
+        M.airplay_start = false;
+        M.nkeep = 0;
+    }
     bool ap = M.airplay_start && app_time() - M.last_data < 2;
     int afd = M.android_fd;
     M.android_fd = -1;
     SDL_UnlockMutex(mu);
+    static double blk_check;
+    if (ap_blocked && app_time() > blk_check) { blk_check = app_time() + 1; if (!airplay_connected()) ap_blocked = false; }
     if (afd >= 0) play_android(afd);
     else if (ap && airplay_connected()) play_airplay();
 }

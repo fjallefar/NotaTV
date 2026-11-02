@@ -1,6 +1,6 @@
 {
   "id": "iptv",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "api": 2,
   "name": "Live TV",
   "desc": "Watch live TV and channels from your IPTV provider",
@@ -9,5 +9,12 @@
   "c2": [22, 52, 140],
   "fg": [255, 255, 255],
   "order": 10,
-  "default": true
+  "default": true,
+  "changes": {
+    "summary": "Big channel lists and program guides load much faster",
+    "points": [
+      "Channel groups and the program guide are matched in a fraction of the time",
+      "The program guide is only downloaded again when it has changed"
+    ]
+  }
 }

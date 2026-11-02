@@ -167,6 +167,12 @@ static void net_work(void *arg) {
 }
 
 static Net *live_net;
+static void net_done(void *arg);
+static int net_thread(void *arg) {
+    net_work(arg);
+    job_submit(NULL, net_done, arg); /* net_done on the main thread */
+    return 0;
+}
 
 static DnsEntry *dns_find(const char *ip) {
     for (int i = 0; i < n_dns; i++) if (!strcmp(dns[i].ip, ip)) return &dns[i];
@@ -223,7 +229,11 @@ static void net_refresh(Net *v) {
         if (!dup) snprintf(j->lookups[j->n_look++], 64, "%s", ip);
     }
     v->busy = true;
-    job_submit_q(JQ_SLOW, net_work, net_done, j);
+    /* its own thread: up to 16 reverse DNS lookups (seconds each with a slow DNS) must not hold up the slow job
+       queue, where App Store installs and the update check wait. The result goes to the main thread as a job. */
+    SDL_Thread *t = SDL_CreateThread(net_thread, "netwatch", j);
+    if (t) SDL_DetachThread(t);
+    else job_submit_q(JQ_SLOW, net_work, net_done, j);
 }
 
 /* ---------- screen ---------- */

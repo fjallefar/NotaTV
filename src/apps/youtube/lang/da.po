@@ -294,3 +294,12 @@ msgstr "En telefon"
 msgid "YouTube: %s is connected"
 msgstr "YouTube: %s er forbundet"
 
+
+msgid "Safer casting from phones"
+msgstr "Mere sikker cast fra telefoner"
+
+msgid "At most 8 connections from phones at a time, so the box cannot be overloaded from the network"
+msgstr "Højst 8 forbindelser fra telefoner ad gangen, så boksen ikke kan overbelastes fra netværket"
+
+msgid "Signing in from the phone closes the right screen"
+msgstr "Log ind fra telefonen lukker den rigtige skærm"

@@ -21,3 +21,7 @@ initial_turbo=30
 
 # seriel konsol (GPIO 14/15) til fejlfinding
 enable_uart=1
+
+[all]
+# the kernel set in use (the NotaTV updater switches it)
+include notatv-slot.txt

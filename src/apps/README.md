@@ -19,7 +19,8 @@ src/apps/<id>/
   manifest.json     id, version, api + what the App Store shows before the app is installed:
                     name, desc, icon (tv, plex, youtube, play, star, music, film, folder ...), c1/c2/fg colors,
                     order and default (was on by default in NotaTV 1.0; only used to move
-                    1.0 boxes to App Store apps - nothing is ticked beforehand in the setup guide)
+                    1.0 boxes to App Store apps - nothing is ticked beforehand in the setup guide),
+                    and changes: what is new in this version (see below)
   *.c, <id>.h       the app (any number of files; <id>.h has what the files share)
   lang/<code>.po    the app's translations (e.g. lang/da.po)
   app.mk            optional: extra compiler flags as CFLAGS_<id>
@@ -28,6 +29,8 @@ src/apps/<id>/
 The installed package is `manifest.json`, `app.so` and `lang/`.
 
 - `id` contains only lowercase letters, digits, `-` and `_`. It must match the folder name.
+- `version` is the app's own version. The code gets it as `APP_VERSION` (src/apps/Makefile reads it from the
+  manifest), so write `APP_VERSION` in `nota_app` - never a version number.
 - `api` is `NOTA_API` from `tv.h`. If a package is built for another API version, it is skipped when NotaTV starts.
 - Make every function `static` except the descriptor. The package then exports only `nota_app`.
 
@@ -40,12 +43,13 @@ static Screen *my_screen(void) { ... }
 static void my_forget(void) { ... }          /* delete everything saved: tokens, files, cfg keys */
 
 static void act_logout(void) { app_ask_signout("My app", my_forget); }
+static const char *signed_out(void) { return *cfg_get("myapp_token", "") ? NULL : ITEM_HIDDEN; }
 static const Item my_settings[] = {
-    {N_("Sign out of My app"), IT_ACTION, .action = act_logout},
+    {N_("Sign out of My app"), IT_ACTION, .action = act_logout, .locked = signed_out},
 };
 
 const NotaApp nota_app = {
-    NOTA_API, "myapp", "My app", N_("One line about what it does"), "1.0.0", 55, 0,
+    NOTA_API, "myapp", "My app", N_("One line about what it does"), APP_VERSION, 55, 0,
     ICON_PLAY, {145, 70, 255, 255}, {88, 38, 170, 255}, {255, 255, 255, 255},
     .open = my_screen, .forget = my_forget,
     .settings = my_settings, .n_settings = sizeof my_settings / sizeof my_settings[0],
@@ -56,11 +60,11 @@ const NotaApp nota_app = {
 |---|---|
 | `order` | Position on the home screen. Live TV is 10, Plex 20, Jellyfin 30, YouTube 40, Twitch 50, Seerr 60, Music 70, Games 80, Media 90. |
 | `flags` | `APP_DEFAULT_OFF`: not installed from the start. `APP_ROW_LOGOS`: the home row shows logos. |
-| `init` | Runs once, when NotaTV starts or when the app is installed. |
+| `init` | Runs once per run of NotaTV: when it starts, or when the app is installed. Not again if the app is uninstalled and installed again before a restart. |
 | `tick` | Runs every frame while the app is installed. Use it for background services. |
 | `apply` | Runs when the app is installed or uninstalled. Start or stop background services here, and check `app_on("<id>")`. |
-| `forget` | Called on sign-out and on uninstall. It must delete everything saved for the account. |
-| `settings` | Shown under *Settings → Apps → name*. When the app is uninstalled, the keys are reset to their defaults. |
+| `forget` | Called on sign-out and on uninstall. It must delete everything saved for the account, and leave the app ready to be used again (what `init` made stays). |
+| `settings` | Shown under *Settings → Apps → name*. When the app is uninstalled, the keys are reset to their defaults. An item's `locked` returns a text to show it locked, or `ITEM_HIDDEN` to hide it (e.g. *Sign out* while nobody is signed in). An app whose items are all hidden is left out of the list. |
 | `row`, `row_title`, `row_open`, `row_refresh` | The row under the apps on the home screen, e.g. "Continue watching". |
 | `shelf_label`, `draw_shelf` | The large area at the top of the home screen when the app has focus. |
 | `inbox` | A message from the phone page (`/tmp/notatv-inbox/_<name>`). Return true when the app takes it. YouTube uses it for accounts sent from the phone. |
@@ -96,6 +100,19 @@ image). The release workflow then runs `scripts/apps-catalog.py`, which packs ea
 from `lang/*.po`), and uploads them to the release `apps`. Raise `version` in `manifest.json` when an app changes,
 so boxes see *Update* in the App Store. Keep `name`, `desc`, `icon`, colors and `order` the same as in `nota_app`.
 
+When you raise `version`, write what is new in `changes` - one very short summary and a few points. The App Store
+shows it on the app ("New: ...") and on the card before the update, and *Update all* lists it per app:
+
+```json
+"changes": {
+  "summary": "Casting from the Plex app needs your Plex account",
+  "points": ["Nobody else on the network can control the box through Plex", "Fewer freezes when a server is slow"]
+}
+```
+
+Translate the texts in `lang/<code>.po` like the app's other texts (`scripts/i18n-check.py` finds them).
+Without `changes`, *Update* installs right away.
+
 To try the App Store locally: `python3 scripts/apps-catalog.py src/apps/out /tmp/dist`, then run tvshell with
 `TVSHELL_APPS=/nonexistent TVSHELL_APPCAT_URL=file:///tmp/dist`. `tvshell` is linked with `-rdynamic`, so a package can call every function in `tv.h`, and
 cJSON as well.
@@ -104,6 +121,9 @@ cJSON as well.
 
 - Bump `NOTA_API` in `tv.h` whenever something an app uses changes: a struct, a function signature or an enum.
   Packages for the old version are then skipped instead of crashing.
+- A new function can be added to `tv.h` without bumping `NOTA_API`: mark it `NOTA_NEW` (a weak symbol). An app
+  that calls it must check it first (`if (app_close) app_close(s); else ...`), because a box with an older NotaTV
+  (same `NOTA_API`) gives NULL. Otherwise the package cannot be loaded there at all.
 - A package is never unloaded while `tvshell` runs. An uninstalled app stays in memory until the next start, so
   jobs and threads still running cannot call code that is gone.
 - A package is checked before it is used: its SHA256 must match the catalog, and it may only hold plain files and

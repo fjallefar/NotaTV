@@ -150,3 +150,9 @@ msgstr "Tilbagekalder login hos Twitch og sletter det fra boksen"
 msgid "Live streams from the channels you follow and all of Twitch"
 msgstr "Live-streams fra dine fulgte kanaler og hele Twitch"
 
+
+msgid "The chat is encrypted"
+msgstr "Chatten er krypteret"
+
+msgid "The chat is read over an encrypted connection"
+msgstr "Chatten hentes over en krypteret forbindelse"

@@ -1312,6 +1312,7 @@ void seerr_forget(void) {
         http_request_cookies("POST", url, hdr, "{}", &b, 4, jar);
         http_free(&b);
     }
+    if (http_cookies_forget) http_cookies_forget(); /* the session also leaves memory (NotaTV 1.0.3 and newer) */
     wipe_file(jar);
     cfg_set("seerr_url", "");
     seerr_token++; /* answers on their way are ignored */
@@ -1321,14 +1322,17 @@ void seerr_forget(void) {
 /* ---------- the app (see NotaApp in tv.h) ---------- */
 static void act_seerr_logout(void) { app_ask_signout("Seerr", seerr_forget); }
 static const char *seerr_signed_out(void) { return *seerr_url() ? NULL : ITEM_HIDDEN; }
+static const char *netflix_value(void) { return T("netflix.com, once a day"); }
 static const Item seerr_items[] = {
+    {N_("Netflix Top 10 row"), IT_INFO, .value = netflix_value, .locked = seerr_signed_out,
+     .help = N_("The row is fetched from Netflix's public top 10 list for your country. Nothing about you is sent")},
     {N_("Sign out of Seerr"), IT_ACTION, .action = act_seerr_logout, .help = N_("Closes the session at Seerr and deletes the address and login from this box"),
      .locked = seerr_signed_out},
 };
 
 static const SeerrIface seerr_iface = {seerr_ratings};
 const NotaApp nota_app = {
-    NOTA_API, "seerr", "Seerr", N_("Find and request movies and shows for Plex"), "1.0.0", 60, 0,
+    NOTA_API, "seerr", "Seerr", N_("Find and request movies and shows for Plex"), APP_VERSION, 60, 0,
     ICON_STAR, {99, 102, 241, 255}, {55, 48, 163, 255}, {255, 255, 255, 255},
     .open = seerr_screen, .forget = seerr_forget,
     .settings = seerr_items, .n_settings = sizeof seerr_items / sizeof seerr_items[0],

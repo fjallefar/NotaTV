@@ -5,13 +5,23 @@
  * version exists, a card pops up on the home screen - at most once every other day (cfg update_notice_at). The card
  * offers Update now, Later and Don't remind me (turns update_notify off). With update_notify off the box never
  * contacts GitHub by itself; Settings → System → Update NotaTV still checks when asked.
- * Test without a Pi: TVSHELL_UPDATE_TEST="NY 9.9.9" pretends GitHub has that version (checked 2 s after start).
+ * Test without a Pi: TVSHELL_UPDATE_TEST="NY 9.9.9" pretends GitHub has that version (checked 2 s after start);
+ * TVSHELL_UPDATE_RELEASE=<file> replaces the saved release (JSON with tag_name and body).
+ *
+ * What is new: "update check" saves the GitHub release in /tmp/notatv-update-release.json. Its text is the version's
+ * section of CHANGELOG.md, which starts with a short summary as a quote, shown on the card and before installing:
+ *   > **In short:** Apps can be updated all at once, and casting is safer.
+ *   > - one point
+ *   > - another point
+ * A translation can follow as an HTML comment (not shown on GitHub): <!-- tldr:da ... --> with the same lines
+ * without "> ". Nothing is shown when the section has no summary.
  *
  * Installing (update_install_open): a full card with a progress bar while the "update install" helper runs. The
  * helper writes its step to /tmp/notatv-update-state ("<percent>", or "dl <bytes total> <file>" while downloading,
  * then the bar follows the size of the file) and a line of text to /tmp/notatv-progress. When it is done the same
  * card asks Restart now / Restart later; on an error it shows what went wrong. */
 #include "tv.h"
+#include "vendor/cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +33,61 @@
 #define NOTICE_EVERY (2 * 86400)
 
 static char found[32];    /* the newer version GitHub has ("" = none known) */
+
+/* ---------- what is new (the summary at the top of the release text) ---------- */
+#define RELEASE_FILE "/tmp/notatv-update-release.json"
+
+static void news_add(UpdateNews *n, const char *line) {
+    char t[300];
+    size_t k = 0;
+    for (const char *p = line; *p && k < sizeof t - 1; p++) if (*p != '*' && *p != '`' && *p != '\r') t[k++] = *p; /* no markdown */
+    t[k] = 0;
+    str_trim(t);
+    if (!t[0]) return;
+    if (t[0] == '-' && t[1] == ' ') {
+        if (n->n < UPDATE_NEWS_MAX) { snprintf(n->points[n->n], sizeof n->points[0], "%s", t + 2); str_trim(n->points[n->n]); n->n++; }
+        return;
+    }
+    if (!n->summary[0]) {
+        const char *c = strchr(t, ':'); /* "In short: ..." -> "..." */
+        snprintf(n->summary, sizeof n->summary, "%s", c && c - t < 24 && c[1] == ' ' ? c + 2 : t);
+    } else if (!n->n) {
+        size_t l = strlen(n->summary);
+        snprintf(n->summary + l, sizeof n->summary - l, " %s", t);
+    }
+}
+
+bool update_news(const char *ver, UpdateNews *n) {
+    memset(n, 0, sizeof *n);
+    const char *path = getenv("TVSHELL_UPDATE_RELEASE");
+    char *txt = file_read_all(path && *path ? path : RELEASE_FILE, 1 << 20);
+    cJSON *j = txt ? cJSON_Parse(txt) : NULL;
+    free(txt);
+    const char *tag = cJSON_GetStringValue(cJSON_GetObjectItem(j, "tag_name"));
+    const char *body = cJSON_GetStringValue(cJSON_GetObjectItem(j, "body"));
+    if (!tag || !body || !ver || strcmp(tag + (tag[0] == 'v'), ver)) { cJSON_Delete(j); return false; }
+    char mark[32];
+    snprintf(mark, sizeof mark, "<!-- tldr:%s", i18n_lang());
+    const char *tr = strstr(body, mark);
+    char *copy = str_dup(tr ? tr + strlen(mark) : body), *save = NULL;
+    bool quote = false;
+    for (char *line = strtok_r(copy, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+        if (tr) { /* the translation: every line up to "-->" */
+            char *end = strstr(line, "-->");
+            if (end) *end = 0;
+            news_add(n, line);
+            if (end) break;
+            continue;
+        }
+        while (*line == ' ') line++;
+        if (*line == '>') { quote = true; news_add(n, line + 1); }
+        else if (*line && *line != '\r') break; /* only a quote at the very top counts */
+        else if (quote) break;
+    }
+    free(copy);
+    cJSON_Delete(j);
+    return n->summary[0] || n->n;
+}
 static bool checking;
 static double next_check = -1;
 
@@ -40,6 +105,8 @@ static void check_done(void *arg) {
     if (*out) {
         str_trim(*out);
         if (!strncmp(*out, "NY ", 3)) snprintf(found, sizeof found, "%s", *out + 3);
+        /* already installed, only waiting for "Restart later": no reminder for the same version */
+        if (found[0] && !strcmp(found, cfg_get("update_installed", ""))) found[0] = 0;
         else if (!strncmp(*out, "NYESTE ", 7)) found[0] = 0; /* up to date (e.g. updated meanwhile) */
         /* errors (no network, GitHub down): keep what we knew and try again at the next check */
     }
@@ -48,13 +115,14 @@ static void check_done(void *arg) {
 }
 
 /* ---------- the card ---------- */
-typedef struct { char ver[32]; int btn; } Notice;
+typedef struct { char ver[32]; int btn; UpdateNews news; bool has_news; float body_h; } Notice;
 
 static void notice_draw(Screen *s) {
     Notice *n = s->st;
     float a = s->anim;
     fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(170 * a)));
-    float w = 980, h = 420, x = UI_W / 2 - w / 2, y = UI_H / 2 - h / 2 + 30 * (1 - a);
+    float w = n->has_news ? 1100 : 980, h = n->has_news ? 220 + (n->body_h > 0 ? n->body_h : 150) + 30 + 72 + 60 : 420;
+    float x = UI_W / 2 - w / 2, y = UI_H / 2 - h / 2 + 30 * (1 - a);
     draw_shadow(x, y, w, h, 32, 40, a);
     fill_rrect(x, y, w, h, 32, RGB(24, 28, 37));
     fill_rrect_vgrad(x + 60, y + 60, 120, 120, 30, RGB(16, 150, 140), RGB(8, 92, 96));
@@ -66,8 +134,17 @@ static void notice_draw(Screen *s) {
     char cur[96];
     snprintf(cur, sizeof cur, T("You have version %s"), TV_VERSION);
     text_draw(F_REG, 26, x + 220, y + 162, C_TEXT2, AL_LEFT, cur);
-    text_draw_wrap(F_REG, 26, x + 60, y + 220, w - 120, 2, 36, C_TEXT2,
-                   T("The update takes a few minutes. Then restart the box to use it. Your settings, apps and logins are kept."));
+    if (n->has_news) { /* what is new, from the release */
+        float ty = y + 220, y0 = ty;
+        if (n->news.summary[0]) ty += text_draw_wrap(F_REG, 28, x + 60, ty, w - 120, 2, 40, C_TEXT, n->news.summary) * 40 + 14;
+        for (int i = 0; i < n->news.n; i++) {
+            fill_circle(x + 68, ty + 18, 5, C_ACCENT);
+            ty += text_draw_wrap(F_REG, 25, x + 92, ty, w - 152, 2, 34, C_TEXT2, n->news.points[i]) * 34 + 8;
+        }
+        n->body_h = ty - y0;
+    } else
+        text_draw_wrap(F_REG, 26, x + 60, y + 220, w - 120, 2, 36, C_TEXT2,
+                       T("The update takes a few minutes. Then restart the box to start using it. Everything you have set up stays as it is."));
     const char *b[3] = {T("Update now"), T("Later"), T("Don't remind me")};
     draw_buttons(UI_W / 2, y + h - 110, b, 3, n->btn);
 }
@@ -93,6 +170,7 @@ static void notice_open(const char *ver) {
     Screen *s = calloc(1, sizeof *s);
     Notice *n = calloc(1, sizeof *n);
     snprintf(n->ver, sizeof n->ver, "%s", ver);
+    n->has_news = update_news(ver, &n->news);
     s->name = "update-notice";
     s->st = n;
     s->draw = notice_draw;
@@ -154,6 +232,7 @@ static void ins_done(void *arg) {
     str_trim(o);
     const char *last = strrchr(o, '\n');
     bool ok = !strcmp(last ? last + 1 : o, "OK");
+    if (ok && ins_cur) cfg_set("update_installed", ins_cur->ver); /* waits for a restart: not offered again */
     if (ins_cur) {
         ins_cur->phase = ok ? INS_DONE : INS_FAILED;
         ins_cur->btn = 0;
@@ -210,7 +289,7 @@ static void ins_draw(Screen *s) {
             text_draw(F_REG, 24, bx, by + 34, C_TEXT3, AL_LEFT, t);
         }
         text_draw_wrap(F_REG, 26, x + 60, y + h - 110, w - 120, 2, 36, C_TEXT2,
-                       T("Keep the box turned on until the update is done. Your settings, apps and logins are kept."));
+                       T("Keep the box turned on until the update is done. Everything you have set up stays as it is."));
         return;
     }
     bool ok = v->phase == INS_DONE;
@@ -252,6 +331,8 @@ static bool ins_input(Screen *s, const InputEvent *ev) {
 
 static void ins_destroy(Screen *s) {
     if (ins_cur == s->st) ins_cur = NULL;
+    free(s->st);
+    free(s);
 }
 
 void update_install_open(const char *ver) {

@@ -3,6 +3,92 @@
 What is new in each NotaTV version. The section for a version becomes the text of its GitHub release
 (`.github/workflows/release.yml` takes everything from `## <version>` to the next `## `).
 
+Start each section with a short summary as a quote: one line "In short" and a few points. The box shows it on the
+update card and before installing. A translation for the box can follow as an HTML comment (not shown on GitHub):
+
+```
+> **In short:** One sentence about the update.
+> - a point
+> - another point
+
+<!-- tldr:da
+Kort: Én sætning om opdateringen.
+- et punkt
+- et andet punkt
+-->
+```
+
+## 1.0.3
+
+> **In short:** Kernel updates finish again, the App Store updates all apps at once, and the box is safer and smoother.
+> - Fixed: updates that change the kernel could never finish
+> - *Update all* in the App Store, with a short note on what is new in each app
+> - Plex cast, SSH and AirPlay mirroring now need your account or the box's own code
+> - Updates switch the kernel in one step, so a power cut cannot leave the box unable to start
+> - Smoother menus and playback: less waiting on the network and on the SD card
+
+<!-- tldr:da
+Kort: Kerneopdateringer bliver færdige igen, App Store opdaterer alle apps på én gang, og boksen er mere sikker og mere flydende.
+- Rettet: opdateringer, der skifter kernen, kunne aldrig blive færdige
+- *Opdatér alle* i App Store, med en kort note om hvad der er nyt i hver app
+- Plex-cast, SSH og AirPlay-spejling kræver nu din konto eller boksens egen kode
+- Opdateringer skifter kernen i ét trin, så et strømsvigt ikke kan efterlade en boks, der ikke starter
+- Mere flydende menuer og afspilning: mindre ventetid på netværket og SD-kortet
+-->
+
+**Important fix for updates**
+- Updates that change the kernel could never finish: the box said "Restart the box to finish the (previous) update" again and again, also after a restart. This affected updating from 1.0.0 to 1.0.1 and from 1.0.1 to 1.0.2.
+- A box installed from the 1.0.1 or 1.0.2 image updates straight to 1.0.3. It may say "Restart the box to finish the update" once - restart, and it finishes by itself (it restarts one extra time to start the new kernel).
+- A box that got 1.0.1 or 1.0.2 as an update is stuck and needs a one-time fix: see "A box stuck on an update" in the README.
+- *Undo last update* works again for the kernel after such an update.
+
+**App Store**
+- The version an app shows is now the one it really has. Before, every app said 1.0.0 and offered the same update again and again, also right after it was installed, and asked for a restart each time.
+- When apps have updates, a bar at the top of the App Store updates them all at once (*Update all*).
+- Before an update, a card shows what is new in it. An app with an update says "New: ..." under its name.
+- An app updated while it is open shows "1.0.2 after a restart" until the user interface is restarted.
+
+**Updates**
+- The update card and *Settings → System → Update NotaTV* show a short summary of what is new in the version, in your language.
+- The kernel and its files are switched in one step: the new set is put next to the old one, and one small file says which to use. A power cut during an update leaves the old or the new version, never a box that cannot start. *Undo last update* switches back to the old set. (From the next update after 1.0.3: this version is still installed by the updater already on the box.)
+- A version that is installed but waiting for a restart is not offered again.
+
+**Security**
+- Plex cast: playing, pausing and the remote in the Plex app only work from the Plex account the box is signed in with (or its Plex Home). Before, anyone on the network could use the box's remote control this way. Not signed in to Plex: nobody can.
+- *Developer mode (SSH)*: every box makes its own random password, shown right below the setting. Before, the password was `notatv` on every box.
+- AirPlay screen mirroring: the first time a phone mirrors, it asks for the box's 4-digit code, which the TV shows (and *Settings → Cast and sharing*).
+- Plex and YouTube cast accept a limited number of connections at a time, so the box cannot be overloaded from the network.
+- The phone page's code: at most 10 wrong codes in 10 minutes also when many are sent at the same time.
+- Casting to the box (DLNA) only plays addresses on the network (http, https, rtsp), never files on the box.
+- A USB stick can no longer be taken for the box's own data or boot partition, drives are mounted without running anything from them, and a stick named ".." is mounted safely.
+- Bluetooth: new devices can only pair while *Pair* is open (before: also while a phone was connected).
+- Signing out of Seerr also removes the session from memory. Signing out of Live TV also removes the channel list with the stream addresses from the box's temporary files.
+- The troubleshooting log and the log download hide more: `user:password@`, the Live TV login in short stream addresses, every password and token saved in the settings, and the AirPlay code.
+- The Twitch chat is read over an encrypted connection.
+
+**Smoother**
+- Text is drawn with much less work (kerning remembered, lines measured once), shadows are one texture, and images no longer stay in memory twice after they are on screen.
+- Saving a setting no longer waits for the SD card on the user interface.
+- While a video plays, the phone page, Bluetooth pairing and App Store installs keep working; the music pause, subtitle search and Plex's intro/credits markers no longer hold up playback.
+- Plex: a slow server no longer freezes the box before and after a video.
+- The home screen fetches its rows when it opens, after playback and then every 5 minutes (before every 8 seconds, also with the screensaver on), and the network address is read in the background.
+- Live TV: big channel lists and program guides load much faster, and the guide is only downloaded again when it changed.
+
+**Fixes**
+- The update screens say "Everything you have set up stays as it is" instead of listing what is kept.
+- *Next episode* no longer starts twice when another menu (e.g. *Power*) was opened during the countdown.
+- The Plex sign-in screen could open new Plex screens again and again when the server list was opened while signing in.
+- The waiting spinner in Settings (e.g. connecting to Wi-Fi) can no longer lock the box: after 30 seconds *Back* closes it.
+- After *Back* during AirPlay mirroring, it does not start again until the phone stops mirroring.
+- The poster on the pause screen and the channel logo in Live TV are shown again for images that were no longer in memory.
+- A physical keyboard uses one layout: Danish (with æ, ø, å) when NotaTV is in Danish, otherwise US.
+- Live TV: *Frame rate for live TV* can be *Do not change* (for channel lists that mix 50 and 60 Hz).
+- The setup guide can go on while apps download (*Back*); they finish in the background.
+- Password fields are hidden while you type, and network drive addresses are shown without the password.
+- Wi-Fi uses the rules of the country chosen in the setup guide (before: always Denmark).
+
+**Apps** (updated in the App Store): Live TV 1.0.2, Plex 1.0.2, YouTube 1.0.2, Twitch 1.0.2, Seerr 1.0.2, Media 1.0.1.
+
 ## 1.0.2
 
 **Updates**

@@ -191,7 +191,8 @@ static bool kb_input(Screen *s, const InputEvent *ev) {
         uint32_t c = ev->ch;
         if (c < 0x80) buf[0] = (char)c;
         else if (c < 0x800) { buf[0] = 0xC0 | (c >> 6); buf[1] = 0x80 | (c & 0x3F); }
-        else { buf[0] = 0xE0 | (c >> 12); buf[1] = 0x80 | ((c >> 6) & 0x3F); buf[2] = 0x80 | (c & 0x3F); }
+        else if (c < 0x10000) { buf[0] = 0xE0 | (c >> 12); buf[1] = 0x80 | ((c >> 6) & 0x3F); buf[2] = 0x80 | (c & 0x3F); }
+        else if (c < 0x110000) { buf[0] = 0xF0 | (c >> 18); buf[1] = 0x80 | ((c >> 12) & 0x3F); buf[2] = 0x80 | ((c >> 6) & 0x3F); buf[3] = 0x80 | (c & 0x3F); }
         kb_append(k, buf);
         break;
     }
@@ -288,6 +289,74 @@ void confirm_open(const char *title, const char *msg, const char *yes, const cha
     app_push(s);
 }
 
+/* ================= What's new: a short summary and a few points, then two buttons ================= */
+#define NOTES_MAX 8
+typedef struct {
+    char kicker[64], title[128], summary[300], points[NOTES_MAX][200], yes[64], no[64];
+    int n, sel;
+    float body_h; /* height of summary + points, measured when drawn (the card follows it) */
+    ConfirmDone cb;
+    void *ud;
+} Notes;
+
+static void notes_draw(Screen *s) {
+    Notes *c = s->st;
+    overlay_dim(s->anim);
+    float pw = 1080, body = c->body_h > 0 ? c->body_h : 120;
+    float ph = 60 + 34 + 60 + 30 + body + 40 + 72 + 60, px = UI_W / 2 - pw / 2, py = UI_H / 2 - ph / 2 + 30 * (1 - s->anim);
+    draw_shadow(px, py, pw, ph, 30, 40, s->anim);
+    fill_rrect(px, py, pw, ph, 30, RGB(24, 28, 37));
+    float x = px + 70, w = pw - 140, y = py + 60;
+    text_draw(F_SEMI, 24, x, y, C_ACCENT, AL_LEFT, c->kicker);
+    text_draw_clip(F_BOLD, 44, x, y + 34, w, C_TEXT, AL_LEFT, c->title);
+    y += 34 + 60 + 30;
+    float y0 = y;
+    if (c->summary[0]) y += text_draw_wrap(F_REG, 30, x, y, w, 3, 42, C_TEXT, c->summary) * 42 + 18;
+    for (int i = 0; i < c->n; i++) {
+        fill_circle(x + 8, y + 19, 5, C_ACCENT);
+        y += text_draw_wrap(F_REG, 26, x + 32, y, w - 32, 2, 36, C_TEXT2, c->points[i]) * 36 + 10;
+    }
+    c->body_h = y - y0;
+    const char *lbl[2] = {c->yes, c->no};
+    draw_buttons(UI_W / 2, py + ph - 60 - 72, lbl, c->no[0] ? 2 : 1, c->sel);
+}
+
+static bool notes_input(Screen *s, const InputEvent *ev) {
+    Notes *c = s->st;
+    if (buttons_nav(&c->sel, c->no[0] ? 2 : 1, ev)) return true;
+    if (ev->a == A_OK && ev->repeat) return true;
+    if (ev->a == A_OK || ev->a == A_BACK) {
+        bool yes = ev->a == A_OK && c->sel == 0;
+        ConfirmDone cb = c->cb;
+        void *ud = c->ud;
+        app_pop();
+        if (cb) cb(ud, yes);
+        return true;
+    }
+    return ev->a != A_HOME;
+}
+
+void notes_open(const char *kicker, const char *title, const char *summary, const char *const *points, int n,
+                const char *yes, const char *no, ConfirmDone cb, void *ud) {
+    Screen *s = calloc(1, sizeof *s);
+    Notes *c = calloc(1, sizeof *c);
+    snprintf(c->kicker, sizeof c->kicker, "%s", kicker ? kicker : "");
+    snprintf(c->title, sizeof c->title, "%s", title ? title : "");
+    snprintf(c->summary, sizeof c->summary, "%s", summary ? summary : "");
+    for (int i = 0; i < n && c->n < NOTES_MAX; i++)
+        if (points[i] && *points[i]) snprintf(c->points[c->n++], sizeof c->points[0], "%s", points[i]);
+    snprintf(c->yes, sizeof c->yes, "%s", yes ? yes : "OK");
+    snprintf(c->no, sizeof c->no, "%s", no ? no : "");
+    c->cb = cb;
+    c->ud = ud;
+    s->name = "notes";
+    s->st = c;
+    s->draw = notes_draw;
+    s->input = notes_input;
+    s->overlay = true;
+    app_push(s);
+}
+
 /* ================= Next-up: "next episode" countdown (auto-advance) ================= */
 typedef struct {
     char *poster, *title, *subtitle;
@@ -300,14 +369,15 @@ static void nextup_finish(Screen *s, bool play) {
     NextUp *n = s->st;
     NextUpDone cb = n->cb;
     void *ud = n->ud;
-    app_pop(); /* frees n */
+    app_close(s); /* frees n */
     if (cb) cb(ud, play);
 }
 
 static void nextup_update(Screen *s, float dt) {
     (void)dt;
     NextUp *n = s->st;
-    if (app_time() >= n->deadline) nextup_finish(s, true);
+    /* only on top: under e.g. the Power menu the countdown waits (it would close the menu instead) */
+    if (app_top() == s && app_time() >= n->deadline) nextup_finish(s, true);
 }
 
 static void nextup_draw(Screen *s) {
@@ -462,12 +532,14 @@ static void power_cb(void *ud, int idx) {
     }
 }
 
+static Screen *power_menu; /* the open Power menu (not opened twice; other choice lists do not stop it) */
 void power_menu_open(void) {
     Screen *t = app_top();
-    if (t && t->name && !strcmp(t->name, "choice")) return;
+    if (t && t == power_menu && t->name && !strcmp(t->name, "choice")) return;
     static const char *items[3];
     items[0] = T("Sleep (fast start)"); items[1] = T("Restart"); items[2] = T("Power off");
     choice_open(T("Power"), items, 3, 0, power_cb, NULL);
+    power_menu = app_top();
 }
 
 /* ================= Sidemenu ================= */

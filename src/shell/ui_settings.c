@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define MAX_ITEMS 32 /* the most items in one section (Picture and sound has 17) */
 #include <time.h>
 #include <unistd.h>
 
@@ -14,7 +15,7 @@ typedef struct Section { const char *name; IconId icon; const Item *items; int n
 static void helper_bg(const char *args) { run_cmd("%s/%s >/dev/null 2>&1 &", helper_path(), args); }
 
 /* busy overlay while a job runs */
-typedef struct { char title[128]; bool done; } Busy;
+typedef struct { char title[128]; bool done; double t0; } Busy;
 static Screen *busy_screen;
 static void busy_draw(Screen *s) {
     Busy *b = s->st;
@@ -28,24 +29,42 @@ static void busy_draw(Screen *s) {
         if (fgets(line, sizeof line, f)) { str_trim(line); text_draw(F_REG, 22, UI_W / 2, UI_H / 2 + 80, C_TEXT2, AL_CENTER, tr_msg(line)); }
         fclose(f);
     }
+    if (app_time() - b->t0 > 30) /* BUSY_BACK_AFTER */
+        text_draw(F_REG, 22, UI_W / 2, UI_H / 2 + 112, C_TEXT3, AL_CENTER, T("This takes longer than expected - Back closes it"));
 }
-static bool busy_input(Screen *s, const InputEvent *ev) { (void)s; (void)ev; return true; }
+#define BUSY_BACK_AFTER 30 /* s: then Back closes the overlay, if a helper hangs */
+static bool busy_input(Screen *s, const InputEvent *ev) {
+    Busy *b = s->st;
+    if (ev->a == A_BACK && app_time() - b->t0 > BUSY_BACK_AFTER) {
+        if (busy_screen == s) busy_screen = NULL;
+        app_close(s);
+    }
+    return true;
+}
+static void busy_destroy(Screen *s) {
+    if (busy_screen == s) busy_screen = NULL;
+    free(s->st);
+    free(s);
+}
 static void busy_open(const char *title) {
     unlink("/tmp/notatv-progress");
     Screen *s = calloc(1, sizeof *s);
     Busy *b = calloc(1, sizeof *b);
     snprintf(b->title, sizeof b->title, "%s", title);
+    b->t0 = app_time();
     s->name = "busy";
     s->st = b;
     s->draw = busy_draw;
     s->input = busy_input;
+    s->destroy = busy_destroy;
     s->overlay = true;
     busy_screen = s;
     app_push(s);
 }
-static void busy_close(void) {
-    if (busy_screen && app_top() == busy_screen) app_pop();
+static void busy_close(void) { /* also when something was opened on top of it meanwhile */
+    Screen *s = busy_screen;
     busy_screen = NULL;
+    app_close(s);
 }
 
 /* run a helper in a background thread and call done with the output */
@@ -178,6 +197,8 @@ static void text_done(void *ud, const char *t) {
 }
 
 static void apply_ssh(void) { helper_bg(cfg_int("ssh_enabled", 0) ? "ssh on" : "ssh off"); }
+static const char *airplay_off(void) { return cfg_int("airplay_mirror", 1) ? NULL : ITEM_HIDDEN; }
+static const char *ssh_off(void) { return cfg_int("ssh_enabled", 0) ? NULL : ITEM_HIDDEN; }
 static void restart_music(void) { helper_bg("music restart"); }
 static void apply_name(void) { helper_bg("music restart"); helper_bg("cec setup"); bt_apply(); dlna_apply(); }
 void settings_apply_name(void) { apply_name(); }
@@ -274,7 +295,13 @@ static void gh_checked(char *out, void *ud) {
         char t[96];
         snprintf(gh_ver, sizeof gh_ver, "%s", out + 3);
         snprintf(t, sizeof t, T("NotaTV %s is available"), gh_ver);
-        confirm_open(t, T("The update will be downloaded and installed. Your settings and logins are kept."), T("Update"), T("Later"), gh_install_cb, NULL);
+        UpdateNews news;
+        if (update_news(gh_ver, &news)) { /* what is new, from the release */
+            const char *pts[UPDATE_NEWS_MAX];
+            for (int i = 0; i < news.n; i++) pts[i] = news.points[i];
+            notes_open(T("WHAT'S NEW"), t, news.summary, pts, news.n, T("Update"), T("Later"), gh_install_cb, NULL);
+        } else
+            confirm_open(t, T("The update will be downloaded and installed. Everything you have set up stays as it is."), T("Update"), T("Later"), gh_install_cb, NULL);
     } else if (!strncmp(out, "NYESTE ", 7)) app_toast(T("You have the latest version (%s)"), out + 7);
     else app_toast("%s", *out ? tr_msg(out) : T("Could not check for updates"));
 }
@@ -298,7 +325,7 @@ static void rollback_cb(void *ud, bool yes) {
     run_async(rollback_done, NULL, "update rollback");
 }
 static void act_rollback(void) {
-    confirm_open(T("Undo last update?"), T("NotaTV goes back to the version from before the last update. Your settings and logins are kept."),
+    confirm_open(T("Undo last update?"), T("NotaTV goes back to the version from before the last update. Everything you have set up stays as it is."),
                  T("Undo"), T("Cancel"), rollback_cb, NULL);
 }
 static void reset_cb(void *ud, bool yes) {
@@ -325,7 +352,8 @@ static void act_poweroff(void) { helper_bg("power poweroff"); }
 /* ---------- sektioner ---------- */
 const char *const set_onoff[] = {"0", "1", NULL};
 #define onoff set_onoff
-static const char *const rate_o[] = {"50", "60", NULL}, *const rate_l[] = {"50 Hz", "60 Hz", NULL};
+/* live TV: 50 Hz (Europe), 60 Hz (USA) or "Do not change" (mixed channel lists: the screen keeps its rate) */
+static const char *const rate_o[] = {"50", "60", "0", NULL}, *const rate_l[] = {"50 Hz", "60 Hz", N_("Do not change"), NULL};
 static const char *const lang_o[] = {"da,dan,dk,en,eng", "en,eng,da,dan", "sv,swe,en,eng", "no,nor,nob,en,eng", "de,deu,ger,en,eng", "no-subs", NULL};
 static const char *const lang_l[] = {N_("Danish"), N_("English"), N_("Swedish"), N_("Norwegian"), N_("German"), N_("None"), NULL};
 static const char *const alang_o[] = {"da,dan,en,eng", "en,eng", "sv,swe,en,eng", "no,nor,en,eng", "de,deu,ger,en,eng", NULL};
@@ -396,7 +424,8 @@ static const Item cec_items[] = {
 };
 static const Item cast_items[] = {
     {N_("DLNA (send from apps)"), IT_TOGGLE, "dlna_enabled", "1", onoff, .changed = dlna_apply, .help = N_("Apps like BubbleUPnP and \"Cast to Device\" in Windows can send video, music and pictures. Local network only")},
-    {N_("AirPlay screen mirroring"), IT_TOGGLE, "airplay_mirror", "1", onoff, .changed = mirror_apply, .help = N_("iPhone/iPad/Mac can mirror the screen to the TV (shown as \"<name> (screen)\"). Local network only")},
+    {N_("AirPlay screen mirroring"), IT_TOGGLE, "airplay_mirror", "1", onoff, .changed = mirror_apply, .help = N_("iPhone/iPad/Mac can mirror the screen to the TV (shown as \"<name> (screen)\"). The first time, the phone asks for the code below")},
+    {N_("AirPlay code"), IT_INFO, .value = airplay_pin, .locked = airplay_off},
     {N_("Network drive"), IT_TEXT, "media_share", "", .changed = apply_share, .help = N_("smb://user:password@server/share or nfs://server/path")},
 };
 static const char *time_now(void) {
@@ -460,7 +489,9 @@ static const Item sys_items[] = {
     {N_("Troubleshooting log"), IT_TOGGLE, "debug_log", "0", onoff, .changed = debug_log_apply,
      .help = N_("Saves more details about playback and the network, also across restarts. Turn it off again when the problem is found")},
     {N_("Get the logs"), IT_ACTION, .action = act_logs, .help = N_("Download them on a phone or computer to send to whoever helps you")},
-    {N_("Developer mode (SSH)"), IT_TOGGLE, "ssh_enabled", "0", onoff, .changed = apply_ssh, .help = N_("SSH login as root (password: notatv)")},
+    {N_("Developer mode (SSH)"), IT_TOGGLE, "ssh_enabled", "0", onoff, .changed = apply_ssh,
+     .help = N_("SSH login as root with the password shown below. Every box has its own password")},
+    {N_("SSH password"), IT_INFO, .info_cmd = "ssh password", .locked = ssh_off, .help = N_("Log in with ssh root@<the box's address>")},
     {N_("Update NotaTV"), IT_ACTION, .action = act_update_gh, .help = N_("Looks for a new version on GitHub and installs it")},
     {N_("Update reminders"), IT_TOGGLE, "update_notify", "1", onoff,
      .help = N_("Looks for a new version on GitHub twice a day and reminds you every other day. Off: NotaTV never checks by itself")},
@@ -502,7 +533,10 @@ static void build_app_sections(void) {
         /* an app whose items are all hidden right now (e.g. only "Sign out", and nobody is signed in) is left out */
         if (!app_installed(a) || !a->settings || a->n_settings <= 0 || !any_shown(a->settings, a->n_settings)) continue;
         apps_links[n] = (Item){a->name, IT_SUB, .sub = n};
-        app_subs[n] = (Section){a->name, a->icon, a->settings, a->n_settings};
+        /* the list has room for MAX_ITEMS (an app with more would be read past the end): the rest is left out */
+        int ni = a->n_settings > MAX_ITEMS ? MAX_ITEMS : a->n_settings;
+        if (ni < a->n_settings) SDL_Log("app %s: %d indstillinger, kun de første %d vises", a->id, a->n_settings, ni);
+        app_subs[n] = (Section){a->name, a->icon, a->settings, ni};
         n++;
     }
     apps_links[n] = (Item){N_("Cast and sharing"), IT_SUB, .sub = n};
@@ -526,7 +560,6 @@ static void rebuild_apps(void) {
         if (sections[i].items == apps_links) sections[i].n = n_app_links;
 }
 
-#define MAX_ITEMS 32 /* the most items in one section (Picture and sound has 17) */
 _Static_assert(NI(net_items) <= MAX_ITEMS && NI(av_items) <= MAX_ITEMS && NI(cec_items) <= MAX_ITEMS && NI(bt_items) <= MAX_ITEMS &&
                NI(cast_items) <= MAX_ITEMS && NI(sys_items) <= MAX_ITEMS && NI(oc_items) <= MAX_ITEMS, "øg MAX_ITEMS");
 
@@ -738,7 +771,12 @@ static void settings_draw(Screen *sc) {
         case IT_TEXT: {
             const char *v = cfg_get(it->key, it->def);
             bool secret = strstr(it->key, "pass") != NULL;
-            text_draw_clip(F_REG, 24, vx, y + 24, w * 0.5f, vc, AL_RIGHT, !*v ? T("Not set") : secret ? "••••••••" : v);
+            /* an address with user:password@ (e.g. the network drive) is shown without them */
+            char shown[300];
+            snprintf(shown, sizeof shown, "%s", v);
+            char *sch = strstr(shown, "://"), *at = sch ? strchr(sch + 3, '@') : NULL, *sl = sch ? strchr(sch + 3, '/') : NULL;
+            if (at && (!sl || at < sl)) memmove(sch + 3, at + 1, strlen(at + 1) + 1);
+            text_draw_clip(F_REG, 24, vx, y + 24, w * 0.5f, vc, AL_RIGHT, !*v ? T("Not set") : secret ? "••••••••" : shown);
             break;
         }
         case IT_SUB:
@@ -818,7 +856,7 @@ static bool settings_input(Screen *sc, const InputEvent *ev) {
         }
         case IT_TEXT:
             text_item = it;
-            keyboard_open(T(it->label), cfg_get(it->key, it->def), false, text_done, NULL);
+            keyboard_open(T(it->label), cfg_get(it->key, it->def), strstr(it->key, "pass") != NULL, text_done, NULL);
             break;
         case IT_SUB:
             s->sub = it->sub;
