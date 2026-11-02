@@ -1,0 +1,111 @@
+# NotaTV apps
+
+Everything on the NotaTV home screen is an app. The system (`src/shell`) has the basic parts that every app uses:
+drawing, the player, the on-screen keyboard and dialogs, network calls, settings, jobs and translations. An app only
+adds its own screens and logic.
+
+Every app is a package, i.e. a folder here in `src/apps/`: Live TV (`iptv`), Plex, Jellyfin, YouTube, Twitch,
+Seerr, Music, Games and Media. Each one is built into its own `app.so`. Only Settings and the App Store are part of
+`tvshell` itself. The image comes without apps: they are downloaded from the App Store (the GitHub release `apps`)
+into `/data/notatv/apps-pkg/<id>/`.
+
+Every app describes itself with a `NotaApp` (see `src/shell/tv.h`). The app register (`src/shell/apps.c`) uses it
+for the home screen, the App Store, *Settings → Apps*, background services, phone-page messages and uninstalling.
+
+## A package
+
+```
+src/apps/<id>/
+  manifest.json     id, version, api + what the App Store shows before the app is installed:
+                    name, desc, icon (tv, plex, youtube, play, star, music, film, folder ...), c1/c2/fg colors,
+                    order and default (was on by default in NotaTV 1.0; only used to move
+                    1.0 boxes to App Store apps - nothing is ticked beforehand in the setup guide)
+  *.c, <id>.h       the app (any number of files; <id>.h has what the files share)
+  lang/<code>.po    the app's translations (e.g. lang/da.po)
+  app.mk            optional: extra compiler flags as CFLAGS_<id>
+```
+
+The installed package is `manifest.json`, `app.so` and `lang/`.
+
+- `id` contains only lowercase letters, digits, `-` and `_`. It must match the folder name.
+- `api` is `NOTA_API` from `tv.h`. If a package is built for another API version, it is skipped when NotaTV starts.
+- Make every function `static` except the descriptor. The package then exports only `nota_app`.
+
+## The descriptor
+
+```c
+#include "tv.h"
+
+static Screen *my_screen(void) { ... }
+static void my_forget(void) { ... }          /* delete everything saved: tokens, files, cfg keys */
+
+static void act_logout(void) { app_ask_signout("My app", my_forget); }
+static const Item my_settings[] = {
+    {N_("Sign out of My app"), IT_ACTION, .action = act_logout},
+};
+
+const NotaApp nota_app = {
+    NOTA_API, "myapp", "My app", N_("One line about what it does"), "1.0.0", 55, 0,
+    ICON_PLAY, {145, 70, 255, 255}, {88, 38, 170, 255}, {255, 255, 255, 255},
+    .open = my_screen, .forget = my_forget,
+    .settings = my_settings, .n_settings = sizeof my_settings / sizeof my_settings[0],
+};
+```
+
+| Field | Purpose |
+|---|---|
+| `order` | Position on the home screen. Live TV is 10, Plex 20, Jellyfin 30, YouTube 40, Twitch 50, Seerr 60, Music 70, Games 80, Media 90. |
+| `flags` | `APP_DEFAULT_OFF`: not installed from the start. `APP_ROW_LOGOS`: the home row shows logos. |
+| `init` | Runs once, when NotaTV starts or when the app is installed. |
+| `tick` | Runs every frame while the app is installed. Use it for background services. |
+| `apply` | Runs when the app is installed or uninstalled. Start or stop background services here, and check `app_on("<id>")`. |
+| `forget` | Called on sign-out and on uninstall. It must delete everything saved for the account. |
+| `settings` | Shown under *Settings → Apps → name*. When the app is uninstalled, the keys are reset to their defaults. |
+| `row`, `row_title`, `row_open`, `row_refresh` | The row under the apps on the home screen, e.g. "Continue watching". |
+| `shelf_label`, `draw_shelf` | The large area at the top of the home screen when the app has focus. |
+| `inbox` | A message from the phone page (`/tmp/notatv-inbox/_<name>`). Return true when the app takes it. YouTube uses it for accounts sent from the phone. |
+| `iface` | Functions the app offers the system or other apps. They are reached with `app_iface("<id>")`, which returns NULL when the app is not installed. |
+
+## Between apps
+
+Apps never call each other directly. A package cannot see the functions of another package. Instead an app offers
+an interface struct (declared in `tv.h`), and the other side asks the register for it:
+
+```c
+const SeerrIface *seerr = app_iface("seerr");   /* NULL: Seerr is not installed - skip the feature */
+if (seerr) seerr->ratings(false, tmdb, got_ratings, ctx);
+```
+
+Plex uses Seerr's ratings this way. The system's Bluetooth code sends "Now playing" to Music (`MusicIface`) the
+same way.
+
+Keep your own files in `app_data(&nota_app)`, i.e. `/data/notatv/apps/<id>/`. When the app is uninstalled, that
+folder is wiped. Settings go through `cfg_get`/`cfg_set`. Prefix the keys with something unique to the app.
+
+## Building
+
+```
+make -C src/apps                     # every package -> src/apps/out/<id>/
+TVSHELL_APPS=$PWD/src/apps/out scripts/uitest.sh /tmp/t "w:60;s:home;q"
+python3 scripts/i18n-check.py        # also checks each package's lang/*.po
+```
+
+The Buildroot package `tvshell` builds the packages together with `tvshell` (into its build folder, not into the
+image). The release workflow then runs `scripts/apps-catalog.py`, which packs each app as
+`<id>-<version>-api<N>.tar.gz` and writes the catalog `apps-api<N>.json` (with translated names and descriptions
+from `lang/*.po`), and uploads them to the release `apps`. Raise `version` in `manifest.json` when an app changes,
+so boxes see *Update* in the App Store. Keep `name`, `desc`, `icon`, colors and `order` the same as in `nota_app`.
+
+To try the App Store locally: `python3 scripts/apps-catalog.py src/apps/out /tmp/dist`, then run tvshell with
+`TVSHELL_APPS=/nonexistent TVSHELL_APPCAT_URL=file:///tmp/dist`. `tvshell` is linked with `-rdynamic`, so a package can call every function in `tv.h`, and
+cJSON as well.
+
+## Rules
+
+- Bump `NOTA_API` in `tv.h` whenever something an app uses changes: a struct, a function signature or an enum.
+  Packages for the old version are then skipped instead of crashing.
+- A package is never unloaded while `tvshell` runs. An uninstalled app stays in memory until the next start, so
+  jobs and threads still running cannot call code that is gone.
+- A package is checked before it is used: its SHA256 must match the catalog, and it may only hold plain files and
+  folders (`/usr/libexec/notatv/apppkg`). An old version is replaced by renames and deleted, never overwritten,
+  because tvshell keeps the loaded `app.so` mapped until it restarts.

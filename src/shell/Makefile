@@ -14,12 +14,12 @@ TV_VER := $(shell cat $(VERSION_FILE) 2>/dev/null)
 override CFLAGS += -DTV_VERSION=\"$(if $(TV_VER),$(TV_VER),dev)\"
 LIBS = $(shell $(PKG_CONFIG) --libs sdl3 libcurl libdrm egl glesv2 gbm dbus-1 libupnp) -lz -lm -lpthread
 
-SRCS = main.c i18n.c drm_util.c kms_present.c subs.c gfx.c input.c util.c player.c widgets.c ui_home.c ui_iptv.c ui_plex.c \
-       ui_youtube.c ui_music.c ui_net.c bt.c dlna.c plexcast.c ytcast.c mirror.c moon.c ui_games.c ui_media.c ui_settings.c ui_seerr.c ui_jellyfin.c ui_twitch.c netdisc.c tz.c ui_setup.c stb_impl.c vendor/cJSON.c vendor/qrcodegen.c
+SRCS = main.c i18n.c drm_util.c kms_present.c subs.c gfx.c input.c util.c player.c widgets.c ui_home.c  \
+       ui_net.c bt.c dlna.c mirror.c moon.c ui_settings.c netdisc.c apps.c ui_appstore.c appcat.c update_notice.c tz.c ui_setup.c stb_impl.c vendor/cJSON.c vendor/qrcodegen.c
 OBJS = $(SRCS:.c=.o)
 
 tvshell: $(OBJS)
-	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
+	$(CC) $(LDFLAGS) -rdynamic -o $@ $(OBJS) $(LIBS) -ldl
 
 %.o: %.c tv.h i18n.h
 	$(CC) $(CFLAGS) -c -o $@ $<

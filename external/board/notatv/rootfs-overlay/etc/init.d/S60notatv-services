@@ -14,7 +14,7 @@ start)
 		$H/automount
 		# clock: sync when the network is up
 		for i in 1 2 3 4 5 6; do ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 && break; sleep 5; done
-		# only with a real hardware clock (x86); the Pi 4 has none. -u: the clock is in UTC, no /etc/adjtime
+		# only with a hardware clock (e.g. an RTC add-on board; the Pi 4 has none). -u: the clock is in UTC, no /etc/adjtime
 		[ -e /dev/rtc0 ] && hwclock -w -u 2>/dev/null
 	) >/dev/null 2>&1 &
 	;;

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Check the translations in src/shell/assets/lang/*.po against the source code.
+"""Check the translations in src/shell/assets/lang/*.po (and each app package's src/apps/<id>/lang/*.po) against the source code.
 
   python3 scripts/i18n-check.py            check all languages
   python3 scripts/i18n-check.py --pot      also write src/shell/assets/lang/notatv.pot (template for a new language)
 
 Finds every translatable text: T("...") / N_("...") in C (src/shell, src/moon), T("...") in the mpv OSD
 script, data-t/data-th/data-tp in the phone page, and the English messages of the helper scripts.
-Reports texts missing from a .po file, entries no longer used, and translations whose printf
+App packages are checked on their own: every text in src/apps/<id>/*.c must be in that app's lang/<code>.po
+(an app brings its own translations). Reports texts missing from a .po file, entries no longer used, and translations whose printf
 placeholders (%s, %d, %1$s ...) do not match the English text. Exit code 1 if anything is missing or wrong."""
 import glob, html, os, re, sys
 
@@ -19,13 +20,21 @@ def c_unescape(s):
     return re.sub(r'\\(.)', lambda m: {'n': '\n', 't': '\t'}.get(m.group(1), m.group(1)), s)
 
 
+LIT = r'"((?:[^"\\\n]|\\.)*)"'
+
+
+def c_ids(files, ids):
+    for f in files:
+        code = re.sub(r'/\*.*?\*/', '', open(f, encoding='utf-8').read(), flags=re.S)
+        for m in re.finditer(r'(?<![A-Za-z0-9_])(?:T|N_)\(\s*' + LIT + r'\s*\)', code):
+            ids.setdefault(c_unescape(m.group(1)), os.path.relpath(f, ROOT))
+    return ids
+
+
 def source_ids():
     ids = {}
-    lit = r'"((?:[^"\\\n]|\\.)*)"'
-    for f in glob.glob(os.path.join(ROOT, 'src/shell/*.c')) + glob.glob(os.path.join(ROOT, 'src/moon/*.c')):
-        code = re.sub(r'/\*.*?\*/', '', open(f, encoding='utf-8').read(), flags=re.S)
-        for m in re.finditer(r'(?<![A-Za-z0-9_])(?:T|N_)\(\s*' + lit + r'\s*\)', code):
-            ids.setdefault(c_unescape(m.group(1)), os.path.relpath(f, ROOT))
+    lit = LIT
+    c_ids(glob.glob(os.path.join(ROOT, 'src/shell/*.c')) + glob.glob(os.path.join(ROOT, 'src/moon/*.c')), ids)
     for f in glob.glob(os.path.join(OVERLAY, '*/rootfs-overlay/usr/share/notatv/mpv/*.lua')) + \
              glob.glob(os.path.join(OVERLAY, '*/overlay/usr/share/notatv/mpv/*.lua')):
         for m in re.finditer(r'(?<![A-Za-z0-9_])T\(' + lit + r'\)', open(f, encoding='utf-8').read()):
@@ -90,11 +99,10 @@ def po_quote(s):
     return '"' + s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t', '\\t') + '"'
 
 
-def main():
-    ids = source_ids()
+def check(ids, lang_dir, label):
     bad = False
-    for po in sorted(glob.glob(os.path.join(LANG_DIR, '*.po'))):
-        lang = os.path.basename(po)[:-3]
+    for po in sorted(glob.glob(os.path.join(lang_dir, '*.po'))):
+        lang = label + os.path.basename(po)[:-3]
         tr = read_po(po)
         missing = [i for i in ids if not tr.get(i)]
         unused = [i for i in tr if i not in ids]
@@ -105,6 +113,15 @@ def main():
         for i in wrong: print(f'  mismatch  {i!r} -> {tr[i]!r}')
         for i in unused: print(f'  unused    {i!r}')
         bad |= bool(missing or wrong)
+    return bad
+
+
+def main():
+    ids = source_ids()
+    bad = check(ids, LANG_DIR, '')
+    for app in sorted(glob.glob(os.path.join(ROOT, 'src/apps/*/manifest.json'))):
+        d = os.path.dirname(app)
+        bad |= check(c_ids(glob.glob(os.path.join(d, '*.c')), {}), os.path.join(d, 'lang'), 'app ' + os.path.basename(d) + ': ')
     if '--pot' in sys.argv:
         with open(os.path.join(LANG_DIR, 'notatv.pot'), 'w', encoding='utf-8') as f:
             f.write('# NotaTV translation template. Copy to <code>.po, fill in msgstr and add the language to\n'

@@ -1,4 +1,4 @@
-# NotaTV - Raspberry Pi 4 (64-bit). Built next to x86 in output-rpi4/ (see Makefile: make rpi4)
+# NotaTV - Raspberry Pi 4 (64-bit). Built in output-rpi4/ (see Makefile: make)
 # --- Architecture and toolchain ---
 BR2_aarch64=y
 BR2_cortex_a72=y

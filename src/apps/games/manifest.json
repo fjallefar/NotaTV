@@ -1,0 +1,13 @@
+{
+  "id": "games",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Games",
+  "desc": "Play games from your PC via Sunshine (Moonlight)",
+  "icon": "play",
+  "c1": [30, 160, 90],
+  "c2": [12, 90, 50],
+  "fg": [255, 255, 255],
+  "order": 80,
+  "default": true
+}

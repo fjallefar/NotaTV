@@ -1,0 +1,57 @@
+#!/bin/sh
+# App packages from the App Store (the GitHub release "apps", see scripts/apps-catalog.py). Used by tvshell (appcat.c).
+#   catalog <base-url> <api>                         print the catalog (JSON) for this app API version
+#   install <base-url> <dir> <id> <file> <sha256>    download, check and unpack the package into <dir>/<id>; prints OK
+#   remove <dir> <id>                                delete the package
+# Safety: nothing is put in place before the whole package is downloaded, matches the SHA256 from the catalog and
+# only holds plain files and folders with relative paths. The old version is replaced with renames and deleted with
+# rm (never overwritten in place: tvshell may still have the old app.so mapped until it restarts).
+set -u
+die() { echo "$*"; exit 1; }
+valid_id() { echo "$1" | grep -Eq '^[a-z0-9_-]{1,32}$'; }
+
+case "${1:-}" in
+catalog)
+	[ $# -eq 3 ] || die "Invalid request"
+	echo "$3" | grep -Eq '^[0-9]+$' || die "Invalid request"
+	curl -fsSL -m 20 --retry 2 "$2/apps-api$3.json" || die "Could not reach the App Store"
+	;;
+install)
+	[ $# -eq 6 ] || die "Invalid request"
+	base=$2 dir=$3 id=$4 file=$5 sum=$6
+	valid_id "$id" || die "Invalid app package"
+	echo "$file" | grep -Eq '^[A-Za-z0-9._-]+\.tar\.gz$' || die "Invalid app package"
+	echo "$sum" | grep -Eq '^[0-9a-f]{64}$' || die "Invalid app package"
+	mkdir -p "$dir" && chmod 700 "$dir" || die "Could not install the app"
+	tmp="$dir/.dl-$id"
+	rm -rf "$tmp"
+	mkdir -p "$tmp/pkg" || die "Could not install the app"
+	trap 'rm -rf "$tmp"' EXIT
+	curl -fsSL -m 300 --retry 2 -o "$tmp/p.tar.gz" "$base/$file" || die "Could not download the app"
+	[ "$(sha256sum "$tmp/p.tar.gz" | cut -d' ' -f1)" = "$sum" ] || die "The download is damaged - try again"
+	# only plain files and folders, no absolute paths or ..
+	# (busybox tar has no -z: gunzip -c | tar, like the system updater)
+	gunzip -c "$tmp/p.tar.gz" 2>/dev/null | tar -tv -f - > "$tmp/list" 2>/dev/null || die "The download is damaged - try again"
+	cut -c1 "$tmp/list" | grep -qv '^[-d]$' && die "Invalid app package"
+	gunzip -c "$tmp/p.tar.gz" 2>/dev/null | tar -t -f - 2>/dev/null | grep -Eq '(^/|(^|/)\.\.(/|$))' && die "Invalid app package"
+	gunzip -c "$tmp/p.tar.gz" 2>/dev/null | tar -x -f - -C "$tmp/pkg" 2>/dev/null || die "The download is damaged - try again"
+	[ -f "$tmp/pkg/app.so" ] && grep -Eq "\"id\": *\"$id\"" "$tmp/pkg/manifest.json" 2>/dev/null || die "Invalid app package"
+	rm -rf "$dir/.old-$id"
+	[ -d "$dir/$id" ] && { mv "$dir/$id" "$dir/.old-$id" || die "Could not install the app"; }
+	if ! mv "$tmp/pkg" "$dir/$id"; then
+		[ -d "$dir/.old-$id" ] && mv "$dir/.old-$id" "$dir/$id"
+		die "Could not install the app"
+	fi
+	rm -rf "$dir/.old-$id"
+	sync
+	echo OK
+	;;
+remove)
+	[ $# -eq 3 ] || die "Invalid request"
+	valid_id "$3" || die "Invalid app package"
+	rm -rf "$2/$3" "$2/.old-$3" "$2/.dl-$3"
+	sync
+	echo OK
+	;;
+*) die "Invalid request" ;;
+esac

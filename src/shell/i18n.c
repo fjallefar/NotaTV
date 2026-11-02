@@ -103,6 +103,14 @@ bool i18n_load(const char *dir, const char *lang) {
     return load_po(path);
 }
 
+/* extra translations (an app package): merged into the same table */
+bool i18n_load_extra(const char *dir) {
+    if (!strcmp(cur, "en") || !*cur) return true;
+    char path[512];
+    snprintf(path, sizeof path, "%s/lang/%s.po", dir, cur);
+    return load_po(path);
+}
+
 const char *T(const char *s) {
     if (!s || !used) return s;
     size_t j = hash(s) & (cap - 1);

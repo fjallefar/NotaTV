@@ -1,0 +1,434 @@
+# NotaTV app "seerr" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Requested"
+msgstr "Anmodet"
+
+msgid "Processing"
+msgstr "Behandles"
+
+msgid "Partly available"
+msgstr "Delvist tilgængelig"
+
+msgid "Available"
+msgstr "Tilgængelig"
+
+msgid "Trending now"
+msgstr "Populært lige nu"
+
+msgid "Recently added"
+msgstr "Senest tilføjet"
+
+msgid "Popular movies"
+msgstr "Populære film"
+
+msgid "Popular shows"
+msgstr "Populære serier"
+
+msgid "Upcoming movies"
+msgstr "Kommende film"
+
+msgid "Show: movies and shows"
+msgstr "Vis: film og serier"
+
+msgid "Show: movies only"
+msgstr "Vis: kun film"
+
+msgid "Show: shows only"
+msgstr "Vis: kun serier"
+
+msgid "Discover"
+msgstr "Opdag"
+
+msgid "Search"
+msgstr "Søg"
+
+msgid "Netflix top 10"
+msgstr "Netflix top 10"
+
+msgid "Server and login"
+msgstr "Server og login"
+
+msgid "Cannot reach Seerr at %s"
+msgstr "Kan ikke nå Seerr på %s"
+
+msgid "Your user has no access to Seerr - ask the administrator"
+msgstr "Din bruger har ikke adgang til Seerr - spørg administratoren"
+
+msgid "Login failed (HTTP %ld)"
+msgstr "Login fejlede (HTTP %ld)"
+
+msgid "Signing in…"
+msgstr "Logger ind…"
+
+msgid "Sign in to Plex first, or use local login in the menu"
+msgstr "Log ind på Plex først, eller brug lokalt login i menuen"
+
+msgid "Seerr: password"
+msgstr "Seerr: kodeord"
+
+msgid "Seerr address (e.g. 192.168.1.10:5055)"
+msgstr "Seerr-adresse (fx 192.168.1.10:5055)"
+
+msgid "Seerr: email"
+msgstr "Seerr: e-mail"
+
+msgid "Change Seerr address"
+msgstr "Skift Seerr-adresse"
+
+msgid "Local login (email)"
+msgstr "Lokalt login (e-mail)"
+
+msgid "Sign in with Plex again"
+msgstr "Log ind med Plex igen"
+
+msgid "Results for \"%s\""
+msgstr "Resultater for \"%s\""
+
+msgid "Search Seerr"
+msgstr "Søg i Seerr"
+
+msgid "Netflix top 10 · movies (%s, this week)"
+msgstr "Netflix top 10 · film (%s, denne uge)"
+
+msgid "Netflix top 10 · shows (%s, this week)"
+msgstr "Netflix top 10 · serier (%s, denne uge)"
+
+msgid "Connecting…"
+msgstr "Forbinder…"
+
+msgid "Show"
+msgstr "Serie"
+
+msgid "Movie"
+msgstr "Film"
+
+msgid "Connect to Seerr"
+msgstr "Forbind til Seerr"
+
+msgid "Find and request movies and shows for your Plex server.\n\nEnter the address of your Overseerr/Jellyseerr/Seerr server, e.g. 192.168.1.10:5055. You are signed in with your Plex account."
+msgstr "Find og anmod om film og serier til din Plex-server.\n\nIndtast adressen på din Overseerr/Jellyseerr/Seerr-server, fx 192.168.1.10:5055. Du logges ind med din Plex-konto."
+
+msgid "Could not sign in"
+msgstr "Kunne ikke logge ind"
+
+msgid "Try again"
+msgstr "Prøv igen"
+
+msgid "Enter address"
+msgstr "Indtast adresse"
+
+msgid "Change address"
+msgstr "Skift adresse"
+
+msgid "Left (from the first button): menu"
+msgstr "Venstre (fra første knap): menu"
+
+msgid "Nothing found"
+msgstr "Intet fundet"
+
+msgid "English"
+msgstr "Engelsk"
+
+msgid "Danish"
+msgstr "Dansk"
+
+msgid "Swedish"
+msgstr "Svensk"
+
+msgid "Norwegian"
+msgstr "Norsk"
+
+msgid "German"
+msgstr "Tysk"
+
+msgid "French"
+msgstr "Fransk"
+
+msgid "Spanish"
+msgstr "Spansk"
+
+msgid "Italian"
+msgstr "Italiensk"
+
+msgid "Portuguese"
+msgstr "Portugisisk"
+
+msgid "Dutch"
+msgstr "Hollandsk"
+
+msgid "Finnish"
+msgstr "Finsk"
+
+msgid "Icelandic"
+msgstr "Islandsk"
+
+msgid "Polish"
+msgstr "Polsk"
+
+msgid "Russian"
+msgstr "Russisk"
+
+msgid "Ukrainian"
+msgstr "Ukrainsk"
+
+msgid "Turkish"
+msgstr "Tyrkisk"
+
+msgid "Arabic"
+msgstr "Arabisk"
+
+msgid "Persian"
+msgstr "Persisk"
+
+msgid "Hebrew"
+msgstr "Hebraisk"
+
+msgid "Hindi"
+msgstr "Hindi"
+
+msgid "Tamil"
+msgstr "Tamil"
+
+msgid "Telugu"
+msgstr "Telugu"
+
+msgid "Japanese"
+msgstr "Japansk"
+
+msgid "Korean"
+msgstr "Koreansk"
+
+msgid "Chinese"
+msgstr "Kinesisk"
+
+msgid "Cantonese"
+msgstr "Kantonesisk"
+
+msgid "Thai"
+msgstr "Thai"
+
+msgid "Indonesian"
+msgstr "Indonesisk"
+
+msgid "Czech"
+msgstr "Tjekkisk"
+
+msgid "Hungarian"
+msgstr "Ungarsk"
+
+msgid "Romanian"
+msgstr "Rumænsk"
+
+msgid "Greek"
+msgstr "Græsk"
+
+msgid "Serbian"
+msgstr "Serbisk"
+
+msgid "Croatian"
+msgstr "Kroatisk"
+
+msgid "Tagalog"
+msgstr "Tagalog"
+
+msgid "United States"
+msgstr "USA"
+
+msgid "United Kingdom"
+msgstr "Storbritannien"
+
+msgid "Denmark"
+msgstr "Danmark"
+
+msgid "Sweden"
+msgstr "Sverige"
+
+msgid "Norway"
+msgstr "Norge"
+
+msgid "Germany"
+msgstr "Tyskland"
+
+msgid "France"
+msgstr "Frankrig"
+
+msgid "Spain"
+msgstr "Spanien"
+
+msgid "Italy"
+msgstr "Italien"
+
+msgid "Netherlands"
+msgstr "Holland"
+
+msgid "Belgium"
+msgstr "Belgien"
+
+msgid "Finland"
+msgstr "Finland"
+
+msgid "Iceland"
+msgstr "Island"
+
+msgid "Ireland"
+msgstr "Irland"
+
+msgid "Poland"
+msgstr "Polen"
+
+msgid "Russia"
+msgstr "Rusland"
+
+msgid "Ukraine"
+msgstr "Ukraine"
+
+msgid "Turkey"
+msgstr "Tyrkiet"
+
+msgid "Canada"
+msgstr "Canada"
+
+msgid "Australia"
+msgstr "Australien"
+
+msgid "New Zealand"
+msgstr "New Zealand"
+
+msgid "Mexico"
+msgstr "Mexico"
+
+msgid "Brazil"
+msgstr "Brasilien"
+
+msgid "Argentina"
+msgstr "Argentina"
+
+msgid "India"
+msgstr "Indien"
+
+msgid "Japan"
+msgstr "Japan"
+
+msgid "South Korea"
+msgstr "Sydkorea"
+
+msgid "China"
+msgstr "Kina"
+
+msgid "Hong Kong"
+msgstr "Hongkong"
+
+msgid "Taiwan"
+msgstr "Taiwan"
+
+msgid "Thailand"
+msgstr "Thailand"
+
+msgid "South Africa"
+msgstr "Sydafrika"
+
+msgid "Iran"
+msgstr "Iran"
+
+msgid "Israel"
+msgstr "Israel"
+
+msgid "Egypt"
+msgstr "Egypten"
+
+msgid "Austria"
+msgstr "Østrig"
+
+msgid "Switzerland"
+msgstr "Schweiz"
+
+msgid "Czechia"
+msgstr "Tjekkiet"
+
+msgid "Hungary"
+msgstr "Ungarn"
+
+msgid "Portugal"
+msgstr "Portugal"
+
+msgid "Greece"
+msgstr "Grækenland"
+
+msgid "Original language: %s   ·   %s: %s"
+msgstr "Originalsprog: %s   ·   %s: %s"
+
+msgid "Countries"
+msgstr "Lande"
+
+msgid "Country"
+msgstr "Land"
+
+msgid "Original language: %s"
+msgstr "Originalsprog: %s"
+
+msgid "%d seasons"
+msgstr "%d sæsoner"
+
+msgid "Request sent: %s"
+msgstr "Anmodning sendt: %s"
+
+msgid "Request failed%s%s"
+msgstr "Anmodning fejlede%s%s"
+
+msgid "Select at least one season"
+msgstr "Vælg mindst én sæson"
+
+msgid "Sending…"
+msgstr "Sender…"
+
+msgid "Request the rest"
+msgstr "Anmod om resten"
+
+msgid "Request"
+msgstr "Anmod"
+
+msgid "Trailer"
+msgstr "Trailer"
+
+msgid "Already on Plex - open it in the Plex app."
+msgstr "Findes allerede på Plex - åbn den i Plex-appen."
+
+msgid "More like this"
+msgstr "Mere som denne"
+
+msgid "Choose seasons"
+msgstr "Vælg sæsoner"
+
+msgid "Request %d season"
+msgstr "Anmod om %d sæson"
+
+msgid "Request %d seasons"
+msgstr "Anmod om %d sæsoner"
+
+msgid "All seasons"
+msgstr "Alle sæsoner"
+
+msgid "Season %d"
+msgstr "Sæson %d"
+
+msgid "%d episodes"
+msgstr "%d afsnit"
+
+msgid "Loading seasons…"
+msgstr "Henter sæsoner…"
+
+msgid "All seasons are already requested or available"
+msgstr "Alle sæsoner er allerede anmodet eller tilgængelige"
+
+msgid "Sign out of Seerr"
+msgstr "Log ud af Seerr"
+
+msgid "Closes the session at Seerr and deletes the address and login from this box"
+msgstr "Lukker sessionen hos Seerr og sletter adresse og login fra boksen"
+
+msgid "Find and request movies and shows for Plex"
+msgstr "Find og anmod om film og serier til Plex"
+

@@ -1,0 +1,13 @@
+{
+  "id": "iptv",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Live TV",
+  "desc": "Watch live TV and channels from your IPTV provider",
+  "icon": "tv",
+  "c1": [43, 95, 217],
+  "c2": [22, 52, 140],
+  "fg": [255, 255, 255],
+  "order": 10,
+  "default": true
+}

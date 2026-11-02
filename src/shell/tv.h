@@ -55,6 +55,7 @@ bool gfx_init(SDL_Renderer *r, int out_w, int out_h);
 void gfx_shutdown(void);
 void gfx_lost(void); /* the renderer disappeared - all textures are invalid */
 void gfx_set_hdr(bool on);
+bool gfx_get_hdr(void);
 void fill_vgrad_dither(float x, float y, float w, float h, Color top, Color bot); /* without banding */
 void gfx_stats(int *geom, int *tex_new, int *imgs);
 /* own display presentation on the Pi (kms_present.c): UI in 1080p, scaled by the display hardware */
@@ -145,11 +146,13 @@ const char *cfg_get(const char *key, const char *def);
 int cfg_int(const char *key, int def);
 void cfg_set(const char *key, const char *val);
 void cfg_set_int(const char *key, int v);
+void cfg_unset(const char *key); /* the default applies again */
 const char *data_dir(void);
 const char *asset_dir(void); /* fonts, icons and language files (lang/) */
 void lang_init(void);        /* language from the settings (language), before anything is drawn */
 const char *lang_media_default(const char *key); /* sub_lang/audio_lang default based on the UI language */
-const char *tr_msg(const char *msg); /* translate a message from a helper script (see util.c) */
+const char *tr_msg(const char *msg);
+bool i18n_load_extra(const char *dir); /* an app package's translations: <dir>/lang/<language>.po */ /* translate a message from a helper script (see util.c) */
 
 /* ---------- Systemkald ---------- */
 char *run_capture(const char *cmd); /* malloc'ed output */
@@ -157,9 +160,17 @@ char *run_capture_argv(const char *const *argv); /* without a shell (NULL-termin
 char *log_url(const char *url);  /* URL without tokens/passwords for log files (malloc'ed) */
 int run_cmd(const char *fmt, ...);
 const char *helper_path(void);
-bool board_is_rpi(void); /* Raspberry Pi: only H.264 is hardware decoded (max 1080p) */
 
 /* ---------- Player ---------- */
+/* skip intro / skip credits / next episode (filled in by the source, e.g. Plex markers, once playback has started).
+   Times are in mpv's own timeline (seconds). */
+typedef struct { double start, end; bool credits; } PlayMarker;
+typedef struct {
+    PlayMarker m[6];
+    int n;
+    bool has_next;         /* an episode follows: "Next episode" is offered at the end/credits */
+    char next_title[160];
+} PlaySkip;
 typedef struct {
     const char *url;          /* file/URL or playlist */
     const char *title;
@@ -176,6 +187,7 @@ typedef struct {
     int playlist_n;                                /* live: number of channels (channel changes are gathered, see zap) */
     void (*channel_preview)(void *ud, int idx);    /* live: show the channel while browsing */
     void (*tick)(void *ud);                        /* called often from the playback loop */
+    void (*skip_info)(void *ud, PlaySkip *out);    /* called once shortly after the start (may block briefly) */
     /* settings menu during playback */
     const char *const *qualities; /* NULL-terminated, e.g. {"Original","1080p","720p"} */
     const char *quality;          /* current */
@@ -185,6 +197,8 @@ typedef struct {
     int (*sub_search)(void *ud, char ***labels);   /* search subtitles: number of results */
     char *(*sub_fetch)(void *ud, int idx);         /* fetch the chosen one: local file path (malloc) */
     void *ud;
+    int media_hdr;            /* known by the source: 0 = unknown (ffprobe checks), 1 = SDR, 2 = HDR (PQ/HLG) */
+    int media_w;              /* video width if known (0 = unknown) */
 } PlayRequest;
 typedef struct {
     double pos, dur;
@@ -199,6 +213,12 @@ void player_cmd(const char *const *args);   /* mpv command during playback (e.g.
 bool player_state(double *pos, double *dur, bool *paused); /* false = nothing is playing */
 PlayResult player_run(const PlayRequest *rq);
 void drm_reset_hdr(void);
+bool display_hdr_ok(void);                 /* false if the connected display's EDID has no HDR support */
+bool display_known(void);                  /* a display is connected and its EDID could be read */
+bool hdr_cfg(const char *key, int def);    /* HDR setting that only counts if the display supports HDR */
+typedef enum { DA_AC3, DA_EAC3, DA_DTS, DA_DTSHD, DA_TRUEHD, DA_HD } DisplayAudio; /* HD = TrueHD or DTS-HD */
+bool display_audio_ok(DisplayAudio a);     /* false if the display's EDID lists no such audio format */
+bool audio_cfg(const char *key, int def, DisplayAudio a); /* passthrough setting that only counts if the display accepts it */
 void drm_set_ui_hdr(bool on); /* the TV in HDR10 for the UI (on) or back to SDR (off) */
 /* OpenSubtitles */
 int subs_search(int tmdb, const char *query, int season, int episode, char ***labels);
@@ -237,6 +257,124 @@ void app_quit(void);
 const char *app_ip(void);
 float app_boot_time(void);
 int app_cfg_gen(void); /* counted up when the configuration is changed from outside (phone) */
+void app_cfg_changed(void); /* count it up (e.g. an app saved something that came from the phone) */
+
+/* ---------- Apps ----------
+ * Everything on the home screen is an app. An app describes itself with a NotaApp; the system (apps.c) keeps a
+ * register of them, and the home screen, Settings → Apps, the App Store and sign-out all work from that register.
+ * Settings and the App Store are compiled into tvshell; every other app is a package, a folder in /usr/lib/notatv/apps/<id>/ (manifest.json +
+ * app.so + lang/<code>.po) that are loaded at start. app.so exports `const NotaApp nota_app` and may use everything
+ * in this header (tvshell exports its symbols). Bump NOTA_API whenever anything an app uses here changes. */
+#define NOTA_API 2
+
+/* one line in Settings (also used by apps for their own settings) */
+typedef enum { IT_INFO, IT_TOGGLE, IT_CYCLE, IT_ACTION, IT_TEXT, IT_SUB } ItemType; /* IT_SUB: opens sub-section number .sub */
+typedef struct {
+    const char *label;
+    ItemType type;
+    const char *key, *def;
+    const char *const *opts, *const *labels;
+    void (*action)(void);
+    const char *info_cmd; /* helper command that gives the value (IT_INFO) */
+    void (*changed)(void);
+    const char *help;
+    const char *(*value)(void); /* value computed when drawing (IT_INFO/IT_ACTION) */
+    int sub;                    /* IT_SUB: index in the section's subs */
+    const char *(*locked)(void); /* not NULL = the item cannot be changed, and the text is shown instead of the control */
+} Item;
+extern const char *const set_onoff[]; /* {"0","1",NULL} for IT_TOGGLE */
+const char *set_hdr_locked(void);     /* "Not supported by the display" when the display has no HDR */
+/* "Sign out of <app>?" - confirmed, forget() runs and a toast says so */
+void app_ask_signout(const char *app, void (*forget)(void));
+
+typedef struct HomeItem HomeItem;
+enum {
+    APP_SYSTEM = 1,      /* part of the system: always installed, not in the App Store (Settings, App Store) */
+    APP_DEFAULT_OFF = 2, /* not installed from the start */
+    APP_ROW_LOGOS = 4,   /* the home row shows logos on a light surface (channel logos) */
+};
+typedef struct NotaApp {
+    int api;                   /* NOTA_API when the app was built */
+    const char *id;            /* short, unique: "twitch" (folder name, cfg app_<id>, data folder) */
+    const char *name, *desc;   /* English source text (translated with T) */
+    const char *version;       /* app version, e.g. "1.0.0" */
+    int order;                 /* place on the home screen (lowest first) */
+    unsigned flags;
+    IconId icon;
+    Color c1, c2, fg;          /* tile gradient and icon color */
+    Screen *(*open)(void);
+    void (*init)(void);        /* once at start, when installed (also after install) */
+    void (*tick)(void);        /* every frame while installed (background services) */
+    void (*apply)(void);       /* installed/uninstalled or settings changed: start/stop background services */
+    void (*forget)(void);      /* delete everything saved (sign out, uninstall); NULL = nothing saved */
+    const Item *settings;      /* Settings → Apps → <name>; NULL = none */
+    int n_settings;
+    /* the row under the apps on the home screen (all optional) */
+    const char *row_title;                         /* "Continue watching" */
+    const char *shelf_label;                       /* above the title in the big top: "CONTINUE IN PLEX" */
+    int (*row)(HomeItem **items);                  /* the items (the app keeps them; copied by the home screen) */
+    void (*row_refresh)(void);                     /* ask for fresh items (async) */
+    void (*row_open)(const HomeItem *it, int idx); /* OK on an item */
+    bool (*draw_shelf)(float x, float y);          /* own big top instead of icon + description; false = default */
+    /* a message from the phone page or a script (/tmp/notatv-inbox/<name>); true = taken */
+    bool (*inbox)(const char *name, const char *val);
+    const void *iface;         /* functions other parts use, see "Interfaces" below (NULL = none) */
+} NotaApp;
+
+/* Interfaces: what an app offers the system or other apps through NotaApp.iface. They are reached with
+   app_iface("<id>"), which gives NULL when the app is not installed - so callers simply skip the feature. */
+typedef struct { /* "music": Bluetooth playback info from bt.c for "Now playing" */
+    void (*bt_state)(bool active, bool playing, const char *sender, bool new_session);
+    void (*bt_track)(const char *title, const char *artist, const char *album, double dur);
+    void (*bt_pos)(double pos);
+} MusicIface;
+typedef struct { /* "seerr": IMDb/Rotten Tomatoes ratings (Plex uses them when its server has none) */
+    void (*ratings)(bool tv, int tmdb, void (*cb)(void *ud, int rt_critic, int rt_audience, int imdb10), void *ud);
+} SeerrIface;
+const void *app_iface(const char *id);
+
+int app_count(void);
+const NotaApp *app_at(int i);            /* sorted by order */
+const NotaApp *app_find(const char *id);
+bool app_installed(const NotaApp *a);
+bool app_on(const char *id);             /* installed (false for unknown ids) */
+bool app_packaged(const NotaApp *a);     /* loaded from a package (not compiled into tvshell) */
+const char *app_pkg_dir(const NotaApp *a); /* the package folder ("" for built-in apps) */
+const char *app_data(const NotaApp *a);  /* the app's own data folder, created when asked for */
+void app_install(const NotaApp *a);
+void app_uninstall(const NotaApp *a);    /* forget() + the data folder is wiped; background services stop */
+void apps_init(void);
+const char *apps_pkg_root(void);          /* <data>/apps-pkg: the packages downloaded from the App Store */
+const NotaApp *apps_load_pkg(const char *id); /* load <apps-pkg>/<id> right after it was downloaded */
+
+/* App Store catalog (appcat.c): the apps that can be downloaded from GitHub, and installing them */
+typedef struct {
+    char id[40], version[24], file[128], sha[72], name[96], desc[300];
+    IconId icon;
+    Color c1, c2, fg;
+    int order;
+    bool def;  /* was on by default in NotaTV 1.0 (used when moving such boxes to App Store apps) */
+    long size; /* bytes */
+} CatApp;
+typedef enum { CAT_NONE, CAT_LOADING, CAT_OK, CAT_ERROR } CatState;
+CatState appcat_state(void);
+const char *appcat_error(void);
+void appcat_refresh(void);                 /* fetch the catalog (in the background) */
+int appcat_count(void);
+const CatApp *appcat_at(int i);
+const CatApp *appcat_find(const char *id);
+bool appcat_has_update(const char *id);    /* installed, and the catalog has a newer version */
+void appcat_install(const char *id);       /* download + load + install (queued, one at a time) */
+int appcat_pending(const char *id);        /* 0 = not queued, 1 = waiting, 2 = being installed */
+bool appcat_busy(int *done, int *total, const char **current); /* installs left; progress of this round */
+bool appcat_restart_needed(void);          /* an app was updated while loaded: the new version needs a restart */
+void appcat_tick(void);
+IconId icon_by_name(const char *name);
+int version_cmp(const char *a, const char *b);
+void apps_tick(void);
+int apps_gen(void);                      /* changes when apps are loaded, installed or uninstalled */
+bool apps_inbox(const char *name, const char *val); /* gives an inbox message to the app that takes it */
+Screen *appstore_screen(void);
 
 /* shared UI helpers */
 float anim_to(float cur, float target, float dt, float speed);
@@ -270,6 +408,11 @@ void confirm_open(const char *title, const char *msg, const char *yes, const cha
 typedef void (*ChoiceDone)(void *ud, int idx); /* -1 = cancelled */
 void choice_open(const char *title, const char *const *items, int n, int sel, ChoiceDone cb, void *ud);
 
+/* "Next episode" countdown overlay (auto-advance). play=true: the user pressed OK or the countdown ran out;
+   play=false: the user pressed Back. */
+typedef void (*NextUpDone)(void *ud, bool play);
+void nextup_open(const char *poster, const char *title, const char *subtitle, int seconds, NextUpDone cb, void *ud);
+
 /* Side menu: a narrow icon bar that slides out when you press left from the content */
 #define SIDE_W 112      /* bredde lukket */
 #define SIDE_OPEN_W 440 /* width when open */
@@ -298,33 +441,18 @@ float draw_ratings(float x, float y, int rt_critic, int rt_audience, int imdb10)
 /* QR code for the screen (e.g. a phone link) */
 void draw_qr(const char *text, float x, float y, float size);
 
-/* Screen constructors */
+/* Screens of the system (the apps' own screens are in their packages, src/apps) */
 Screen *home_screen(void);
-Screen *iptv_screen(void);
-Screen *plex_screen(void);
-Screen *youtube_screen(void);
-Screen *media_screen(void);
-Screen *games_screen(void); /* Games: streaming from a PC via tvmoon */
 Screen *settings_screen(void);
 void settings_wifi(void);         /* search for and choose Wi-Fi (from Settings) */
 void settings_apply_name(void);   /* device name changed: restart AirPlay/CEC/BT/DLNA */
-Screen *appstore_screen(void);
+void settings_update_install(void); /* download and install the GitHub update (Pi), then offer a restart */
+void update_tick(void);           /* update_notice.c: looks for updates on GitHub and reminds every other day */
 Screen *setup_screen(void);       /* setup guide (first boot) */
 const char *phone_pin(void);      /* code for the phone page (created if missing) */
 void phone_pin_new(void);
 void phone_pin_change(void (*done)(void)); /* new random one / choose your own */
-Screen *seerr_screen(void);
-Screen *jellyfin_screen(void);
-void jellyfin_remote_tick(void); /* "Play on → NotaTV" from the Jellyfin app (WebSocket to the server) */
-Screen *twitch_screen(void);
-Screen *music_screen(void);
 Screen *netwatch_screen(void); /* Settings → Network: who the box talks to */
-void music_init(void);
-void music_tick(void); /* new AirPlay playback -> show "Now playing" */
-bool music_now(char **title, char **artist, char **cover, bool *playing);
-void music_bt_state(bool active, bool playing, const char *sender, bool new_session);
-void music_bt_track(const char *title, const char *artist, const char *album, double dur);
-void music_bt_pos(double pos);
 /* Bluetooth (bt.c): agent for pairing (the code is shown on the TV), playback info and control via D-Bus/BlueZ */
 void bt_init(void);
 void bt_tick(void);
@@ -350,24 +478,6 @@ typedef struct { char name[128], url[160], id[96]; } DiscServer;
 typedef void (*DiscDone)(void *ud, const DiscServer *s, int n);
 void netdisc_start(DiscKind kind, DiscDone cb, void *ud);
 
-/* Plex cast (plexcast.c): the box as a Plex player (GDM + Companion on port 3005) */
-typedef struct { char key[256], server_id[96], address[64], protocol[8], token[300], container[256]; int port; double offset; } PlexCastMedia;
-typedef struct { char key[256], rating_key[32], container[256], pq_id[24], pq_item[24], server_id[96], address[64], protocol[8]; int port; double duration; } PlexCastNow;
-void plexcast_tick(void);
-void plexcast_apply(void);
-void plexcast_play_tick(void);                          /* from the Plex playback's rq.tick */
-void plexcast_playing(const PlexCastNow *now, double base);
-void plexcast_stopped(void);
-int plexcast_take_skip(void);                           /* +1/-1 = the app asked for next/previous */
-bool plexcast_play_pending(void);                       /* the app has sent new content */
-void plex_cast_play(const PlexCastMedia *m);            /* ui_plex.c */
-const char *plex_client_id(void);
-/* YouTube cast (ytcast.c): DIAL + YouTube lounge ("Cast" and "Link with TV code" in the YouTube app) */
-void ytcast_tick(void);
-void ytcast_apply(void);
-void ytcast_play_tick(void);
-char *ytcast_pairing_code(void);                        /* blocking; "123 456 789 012" or NULL */
-bool youtube_cast_play(const char *id, double start);   /* ui_youtube.c; true = played to the end */
 /* screen mirroring (mirror.c): AirPlay via UxPlay + Android (own app, MPEG-TS on port 7400) */
 void mirror_tick(void);
 void mirror_apply(void);
@@ -376,19 +486,13 @@ int bt_devices(BtDevice *out, int max); /* paired devices (blocking, short timeo
 void bt_connect(const char *path);      /* the box calls the phone: the music moves to the TV */
 void bt_disconnect(void);               /* disconnect the phone that is playing */
 void bt_forget_all(void);
-/* ratings via Seerr (used by Plex when the server does not have IMDb/RT itself) */
-void seerr_ratings(bool tv, int tmdb, void (*cb)(void *ud, int rt_critic, int rt_audience, int imdb10), void *ud);
 void power_menu_open(void);
 
 /* Shared data for the home screen */
-typedef struct { char *title, *subtitle, *image, *key; double progress; char *logo; /* titel-logo (PNG) */ } HomeItem;
-int plex_ondeck(HomeItem **items); /* returns the count (cache) */
-void plex_refresh_ondeck(void);
-void plex_play_key(const char *key);
-int iptv_recent(HomeItem **items);
-int youtube_recent(HomeItem **items); /* recently watched videos */
-void youtube_play_recent(int idx);
-void iptv_play_recent(int idx);
-void iptv_xtream_login(void);
+struct HomeItem { char *title, *subtitle, *image, *key; double progress; char *logo; /* title logo (PNG) */ };
+void wipe_file(const char *path);        /* overwrite (small files) and delete */
+void wipe_dir(const char *dir);          /* everything in a folder */
+void wipe_session_traces(void);          /* /tmp leftovers: mpv log, image cache */
+void subs_forget(void);
 
 #endif

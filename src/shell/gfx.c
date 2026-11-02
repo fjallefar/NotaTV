@@ -75,6 +75,8 @@ static void hdr_init_lut(void) {
     }
 }
 
+bool gfx_get_hdr(void) { return g_hdr; }
+
 void gfx_set_hdr(bool on) {
     g_hdr = on;
     if (on) hdr_init_lut();

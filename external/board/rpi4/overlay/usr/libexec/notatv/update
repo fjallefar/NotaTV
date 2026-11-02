@@ -6,7 +6,6 @@
 #             (also run automatically by session if the user interface keeps crashing right after an update)
 #   resume    at boot (S05notatv-update): finish an install that was cut off after the commit point,
 #             throw away one that was cut off before it, remove leftovers from older updaters
-#   usb       not used on the Pi
 # Repo: cfg update_repo or /etc/notatv-update-repo ("owner/name"). The release must have the files
 # notatv-rpi4-update.tar.gz and notatv-rpi4-update.tar.gz.sha256 (created by make rpi4).
 #
@@ -355,6 +354,5 @@ check)
 install) lock; install ;;
 rollback) lock; rollback ;;
 resume) lock; resume ;;
-usb) echo "Use 'Update NotaTV' (downloads from GitHub)"; exit 1 ;;
 *) exit 1 ;;
 esac

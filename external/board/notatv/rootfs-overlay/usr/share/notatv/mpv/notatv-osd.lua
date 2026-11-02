@@ -206,7 +206,12 @@ end
 local orig_props = nil
 local function update_hdr()
     local g = mp.get_property("video-params/gamma", "")
-    local on = (meta.sdr_to_hdr == true) or g == "pq" or g == "hlg"
+    -- only when the display actually receives HDR: not when HDR is off (no hint) or the
+    -- video is tone-mapped to SDR (target-trc=srgb on a display without HDR)
+    local trc = mp.get_property("options/target-trc", "auto")
+    local out_hdr = mp.get_property("options/target-colorspace-hint", "yes") ~= "no"
+        and (trc == "auto" or trc == "pq" or trc == "hlg")
+    local on = (meta.sdr_to_hdr == true) or (out_hdr and (g == "pq" or g == "hlg"))
     if on == hdr then return end
     hdr = on
     local names = {"osd-color", "sub-color", "osd-back-color"}
@@ -233,10 +238,19 @@ local function text(x, y, size, bold, color, s, align)
         align or 7, x, y, size, bold and 1 or 0, color or "FFFFFF", esc(s))
 end
 
+-- overlay-add works in real OSD pixels, everything else is drawn in W x H: scale images when mpv draws at
+-- another size (900p for 4K HDR on a display without HDR)
+local function overlay_at(id, x, y, file, w, h)
+    local d = mp.get_property_native("osd-dimensions")
+    local k = (d and d.w and d.w > 0) and d.w / W or 1
+    mp.command_native({"overlay-add", id, math.floor(x * k + 0.5), math.floor(y * k + 0.5), file, 0, "bgra", w, h, w * 4,
+        math.floor(w * k + 0.5), math.floor(h * k + 0.5)})
+end
+
 local function show_poster(x, y)
     if poster_shown or not meta.poster or not meta.poster_w then return end
     local file = (hdr and meta.poster_hdr) or meta.poster
-    mp.command_native({"overlay-add", 1, x, y, file, 0, "bgra", meta.poster_w, meta.poster_h, meta.poster_w * 4})
+    overlay_at(1, x, y, file, meta.poster_w, meta.poster_h)
     poster_shown = true
 end
 
@@ -291,7 +305,7 @@ local function show_logo(x, y)
     local file = (hdr and chan.logo_hdr) or chan.logo
     local key = file .. ":" .. chan.num
     if logo_shown == key then return end
-    mp.command_native({"overlay-add", 2, x, y, file, 0, "bgra", chan.logo_w, chan.logo_h, chan.logo_w * 4})
+    overlay_at(2, x, y, file, chan.logo_w, chan.logo_h)
     logo_shown = key
 end
 
@@ -831,6 +845,28 @@ mp.add_periodic_timer(0.25, function()
     if chat_dirty or (chat_on and m ~= chat_menu) then chat_menu = m; chat_draw() end
 end)
 mp.observe_property("pause", "bool", function() if chat_on then chat_draw() end end)
+
+-- ---- button: "Skip intro" / "Skip credits" / "Next episode" (OK presses it; tvshell decides when it is shown) ----
+local ovp = mp.create_osd_overlay("ass-events")
+ovp.z = 12
+ovp.res_x, ovp.res_y = W, H
+mp.register_script_message("notatv-prompt", function(l1, l2)
+    if not l1 or l1 == "" then set_ov(ovp, ""); return end
+    local parts = {}
+    local s1 = 34
+    local t2 = (l2 and l2 ~= "") and fit_px(l2, 520, 26) or nil
+    local w = math.max(text_px(l1, s1), t2 and text_px(t2, 26) or 0) + 150
+    local h = t2 and 108 or 78
+    local x, y = W - 80 - w, H - 300
+    table.insert(parts, rrect(x, y, w, h, 14, "F2F2F2", "10"))
+    table.insert(parts, rrect(x + 20, y + h / 2 - 20, 58, 40, 10, "1A1A1A", "00"))
+    table.insert(parts, text(x + 49, y + h / 2, 22, true, "FFFFFF", "OK", 5))
+    local ty = t2 and y + 18 or y + h / 2 - 20
+    table.insert(parts, text(x + 98, ty, s1, true, "111111", l1, 7))
+    if t2 then table.insert(parts, text(x + 98, y + 62, 26, false, "555555", t2, 7)) end
+    set_ov(ovp, table.concat(parts, "\n"))
+end)
+mp.register_event("end-file", function() set_ov(ovp, "") end)
 
 -- ---- status: loading, buffering, seeking and pause/play icon (all sources) ----
 local ovs = mp.create_osd_overlay("ass-events")

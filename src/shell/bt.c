@@ -10,6 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* "Now playing" info goes to the Music app - only when it is installed (see MusicIface in tv.h) */
+#define MUSIC(fn, ...) do { const MusicIface *mi_ = app_iface("music"); if (mi_) mi_->fn(__VA_ARGS__); } while (0)
+
 #define ADAPTER "/org/bluez/hci0"
 #define AGENT_PATH "/notatv/agent"
 
@@ -221,7 +224,7 @@ static void parse_track(DBusMessageIter *dict) { /* a{sv}: Title, Artist, Album,
         else if (!strcmp(k, "Duration") && variant_u32(&v, &u)) dur = u / 1000.0;
         dbus_message_iter_next(&e);
     }
-    music_bt_track(title ? title : "", artist ? artist : "", album ? album : "", dur);
+    MUSIC(bt_track, title ? title : "", artist ? artist : "", album ? album : "", dur);
 }
 
 /* dict = a{sv} with properties for iface at path (from PropertiesChanged or InterfacesAdded) */
@@ -238,8 +241,8 @@ static void handle_props(const char *path, const char *iface, DBusMessageIter di
             snprintf(player_path, sizeof player_path, "%s", path);
             if (!strcmp(k, "Track") && dbus_message_iter_get_arg_type(&v) == DBUS_TYPE_ARRAY) parse_track(&v);
             else if (!strcmp(k, "Status") && variant_str(&v, &s) && transport_dev[0])
-                music_bt_state(true, !strcmp(s, "playing"), NULL, false);
-            else if (!strcmp(k, "Position") && variant_u32(&v, &u)) music_bt_pos(u / 1000.0);
+                MUSIC(bt_state, true, !strcmp(s, "playing"), NULL, false);
+            else if (!strcmp(k, "Position") && variant_u32(&v, &u)) MUSIC(bt_pos, u / 1000.0);
         } else if (!strcmp(iface, "org.bluez.MediaTransport1") && !strcmp(k, "State") && variant_str(&v, &s)) {
             /* the audio connection: "active" = music is streaming */
             char dev[128], name[128];
@@ -248,9 +251,9 @@ static void handle_props(const char *path, const char *iface, DBusMessageIter di
                 bool fresh = strcmp(transport_dev, dev) != 0; /* normally already set at Connected */
                 snprintf(transport_dev, sizeof transport_dev, "%s", dev);
                 device_name(dev, name, sizeof name);
-                music_bt_state(true, true, name, fresh);
+                MUSIC(bt_state, true, true, name, fresh);
             } else if (!strcmp(transport_dev, dev)) {
-                music_bt_state(true, false, NULL, false); /* idle: paused (the connection is still there) */
+                MUSIC(bt_state, true, false, NULL, false); /* idle: paused (the connection is still there) */
             }
         } else if (!strcmp(iface, "org.bluez.Adapter1") && !strcmp(path, ADAPTER) &&
                    dbus_message_iter_get_arg_type(&v) == DBUS_TYPE_BOOLEAN) {
@@ -268,14 +271,14 @@ static void handle_props(const char *path, const char *iface, DBusMessageIter di
             track_conn(dev, b);
             if (!b && !strcmp(transport_dev, dev)) { /* the phone went away */
                 transport_dev[0] = player_path[0] = 0;
-                music_bt_state(false, false, NULL, false);
+                MUSIC(bt_state, false, false, NULL, false);
             } else if (b && strcmp(transport_dev, dev)) { /* connected: show it right away (the audio comes when something plays) */
                 char name[128], icon[64];
                 get_str(dev, "org.bluez.Device1", "Icon", icon, sizeof icon);
                 if (!strncmp(icon, "input", 5)) { dbus_message_iter_next(&dict); continue; } /* keyboard/controller: not music */
                 device_name(dev, name, sizeof name);
                 snprintf(transport_dev, sizeof transport_dev, "%s", dev);
-                music_bt_state(true, false, name, true);
+                MUSIC(bt_state, true, false, name, true);
             }
         }
         dbus_message_iter_next(&dict);
@@ -330,7 +333,7 @@ static void interfaces_removed(DBusMessage *m) {
         dev_of(path, dev, sizeof dev);
         if (!strcmp(iface, "org.bluez.MediaTransport1") && !strcmp(transport_dev, dev)) {
             transport_dev[0] = player_path[0] = 0;
-            music_bt_state(false, false, NULL, false);
+            MUSIC(bt_state, false, false, NULL, false);
         }
         dbus_message_iter_next(&arr);
     }
@@ -508,7 +511,7 @@ void bt_disconnect(void) {
     if (!bus || !transport_dev[0]) return;
     send_call(dbus_message_new_method_call("org.bluez", transport_dev, "org.bluez.Device1", "Disconnect"));
     transport_dev[0] = player_path[0] = 0; /* do not wait for the radio connection to be fully down */
-    music_bt_state(false, false, NULL, false);
+    MUSIC(bt_state, false, false, NULL, false);
 }
 
 /* forget all paired devices (Adapter1.RemoveDevice for each) */
@@ -537,7 +540,7 @@ void bt_forget_all(void) {
     }
     dbus_message_unref(r);
     transport_dev[0] = player_path[0] = 0;
-    music_bt_state(false, false, NULL, false);
+    MUSIC(bt_state, false, false, NULL, false);
     app_toast(n ? T("%d device(s) forgotten") : T("No paired devices"), n);
 }
 

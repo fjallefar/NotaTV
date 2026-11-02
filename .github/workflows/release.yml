@@ -97,6 +97,10 @@ jobs:
           ! grep -Eq '^rootfs/(data|dev|proc|sys|tmp|run|media|mnt)/.' pkg.list || { echo "update package: contains runtime folders"; exit 1; }
           rm -f pkg.list pkg.release pkg.tvshell
           ls -la notatv-rpi4.img.xz notatv-rpi4-update.tar.gz notatv-rpi4-update.tar.gz.sha256
+          # the apps for the App Store (they are not in the image): packages + catalog in dist-apps/
+          rm -rf dist-apps
+          python3 scripts/apps-catalog.py output-rpi4/build/tvshell-1.0/apps-out dist-apps --strip output-rpi4/host/bin/aarch64-linux-strip
+          ls -la dist-apps
 
       - name: Publish the release
         env:
@@ -128,4 +132,25 @@ jobs:
                        data=f.read(), ctype="application/octet-stream")
               print("uploaded", n)
           print(rel["html_url"])
+
+          # the App Store: the release "apps" (a pre-release, so it never counts as the latest NotaTV) holds every
+          # app package and one catalog per app API version. Files with the same name are replaced; packages for
+          # older app API versions stay, so boxes that are not updated yet keep finding their apps.
+          try:
+              store = call(f"{api}/tags/apps")
+          except urllib.error.HTTPError as e:
+              if e.code != 404: raise
+              store = call(api, json.dumps({"tag_name": "apps", "target_commitish": os.environ["GITHUB_SHA"],
+                                            "name": "NotaTV App Store", "prerelease": True, "make_latest": "false",
+                                            "body": "App packages for the NotaTV App Store. Boxes download them from here - do not delete."}).encode())
+          files = sorted(os.listdir("dist-apps"))
+          for a in store.get("assets", []):
+              if a["name"] in files:
+                  urllib.request.urlopen(urllib.request.Request(f"{api}/assets/{a['id']}", method="DELETE", headers=hdr))
+          # packages first, the catalog last: a box never sees a catalog entry before its file is there
+          for n in sorted(files, key=lambda f: f.endswith(".json")):
+              with open(os.path.join("dist-apps", n), "rb") as f:
+                  call(f"https://uploads.github.com/repos/{repo}/releases/{store['id']}/assets?name={n}",
+                       data=f.read(), ctype="application/octet-stream")
+              print("app store:", n)
           EOF

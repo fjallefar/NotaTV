@@ -1,7 +1,7 @@
 config BR2_PACKAGE_YT_DLP
 	bool "yt-dlp"
-	depends on BR2_x86_64 || BR2_aarch64
+	depends on BR2_aarch64
 	select BR2_PACKAGE_QUICKJS
 	help
-	  yt-dlp (selvstændig x86_64/aarch64-binær) til YouTube-afspilning.
+	  yt-dlp (selvstændig aarch64-binær) til YouTube-afspilning.
 	  QuickJS bruges som JavaScript-motor til YouTubes signaturer.

@@ -1,0 +1,13 @@
+{
+  "id": "youtube",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "YouTube",
+  "desc": "Search and watch videos on YouTube",
+  "icon": "youtube",
+  "c1": [229, 45, 39],
+  "c2": [170, 18, 20],
+  "fg": [255, 255, 255],
+  "order": 40,
+  "default": true
+}

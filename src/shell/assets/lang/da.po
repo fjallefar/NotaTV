@@ -7,56 +7,11 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "    name and choose the file"
-msgstr "    navn og vælg filen"
-
-msgid "   ·   Control playback from the phone"
-msgstr "   ·   Styr afspilningen fra telefonen"
-
-msgid "   ·   ← →: previous/next"
-msgstr "   ·   ← →: forrige/næste"
-
-msgid "   -   connecting…"
-msgstr "   -   forbinder …"
-
-msgid "   - or scan the QR code"
-msgstr "   - eller scan QR-koden"
-
-msgid "  ·  %d episodes"
-msgstr "  ·  %d afsnit"
-
-msgid "  ·  %dh %02dm"
-msgstr "  ·  %dt %02dm"
-
-msgid "  ·  %dm"
-msgstr "  ·  %dm"
-
 msgid "  · secured"
 msgstr "  · sikret"
 
 msgid " (cleared)"
 msgstr " (ryddes)"
-
-msgid " from "
-msgstr " fra "
-
-msgid "%.0f subscribers"
-msgstr "%.0f abonnenter"
-
-msgid "%.0f views"
-msgstr "%.0f visninger"
-
-msgid "%.0fK subscribers"
-msgstr "%.0fk abonnenter"
-
-msgid "%.0fK views"
-msgstr "%.0fk visninger"
-
-msgid "%.1fM subscribers"
-msgstr "%.1f mio. abonnenter"
-
-msgid "%.1fM views"
-msgstr "%.1f mio. visninger"
 
 msgid "%1$s, %3$s %2$d"
 msgstr "%1$s %2$d. %3$s"
@@ -70,50 +25,17 @@ msgstr "%d / %d   ·   ← → bladrer"
 msgid "%d channels"
 msgstr "%d kanaler"
 
-msgid "%d channels imported"
-msgstr "%d kanaler importeret"
-
 msgid "%d device(s) forgotten"
 msgstr "%d enhed(er) glemt"
-
-msgid "%d episodes"
-msgstr "%d afsnit"
-
-msgid "%d min   "
-msgstr "%d min   "
-
-msgid "%d season"
-msgstr "%d sæson"
-
-msgid "%d seasons"
-msgstr "%d sæsoner"
 
 msgid "%d to the internet  ·  %d on the local network  ·  %d listening  ·  updated every 2 seconds"
 msgstr "%d til internettet  ·  %d på det lokale netværk  ·  %d lytter  ·  opdateres hvert 2. sekund"
 
-msgid "%d viewers"
-msgstr "%d seere"
-
-msgid "%d,%03d viewers"
-msgstr "%d.%03d seere"
-
-msgid "%d.%dM viewers"
-msgstr "%d,%d mio. seere"
-
-msgid "%dh %02dm"
-msgstr "%dt %02dm"
-
 msgid "%dx%d · %s%s · display %dp %d Hz"
 msgstr "%dx%d · %s%s · skærm %dp %d Hz"
 
-msgid "%ld likes"
-msgstr "%ld likes"
-
 msgid "%s (screen)"
 msgstr "%s (skærm)"
-
-msgid "%s added to favorites"
-msgstr "%s tilføjet til favoritter"
 
 msgid "%s channels"
 msgstr "%s kanaler"
@@ -130,26 +52,8 @@ msgstr "%s fejlede (%d)"
 msgid "%s h %s min"
 msgstr "%s t %s min"
 
-msgid "%s has daylight saving time.\n\nShould the clock switch between summer and winter time by itself, or show standard time all year?"
-msgstr "%s har sommertid.\n\nSkal uret selv skifte mellem sommer- og vintertid, eller vise normaltid hele året?"
-
-msgid "%s is hidden"
-msgstr "%s er skjult"
-
-msgid "%s is not live right now"
-msgstr "%s sender ikke lige nu"
-
-msgid "%s is shown on the home screen"
-msgstr "%s vises på forsiden"
-
-msgid "%s left   "
-msgstr "%s tilbage   "
-
 msgid "%s MHz is already active"
 msgstr "%s MHz er allerede aktiv"
-
-msgid "%s removed from favorites"
-msgstr "%s fjernet fra favoritter"
 
 msgid "%s s from kernel to user interface"
 msgstr "%s s fra kernel til brugerflade"
@@ -160,35 +64,8 @@ msgstr "%s vil forbinde til TV'et."
 msgid "%s · %s%s · %d downloads"
 msgstr "%s · %s%s · %d hentninger"
 
-msgid "%s - trailer"
-msgstr "%s - trailer"
-
-msgid "%s%s%d min"
-msgstr "%s%s%d min"
-
-msgid "+  Pair new phone"
-msgstr "+  Par ny telefon"
-
-msgid "1. Go to twitch.tv/activate"
-msgstr "1. Gå til twitch.tv/activate"
-
-msgid "1. Sign in to youtube.com on your computer"
-msgstr "1. Log ind på youtube.com på din computer"
-
-msgid "1080p 120 Hz (lowest latency)"
-msgstr "1080p 120 Hz (lavest forsinkelse)"
-
-msgid "120 Hz halves the wait for the next frame. The TV switches mode at start"
-msgstr "120 Hz halverer ventetiden på næste billede. TV'et skifter tilstand ved start"
-
 msgid "1500 MHz (default)"
 msgstr "1500 MHz (standard)"
-
-msgid "2. Enter the code:"
-msgstr "2. Skriv koden:"
-
-msgid "2. Install the extension"
-msgstr "2. Installér udvidelsen"
 
 msgid "2.35:1"
 msgstr "2,35:1"
@@ -196,95 +73,23 @@ msgstr "2,35:1"
 msgid "2147 MHz (max - often unstable)"
 msgstr "2147 MHz (maks. - ofte ustabil)"
 
-msgid "3. Export cookies.txt"
-msgstr "3. Eksportér cookies.txt"
-
-msgid "4. Scan the QR code, give the account a"
-msgstr "4. Scan QR-koden, giv kontoen et"
-
-msgid "<box IP>"
-msgstr "<boksens IP>"
-
-msgid "\nEasiest: open http://%s on your phone and paste the link there."
-msgstr "\nNemmest: åbn http://%s på din telefon og indsæt linket der."
-
 msgid "a phone"
 msgstr "en telefon"
-
-msgid "A phone"
-msgstr "En telefon"
 
 msgid "Above 1500 MHz the voltage is raised (over_voltage=6). Requires good cooling and a 5.1 V/3 A power supply"
 msgstr "Over 1500 MHz hæves spændingen (over_voltage=6). Kræver god køling og en 5,1 V/3 A strømforsyning"
 
-msgid "Above 60 requires the display mode to be 120 Hz"
-msgstr "Over 60 kræver at skærmtilstanden er 120 Hz"
-
-msgid "Account removed"
-msgstr "Konto fjernet"
-
-msgid "Account: %s"
-msgstr "Konto: %s"
-
-msgid "Actors"
-msgstr "Skuespillere"
-
 msgid "Adapter found - no TV responds"
 msgstr "Adapter fundet - intet TV svarer"
-
-msgid "Add"
-msgstr "Tilføj"
-
-msgid "Add account"
-msgstr "Tilføj konto"
-
-msgid "Add IPTV"
-msgstr "Tilføj IPTV"
-
-msgid "Add to favorites"
-msgstr "Tilføj til favoritter"
-
-msgid "Add your IPTV provider's playlist (M3U link) or Xtream Codes login.\n\nSign in with Xtream Codes, or enter an M3U link."
-msgstr "Tilføj din IPTV-udbyders playliste (M3U-link) eller Xtream Codes-login.\n\nLog ind med Xtream Codes, eller indtast et M3U-link."
 
 msgid "Add YouTube account"
 msgstr "Tilføj YouTube-konto"
 
-msgid "Add YouTube account \"%s\"?"
-msgstr "Tilføj YouTube-konto \"%s\"?"
-
 msgid "AirPlay (music from phone)"
 msgstr "AirPlay (musik fra telefonen)"
 
-msgid "AirPlay or Bluetooth"
-msgstr "AirPlay eller Bluetooth"
-
 msgid "AirPlay screen mirroring"
 msgstr "AirPlay-skærmspejling"
-
-msgid "AirPlay: iPhone, iPad and Mac on the same network  ·  Bluetooth: all phones"
-msgstr "AirPlay: iPhone, iPad og Mac på samme netværk  ·  Bluetooth: alle telefoner"
-
-msgid "Albums"
-msgstr "Albums"
-
-msgid "All apps are enabled"
-msgstr "Alle apps er slået til"
-
-msgid "All channels"
-msgstr "Alle kanaler"
-
-msgid "All libraries"
-msgstr "Alle biblioteker"
-
-msgid "All seasons"
-msgstr "Alle sæsoner"
-
-msgid "All seasons are already requested or available"
-msgstr "Alle sæsoner er allerede anmodet eller tilgængelige"
-
-msgid "All set"
-msgstr "Alt er klar"
 
 msgid "All settings, logins and playlists will be deleted, and the box will restart."
 msgstr "Alle indstillinger, logins og playlister slettes, og boksen genstarter."
@@ -292,14 +97,11 @@ msgstr "Alle indstillinger, logins og playlister slettes, og boksen genstarter."
 msgid "Allow"
 msgstr "Tillad"
 
-msgid "Already on Plex - open it in the Plex app."
-msgstr "Findes allerede på Plex - åbn den i Plex-appen."
+msgid "Not supported by the display"
+msgstr "Understøttes ikke af skærmen"
 
 msgid "Always HDR"
 msgstr "Altid HDR"
-
-msgid "another user"
-msgstr "en anden bruger"
 
 msgid "Apply and restart"
 msgstr "Anvend og genstart"
@@ -307,14 +109,8 @@ msgstr "Anvend og genstart"
 msgid "Approve on the TV"
 msgstr "Godkend på TV'et"
 
-msgid "Apps"
-msgstr "Apps"
-
 msgid "Apps like BubbleUPnP and \"Cast to Device\" in Windows can send video, music and pictures. Local network only"
 msgstr "Apps som BubbleUPnP og \"Cast til enhed\" i Windows kan sende video, musik og billeder. Kun lokalt netværk"
-
-msgid "Apps on the home screen"
-msgstr "Apps på forsiden"
 
 msgid "April"
 msgstr "april"
@@ -322,17 +118,8 @@ msgstr "april"
 msgid "Arabic"
 msgstr "Arabisk"
 
-msgid "Argentina"
-msgstr "Argentina"
-
-msgid "Artists"
-msgstr "Kunstnere"
-
 msgid "Aspect ratio"
 msgstr "Billedformat"
-
-msgid "At least one server must be selected"
-msgstr "Mindst én server skal være valgt"
 
 msgid "Audio"
 msgstr "Lyd"
@@ -355,32 +142,14 @@ msgstr "Lyd: ${current-tracks/audio/lang:} ${current-tracks/audio/title:} (${cur
 msgid "August"
 msgstr "august"
 
-msgid "Australia"
-msgstr "Australien"
-
-msgid "Austria"
-msgstr "Østrig"
-
 msgid "Automatic"
 msgstr "Automatisk"
-
-msgid "Automatic (HEVC)"
-msgstr "Automatisk (HEVC)"
-
-msgid "Available"
-msgstr "Tilgængelig"
 
 msgid "Back"
 msgstr "Tilbage"
 
 msgid "Back: cancel"
 msgstr "Tilbage: annullér"
-
-msgid "Belgium"
-msgstr "Belgien"
-
-msgid "Bluetooth disconnected"
-msgstr "Bluetooth afbrudt"
 
 msgid "Bluetooth is not available"
 msgstr "Bluetooth er ikke tilgængelig"
@@ -394,17 +163,11 @@ msgstr "Bluetooth-parring"
 msgid "Boot time"
 msgstr "Opstartstid"
 
-msgid "Brazil"
-msgstr "Brasilien"
-
 msgid "Buffering…"
 msgstr "Bufferer…"
 
 msgid "Buffering… %d %%"
 msgstr "Bufferer… %d %%"
-
-msgid "Canada"
-msgstr "Canada"
 
 msgid "Cancel"
 msgstr "Annuller"
@@ -412,77 +175,11 @@ msgstr "Annuller"
 msgid "Cannot find the boot partition"
 msgstr "Kan ikke finde boot-partitionen"
 
-msgid "Cannot find the system partition"
-msgstr "Kan ikke finde systempartitionen"
-
-msgid "Cannot find the NotaTV USB stick"
-msgstr "Kan ikke finde NotaTV-USB'en"
-
-msgid "Cannot get servers from plex.tv - check the network"
-msgstr "Kan ikke hente servere fra plex.tv - tjek netværket"
-
-msgid "Cannot mount the system partition"
-msgstr "Kan ikke montere systempartitionen"
-
-msgid "Cannot open the folder"
-msgstr "Kan ikke åbne mappen"
-
-msgid "Cannot reach %s"
-msgstr "Kan ikke nå %s"
-
-msgid "Cannot reach plex.tv - check the network"
-msgstr "Kan ikke kontakte plex.tv - tjek netværket"
-
-msgid "Cannot reach Seerr at %s"
-msgstr "Kan ikke nå Seerr på %s"
-
-msgid "Cannot reach the server - check the address"
-msgstr "Kan ikke kontakte serveren - tjek adressen"
-
-msgid "Cannot reach Twitch"
-msgstr "Kan ikke nå Twitch"
-
-msgid "Cantonese"
-msgstr "Kantonesisk"
-
-msgid "Categories"
-msgstr "Kategorier"
-
-msgid "Category"
-msgstr "Kategori"
-
-msgid "Change address"
-msgstr "Skift adresse"
-
-msgid "Change code"
-msgstr "Skift kode"
-
-msgid "Change name"
-msgstr "Skift navn"
-
-msgid "Change playlist (M3U link)"
-msgstr "Skift playliste (M3U-link)"
-
-msgid "Change Seerr address"
-msgstr "Skift Seerr-adresse"
-
-msgid "Change server"
-msgstr "Skift server"
-
-msgid "Channel"
-msgstr "Kanal"
-
 msgid "Channel %d"
 msgstr "Kanal %d"
 
 msgid "Channel %s_"
 msgstr "Kanal %s_"
-
-msgid "Channel menu"
-msgstr "Kanalmenu"
-
-msgid "Channels"
-msgstr "Kanaler"
 
 msgid "Chat: off"
 msgstr "Chat: fra"
@@ -493,26 +190,11 @@ msgstr "Chat: til"
 msgid "Checking for updates…"
 msgstr "Søger efter opdatering…"
 
-msgid "China"
-msgstr "Kina"
-
-msgid "Chinese"
-msgstr "Kinesisk"
-
-msgid "Choose \"%s\""
-msgstr "Vælg \"%s\""
-
 msgid "Choose a code on the TV first: Settings → Network → Phone page"
 msgstr "Vælg en kode på TV'et først: Indstillinger → Netværk → Telefon-siden"
 
-msgid "Choose account"
-msgstr "Vælg konto"
-
 msgid "Choose another country"
 msgstr "Vælg andet land"
-
-msgid "Choose apps"
-msgstr "Vælg apps"
 
 msgid "Choose cookies.txt"
 msgstr "Vælg cookies.txt"
@@ -520,38 +202,11 @@ msgstr "Vælg cookies.txt"
 msgid "Choose country"
 msgstr "Vælg land"
 
-msgid "Choose disk"
-msgstr "Vælg disk"
-
-msgid "Choose libraries"
-msgstr "Vælg biblioteker"
-
 msgid "Choose my own"
 msgstr "Vælg selv"
 
-msgid "Choose seasons"
-msgstr "Vælg sæsoner"
-
-msgid "Choose servers"
-msgstr "Vælg servere"
-
 msgid "Choose subscriptions.csv"
 msgstr "Vælg subscriptions.csv"
-
-msgid "Choose the country (and region, if any) where the box is, so the clock is right."
-msgstr "Vælg det land (og evt. område) boksen står i, så uret går rigtigt."
-
-msgid "Choose which apps are shown on the home screen"
-msgstr "Vælg hvilke apps der vises på forsiden"
-
-msgid "Choose which apps are shown on the home screen. OK turns them on and off."
-msgstr "Vælg hvilke apps der vises på forsiden. OK slår til og fra."
-
-msgid "Choose which apps should be shown on the home screen. You can always change it later in the App Store."
-msgstr "Vælg hvilke apps der skal vises på forsiden. Du kan altid ændre det senere i App Store."
-
-msgid "Choose Wi-Fi"
-msgstr "Vælg Wi-Fi"
 
 msgid "Choose Wi-Fi network"
 msgstr "Vælg Wi-Fi-netværk"
@@ -562,9 +217,6 @@ msgstr "Vælges her på boksen - der bruges ingen opslag på nettet"
 msgid "Clear"
 msgstr "Ryd"
 
-msgid "Close"
-msgstr "Luk"
-
 msgid "Code"
 msgstr "Kode"
 
@@ -574,26 +226,8 @@ msgstr "Kode fra TV'et"
 msgid "Code: %06u\n\nDoes the code match the one on %s?"
 msgstr "Kode: %06u\n\nPasser koden med den på %s?"
 
-msgid "Collection"
-msgstr "Samling"
-
-msgid "Collections"
-msgstr "Samlinger"
-
-msgid "Comments"
-msgstr "Kommentarer"
-
 msgid "Connect"
 msgstr "Forbind"
-
-msgid "Connect to Jellyfin"
-msgstr "Forbind til Jellyfin"
-
-msgid "Connect to Seerr"
-msgstr "Forbind til Seerr"
-
-msgid "CONNECTED"
-msgstr "FORBUNDET"
 
 msgid "Connected (address %s)"
 msgstr "Forbundet (adresse %s)"
@@ -607,56 +241,20 @@ msgstr "Forbundet til %s (adresse %s)"
 msgid "Connected to %s, but got no IP address"
 msgstr "Forbundet til %s, men fik ingen IP-adresse"
 
-msgid "Connected! Finding your servers…"
-msgstr "Forbundet! Finder dine servere…"
-
-msgid "Connecting to Jellyfin…"
-msgstr "Forbinder til Jellyfin…"
-
-msgid "Connecting to Plex"
-msgstr "Forbinder til Plex"
-
-msgid "Connecting to Twitch…"
-msgstr "Forbinder til Twitch…"
-
 msgid "Connecting to Wi-Fi…"
 msgstr "Forbinder til Wi-Fi…"
-
-msgid "Connecting…"
-msgstr "Forbinder…"
 
 msgid "Connection"
 msgstr "Forbindelse"
 
-msgid "Continue"
-msgstr "Fortsæt"
-
-msgid "Continue (%s)"
-msgstr "Fortsæt (%s)"
-
-msgid "CONTINUE IN PLEX"
-msgstr "FORTSÆT I PLEX"
-
 msgid "Continue the game"
 msgstr "Fortsæt spillet"
-
-msgid "Continue watching"
-msgstr "Fortsæt med at se"
 
 msgid "Control the box and type text from your phone's browser (http://<box IP>). Locked with the code below"
 msgstr "Styr boksen og skriv tekst fra telefonens browser (http://<boksens IP>). Låst med koden nedenfor"
 
-msgid "Copies NotaTV from USB to the box's SSD"
-msgstr "Kopierer NotaTV fra USB til boksens SSD"
-
-msgid "Copying system…"
-msgstr "Kopierer system…"
-
 msgid "Could not check for updates"
 msgstr "Kunne ikke søge efter opdatering"
-
-msgid "Could not connect"
-msgstr "Kunne ikke forbinde"
 
 msgid "Could not connect to %s (wrong password?)"
 msgstr "Kunne ikke forbinde til %s (forkert kodeord?)"
@@ -667,21 +265,6 @@ msgstr "Kunne ikke forbinde til %s - er Bluetooth tændt på telefonen?"
 msgid "Could not download subtitles"
 msgstr "Kunne ikke hente undertekster"
 
-msgid "Could not download the playlist. Check the URL and network."
-msgstr "Kunne ikke hente playlisten. Tjek URL og netværk."
-
-msgid "Could not get a code from YouTube - try again"
-msgstr "Kunne ikke hente en kode fra YouTube - prøv igen"
-
-msgid "Could not get the server list from plex.tv"
-msgstr "Kunne ikke hente serverlisten fra plex.tv"
-
-msgid "Could not load from Plex"
-msgstr "Kunne ikke hente fra Plex"
-
-msgid "Could not load your Twitch profile (%ld)"
-msgstr "Kunne ikke hente din Twitch-profil (%ld)"
-
 msgid "Could not play %s"
 msgstr "Kunne ikke afspille %s"
 
@@ -690,15 +273,6 @@ msgstr "kunne ikke afslutte spillet"
 
 msgid "Could not reach GitHub"
 msgstr "Kunne ikke kontakte GitHub"
-
-msgid "Could not read the playlist"
-msgstr "Kunne ikke læse playlisten"
-
-msgid "Could not sign in"
-msgstr "Kunne ikke logge ind"
-
-msgid "Could not start login: %s"
-msgstr "Kunne ikke starte login: %s"
 
 msgid "could not start the app (%s)"
 msgstr "kunne ikke starte appen (%s)"
@@ -709,12 +283,6 @@ msgstr "Kunne ikke pakke ud"
 msgid "could not unpair"
 msgstr "kunne ikke ophæve parring"
 
-msgid "Countries"
-msgstr "Lande"
-
-msgid "Country"
-msgstr "Land"
-
 msgid "Country and region"
 msgstr "Land og område"
 
@@ -724,20 +292,8 @@ msgstr "Cover til Bluetooth-musik"
 msgid "CPU frequency"
 msgstr "CPU-frekvens"
 
-msgid "Creating boot entry…"
-msgstr "Opretter opstartspunkt…"
-
-msgid "Croatian"
-msgstr "Kroatisk"
-
 msgid "Current time"
 msgstr "Klokken nu"
-
-msgid "Czech"
-msgstr "Tjekkisk"
-
-msgid "Czechia"
-msgstr "Tjekkiet"
 
 msgid "Danish"
 msgstr "Dansk"
@@ -766,12 +322,6 @@ msgstr "Dekodning: %.1f ms"
 msgid "Delete"
 msgstr "Slet"
 
-msgid "Denmark"
-msgstr "Danmark"
-
-msgid "Description"
-msgstr "Beskrivelse"
-
 msgid "Developer mode (SSH)"
 msgstr "Udviklertilstand (SSH)"
 
@@ -781,29 +331,11 @@ msgstr "Enhedsnavn"
 msgid "Did not start"
 msgstr "Startede ikke"
 
-msgid "Directors"
-msgstr "Instruktører"
-
-msgid "Disabled"
-msgstr "Slået fra"
-
-msgid "Disconnect Bluetooth"
-msgstr "Afbryd Bluetooth"
-
-msgid "Discover"
-msgstr "Opdag"
-
 msgid "Display"
 msgstr "Skærm"
 
-msgid "Display mode while gaming"
-msgstr "Skærmtilstand under spil"
-
 msgid "DLNA (send from apps)"
 msgstr "DLNA (send fra apps)"
-
-msgid "Documentaries"
-msgstr "Dokumentar"
 
 msgid "Done"
 msgstr "Færdig"
@@ -817,29 +349,8 @@ msgstr "Henter og installerer opdatering…"
 msgid "Downloading NotaTV %s…"
 msgstr "Henter NotaTV %s…"
 
-msgid "Downloads English subtitles - makes start about 2 sec. slower"
-msgstr "Henter danske/engelske undertekster - gør start ca. 2 sek. langsommere"
-
-msgid "Drives"
-msgstr "Drev"
-
 msgid "DTS passthrough"
 msgstr "DTS-passthrough"
-
-msgid "Dutch"
-msgstr "Hollandsk"
-
-msgid "Egypt"
-msgstr "Egypten"
-
-msgid "Empty"
-msgstr "Tomt"
-
-msgid "Empty folder"
-msgstr "Tom mappe"
-
-msgid "Enabled"
-msgstr "Slået til"
 
 msgid "Ends at %s"
 msgstr "Slutter kl. %s"
@@ -847,95 +358,17 @@ msgstr "Slutter kl. %s"
 msgid "English"
 msgstr "Engelsk"
 
-msgid "Enjoy NotaTV.\n\nYou can run the guide again under Settings → System."
-msgstr "God fornøjelse med NotaTV.\n\nDu kan køre guiden igen under Indstillinger → System."
-
-msgid "Enter address"
-msgstr "Indtast adresse"
-
-msgid "Enter address manually"
-msgstr "Indtast adresse selv"
-
-msgid "Enter M3U link"
-msgstr "Indtast M3U-link"
-
-msgid "Enter playlist link (M3U)"
-msgstr "Indtast playliste-link (M3U)"
-
-msgid "Enter the code on Sunshine's page. Back = cancel"
-msgstr "Skriv koden på Sunshines side. Tilbage = annullér"
-
 msgid "Enter the code shown on the TV (Settings → Network → Phone page)."
 msgstr "Skriv koden, der vises på TV'et (Indstillinger → Netværk → Telefon-siden)."
-
-msgid "Episodes"
-msgstr "Afsnit"
-
-msgid "Erase and install"
-msgstr "Slet og installer"
 
 msgid "Error"
 msgstr "Fejl"
 
-msgid "error from Twitch"
-msgstr "fejl fra Twitch"
-
-msgid "EVERYTHING on %s will be permanently erased. Are you absolutely sure?"
-msgstr "ALT på %s bliver slettet permanent. Er du helt sikker?"
-
 msgid "external"
 msgstr "ekstern"
 
-msgid "Favorite"
-msgstr "Favorit"
-
-msgid "Favorites"
-msgstr "Favoritter"
-
 msgid "February"
 msgstr "februar"
-
-msgid "Find and request movies and shows for Plex"
-msgstr "Find og anmod om film og serier til Plex"
-
-msgid "Find and request movies and shows for your Plex server.\n\nEnter the address of your Overseerr/Jellyseerr/Seerr server, e.g. 192.168.1.10:5055. You are signed in with your Plex account."
-msgstr "Find og anmod om film og serier til din Plex-server.\n\nIndtast adressen på din Overseerr/Jellyseerr/Seerr-server, fx 192.168.1.10:5055. Du logges ind med din Plex-konto."
-
-msgid "Find server"
-msgstr "Find server"
-
-msgid "Find server on the network"
-msgstr "Find server på netværket"
-
-msgid "Find servers on the network"
-msgstr "Find servere på netværket"
-
-msgid "Finding installation files…"
-msgstr "Finder installationsfiler…"
-
-msgid "Finding trailer…"
-msgstr "Finder trailer…"
-
-msgid "Finding your servers…"
-msgstr "Finder dine servere…"
-
-msgid "Finland"
-msgstr "Finland"
-
-msgid "Finnish"
-msgstr "Finsk"
-
-msgid "Focus"
-msgstr "Fokus"
-
-msgid "Follow daylight saving time"
-msgstr "Følg sommertid/vintertid"
-
-msgid "Followed channels - live now"
-msgstr "Fulgte kanaler - live nu"
-
-msgid "Following"
-msgstr "Følger"
 
 msgid "forced"
 msgstr "tvungen"
@@ -952,41 +385,14 @@ msgstr "Glem parrede enheder"
 msgid "Forget Wi-Fi"
 msgstr "Glem Wi-Fi"
 
-msgid "Formatting (data) failed"
-msgstr "Formatering (data) fejlede"
-
-msgid "Formatting (EFI) failed"
-msgstr "Formatering (EFI) fejlede"
-
-msgid "Formatting…"
-msgstr "Formaterer…"
-
-msgid "Found %d server(s), but none responded. Are they turned on?"
-msgstr "Fandt %d server(e), men ingen svarede. Er de tændt?"
-
-msgid "Found 1 Jellyfin server"
-msgstr "Fandt 1 Jellyfin-server"
-
-msgid "Found: %s - sign in with the code to use it"
-msgstr "Fundet: %s - log ind med koden for at bruge den"
-
-msgid "Found: %s - trying to connect…"
-msgstr "Fundet: %s - prøver at forbinde…"
-
 msgid "FPS: %d shown / %d received (%d skipped)"
 msgstr "FPS: %d vist / %d modtaget (%d sprunget)"
 
 msgid "Frame rate for live TV"
 msgstr "Billedfrekvens for live-TV"
 
-msgid "Frames per second"
-msgstr "Billeder pr. sekund"
-
 msgid "Frames per second and slowest frame (ms) in the top right - for troubleshooting"
 msgstr "Billeder pr. sekund og langsomste billede (ms) øverst til højre - til fejlfinding"
-
-msgid "France"
-msgstr "Frankrig"
 
 msgid "Free: create an account on opensubtitles.com → Consumers → new API key"
 msgstr "Gratis: opret konto på opensubtitles.com → Consumers → ny API-nøgle"
@@ -1003,35 +409,8 @@ msgstr "Filmens egne"
 msgid "From your phone"
 msgstr "Fra din telefon"
 
-msgid "From your phone you can control the box and type text at  http://%s\n\nThe page is locked with this code:   %s\n\nLogins and server addresses sent from the phone must always be approved here on the TV."
-msgstr "Fra telefonen kan du styre boksen og skrive tekst på  http://%s\n\nSiden er låst med denne kode:   %s\n\nLogins og serveradresser fra telefonen skal altid godkendes her på TV'et."
-
-msgid "Games"
-msgstr "Spil"
-
-msgid "Games - pairing"
-msgstr "Spil - parring"
-
-msgid "Genres"
-msgstr "Genrer"
-
 msgid "German"
 msgstr "Tysk"
-
-msgid "Germany"
-msgstr "Tyskland"
-
-msgid "Getting code from YouTube…"
-msgstr "Henter kode fra YouTube …"
-
-msgid "Getting login code…"
-msgstr "Henter login-kode…"
-
-msgid "Global"
-msgstr "Globalt"
-
-msgid "Go to  plex.tv/link  on your phone or computer and enter the code:"
-msgstr "Gå til  plex.tv/link  på din telefon eller computer og indtast koden:"
 
 msgid "Go to channel"
 msgstr "Gå til kanal"
@@ -1051,35 +430,11 @@ msgstr "Godmorgen"
 msgid "Good night"
 msgstr "God nat"
 
-msgid "Google does not allow direct login in third-party apps, so cookies from your browser are used. Cookies expire after a while - then just repeat the steps. The TV switches to the account automatically once it has been added."
-msgstr "Google tillader ikke direkte login i tredjepartsapps, derfor bruges cookies fra din browser. Cookies udløber efter noget tid - så gentager du bare trinene. TV'et skifter automatisk til kontoen, når den er tilføjet."
-
-msgid "Greece"
-msgstr "Grækenland"
-
-msgid "Greek"
-msgstr "Græsk"
-
-msgid "H.264 (slow)"
-msgstr "H.264 (langsom)"
-
 msgid "Hardware"
 msgstr "Hardware"
 
 msgid "HDR brightness metadata"
 msgstr "HDR-lysdata til TV'et"
-
-msgid "Hebrew"
-msgstr "Hebraisk"
-
-msgid "Hero: a featured title at the top. Focus: background and info follow the selected title"
-msgstr "Hero: fremhævet titel øverst. Fokus: baggrund og info følger den titel du står på"
-
-msgid "HEVC 10-bit HDR, if the PC's display is in HDR"
-msgstr "HEVC 10-bit HDR, hvis PC'ens skærm står i HDR"
-
-msgid "HEVC decodes in ~4 ms, H.264 takes ~67 ms on a Pi 4"
-msgstr "HEVC dekodes på ~4 ms, H.264 bruger ~67 ms på Pi 4"
 
 msgid "Hide password"
 msgstr "Skjul kodeord"
@@ -1087,41 +442,11 @@ msgstr "Skjul kodeord"
 msgid "Hide stats"
 msgstr "Skjul stats"
 
-msgid "Higher = sharper picture, but more data on the network"
-msgstr "Højere = skarpere billede, men mere data på netværket"
-
-msgid "Hindi"
-msgstr "Hindi"
-
-msgid "History"
-msgstr "Historik"
-
 msgid "Home"
 msgstr "Hjem"
 
-msgid "Home screen (Plex and Jellyfin)"
-msgstr "Forside (Plex og Jellyfin)"
-
-msgid "Hong Kong"
-msgstr "Hongkong"
-
-msgid "Hungarian"
-msgstr "Ungarsk"
-
-msgid "Hungary"
-msgstr "Ungarn"
-
-msgid "Iceland"
-msgstr "Island"
-
-msgid "Icelandic"
-msgstr "Islandsk"
-
 msgid "If the box does not start (black screen for more than 2 minutes): turn it off and on again, and it will continue at the old frequency."
 msgstr "Hvis boksen ikke starter (sort skærm i over 2 minutter): sluk og tænd den, så kører den videre med den gamle frekvens."
-
-msgid "If NotaTV does not show up under Cast in the YouTube app: link with a code"
-msgstr "Hvis NotaTV ikke dukker op under Cast i YouTube-appen: forbind med en kode"
 
 msgid "Import subscriptions"
 msgstr "Importér abonnementer"
@@ -1129,41 +454,8 @@ msgstr "Importér abonnementer"
 msgid "Import your subscriptions: go to <b>takeout.google.com</b>, choose only \"YouTube and YouTube Music\" → \"subscriptions\", download and choose the file <b>subscriptions.csv</b> here. No login on the TV needed."
 msgstr "Importér dine abonnementer: gå til <b>takeout.google.com</b>, vælg kun \"YouTube og YouTube Music\" → \"abonnementer\", download og vælg filen <b>subscriptions.csv</b> her. Kræver ingen login på TV'et."
 
-msgid "in any app - Spotify too"
-msgstr "i en hvilken som helst app - også Spotify"
-
-msgid "India"
-msgstr "Indien"
-
-msgid "Indonesian"
-msgstr "Indonesisk"
-
-msgid "Info and comments"
-msgstr "Info og kommentarer"
-
-msgid "Install on internal disk"
-msgstr "Installer på intern disk"
-
-msgid "Install on internal disk?"
-msgstr "Installer på intern disk?"
-
-msgid "Installation complete"
-msgstr "Installation fuldført"
-
-msgid "Installation failed: %s"
-msgstr "Installation fejlede: %s"
-
-msgid "Installing update…"
-msgstr "Installerer opdatering…"
-
-msgid "Installing NotaTV…"
-msgstr "Installerer NotaTV…"
-
 msgid "Installing…"
 msgstr "Installerer…"
-
-msgid "Internal disk"
-msgstr "Intern disk"
 
 msgid "Invalid password"
 msgstr "Ugyldigt kodeord"
@@ -1177,56 +469,8 @@ msgstr "iPhone, iPad og Mac kan spille musik på TV'et. Kun på det lokale netv�
 msgid "iPhone/iPad/Mac can mirror the screen to the TV (shown as \"<name> (screen)\"). Local network only"
 msgstr "iPhone/iPad/Mac kan spejle skærmen til TV'et (vises som \"<navn> (skærm)\"). Kun lokalt netværk"
 
-msgid "IPTV playlist (M3U link)"
-msgstr "IPTV playliste (M3U-link)"
-
-msgid "IPTV program guide (XMLTV)"
-msgstr "IPTV programguide (XMLTV)"
-
-msgid "IPTV: sign in with Xtream Codes"
-msgstr "IPTV: log ind med Xtream Codes"
-
-msgid "Iran"
-msgstr "Iran"
-
-msgid "Ireland"
-msgstr "Irland"
-
-msgid "Israel"
-msgstr "Israel"
-
-msgid "Italian"
-msgstr "Italiensk"
-
-msgid "Italy"
-msgstr "Italien"
-
 msgid "January"
 msgstr "januar"
-
-msgid "Japan"
-msgstr "Japan"
-
-msgid "Japanese"
-msgstr "Japansk"
-
-msgid "Jellyfin address (e.g. 192.168.1.10:8096)"
-msgstr "Jellyfin-adresse (fx 192.168.1.10:8096)"
-
-msgid "Jellyfin servers on the network"
-msgstr "Jellyfin-servere på netværket"
-
-msgid "Jellyfin: could not load the title (%ld)"
-msgstr "Jellyfin: kunne ikke hente titlen (%ld)"
-
-msgid "Jellyfin: password"
-msgstr "Jellyfin: kodeord"
-
-msgid "Jellyfin: play from phone"
-msgstr "Jellyfin: afspil fra telefonen"
-
-msgid "Jellyfin: username"
-msgstr "Jellyfin: brugernavn"
 
 msgid "July"
 msgstr "juli"
@@ -1234,47 +478,14 @@ msgstr "juli"
 msgid "June"
 msgstr "juni"
 
-msgid "Keep the name"
-msgstr "Behold navnet"
-
-msgid "Keep the UI's"
-msgstr "Behold UI'ets"
-
-msgid "Korean"
-msgstr "Koreansk"
-
 msgid "Language"
 msgstr "Sprog"
 
 msgid "Language, country, time, network, name and apps - like the first start"
 msgstr "Land, tid, netværk, navn og apps - som ved første opstart"
 
-msgid "Last chance"
-msgstr "Sidste chance"
-
-msgid "Last used"
-msgstr "Sidst brugt"
-
 msgid "Later"
 msgstr "Senere"
-
-msgid "Latest from your subscriptions"
-msgstr "Nyeste fra dine abonnementer"
-
-msgid "Left (from the first button): menu"
-msgstr "Venstre (fra første knap): menu"
-
-msgid "Left: menu"
-msgstr "Venstre: menu"
-
-msgid "Let's get the box ready. It takes a minute.\n\nEverything is chosen here on the box - nothing is looked up online."
-msgstr "Lad os gøre boksen klar. Det tager et minut.\n\nAlt vælges her på boksen - intet slås op på nettet."
-
-msgid "Libraries · %s"
-msgstr "Biblioteker · %s"
-
-msgid "Library"
-msgstr "Bibliotek"
 
 msgid "Like Apple TV"
 msgstr "Som Apple TV"
@@ -1282,20 +493,8 @@ msgstr "Som Apple TV"
 msgid "Like Apple TV: fixed values (MaxCLL 4000) - brighter on many TVs. From the movie: exactly as the movie was mastered"
 msgstr "Som Apple TV: faste værdier (MaxCLL 4000) - lysere på mange TV. Filmens egne: præcis som filmen er mastret"
 
-msgid "Link your Plex account"
-msgstr "Forbind din Plex-konto"
-
 msgid "LISTENING"
 msgstr "LYTTER"
-
-msgid "Live and past streams"
-msgstr "Live og tidligere streams"
-
-msgid "Live streams from the channels you follow and all of Twitch"
-msgstr "Live-streams fra dine fulgte kanaler og hele Twitch"
-
-msgid "Live TV  ·  press down for your recent channels"
-msgstr "Live TV  ·  tryk ned for dine seneste kanaler"
 
 msgid "Live TV (IPTV)"
 msgstr "Live TV (IPTV)"
@@ -1303,47 +502,17 @@ msgstr "Live TV (IPTV)"
 msgid "Live TV playlist"
 msgstr "Live TV-playliste"
 
-msgid "Loading channels…"
-msgstr "Henter kanaler…"
-
-msgid "Loading comments…"
-msgstr "Henter kommentarer…"
-
-msgid "Loading program guide…"
-msgstr "Henter programguide…"
-
-msgid "Loading seasons…"
-msgstr "Henter sæsoner…"
-
-msgid "Loading video…"
-msgstr "Henter video…"
-
 msgid "Loading…"
 msgstr "Henter…"
 
 msgid "LOCAL IN"
 msgstr "LOKALT IND"
 
-msgid "Local login (email)"
-msgstr "Lokalt login (e-mail)"
-
 msgid "LOCAL OUT"
 msgstr "LOKALT UD"
 
-msgid "Login expired - sign in again"
-msgstr "Login er udløbet - log ind igen"
-
-msgid "Login failed (HTTP %ld)"
-msgstr "Login fejlede (HTTP %ld)"
-
-msgid "Login failed: %s"
-msgstr "Login fejlede: %s"
-
 msgid "Logins and server addresses sent from the phone must still be approved on the TV"
 msgstr "Logins og serveradresser fra telefonen skal stadig godkendes på TV'et"
-
-msgid "Looking for an update on USB…"
-msgstr "Søger efter opdatering på USB…"
 
 msgid "Looks for a new version on GitHub and installs it"
 msgstr "Søger efter en ny version på GitHub og installerer den"
@@ -1363,71 +532,20 @@ msgstr "Match billedfrekvens"
 msgid "May"
 msgstr "maj"
 
-msgid "Media"
-msgstr "Medier"
-
-msgid "Mexico"
-msgstr "Mexico"
-
 msgid "Missing length"
 msgstr "Mangler længde"
 
 msgid "Monday"
 msgstr "Mandag"
 
-msgid "More like this"
-msgstr "Mere som denne"
-
 msgid "Mounting network drive…"
 msgstr "Netværksdrev monteres…"
-
-msgid "Move favorite"
-msgstr "Flyt favorit"
-
-msgid "Move with up/down · OK when you are done"
-msgstr "Flyt med op/ned · OK når du er færdig"
-
-msgid "Move with up/down - press OK when you are done"
-msgstr "Flyt med op/ned - tryk OK når du er færdig"
-
-msgid "Movie"
-msgstr "Film"
-
-msgid "Movies"
-msgstr "Film"
-
-msgid "Movies and shows from your Jellyfin server"
-msgstr "Film og serier fra din Jellyfin-server"
-
-msgid "Movies and shows from your Plex server"
-msgstr "Film og serier fra din Plex-server"
-
-msgid "Movies, music and pictures from USB and network"
-msgstr "Film, musik og billeder fra USB og netværk"
-
-msgid "Music"
-msgstr "Musik"
 
 msgid "Name of the account (e.g. Anna)"
 msgstr "Navn på kontoen (fx Anna)"
 
 msgid "Name of the box"
 msgstr "Navn på boksen"
-
-msgid "Name of the box (shown in AirPlay, Plex etc.)"
-msgstr "Navn på boksen (vises i AirPlay, Plex m.m.)"
-
-msgid "Netflix top 10"
-msgstr "Netflix top 10"
-
-msgid "Netflix top 10 · movies (%s, this week)"
-msgstr "Netflix top 10 · film (%s, denne uge)"
-
-msgid "Netflix top 10 · shows (%s, this week)"
-msgstr "Netflix top 10 · serier (%s, denne uge)"
-
-msgid "Netherlands"
-msgstr "Holland"
 
 msgid "Network"
 msgstr "Netværk"
@@ -1447,47 +565,20 @@ msgstr "Ny kode: %s"
 msgid "New random code"
 msgstr "Ny tilfældig kode"
 
-msgid "New Zealand"
-msgstr "New Zealand"
-
-msgid "News"
-msgstr "Nyheder"
-
-msgid "Next"
-msgstr "Næste"
-
 msgid "Next  "
 msgstr "Derefter  "
 
 msgid "Next episode"
 msgstr "Næste afsnit"
 
-msgid "No accounts yet - add one with your phone →"
-msgstr "Ingen konti endnu - tilføj en med telefonen →"
+msgid "Skip credits"
+msgstr "Spring rulletekster over"
 
-msgid "No apps"
-msgstr "Ingen apps"
-
-msgid "No apps are enabled"
-msgstr "Ingen apps er slået til"
+msgid "Skip intro"
+msgstr "Spring intro over"
 
 msgid "No CEC adapter found"
 msgstr "Ingen CEC-adapter fundet"
-
-msgid "No channels"
-msgstr "Ingen kanaler"
-
-msgid "No channels found in the playlist"
-msgstr "Ingen kanaler fundet i playlisten"
-
-msgid "No channels in this group"
-msgstr "Ingen kanaler i gruppen"
-
-msgid "No channels yet"
-msgstr "Ingen kanaler endnu"
-
-msgid "No comments (or they are turned off)"
-msgstr "Ingen kommentarer (eller de er slået fra)"
 
 msgid "no connection"
 msgstr "ingen forbindelse"
@@ -1498,29 +589,11 @@ msgstr "Ingen forbindelse"
 msgid "No connection to the TV"
 msgstr "Ingen forbindelse til TV'et"
 
-msgid "No description"
-msgstr "Ingen beskrivelse"
-
 msgid "No display found"
 msgstr "Ingen skærm fundet"
 
-msgid "No drives found"
-msgstr "Ingen drev fundet"
-
-msgid "No favorites yet. Choose a channel and press Favorite at the bottom (or Yellow)."
-msgstr "Ingen favoritter endnu. Vælg en kanal og tryk Favorit nederst (eller Gul)."
-
 msgid "No GitHub repository set up yet"
 msgstr "Intet GitHub-repo sat op endnu"
-
-msgid "No Jellyfin servers found on the network"
-msgstr "Ingen Jellyfin-servere fundet på netværket"
-
-msgid "No Jellyfin servers found - enter the address"
-msgstr "Ingen Jellyfin-servere fundet - indtast adressen"
-
-msgid "No libraries (or the server is not responding)"
-msgstr "Ingen biblioteker (eller serveren svarer ikke)"
 
 msgid "No network connection"
 msgstr "Ingen netværksforbindelse"
@@ -1528,50 +601,14 @@ msgstr "Ingen netværksforbindelse"
 msgid "No paired devices"
 msgstr "Ingen parrede enheder"
 
-msgid "No PC found"
-msgstr "Ingen PC fundet"
-
-msgid "No playable file"
-msgstr "Ingen afspilbar fil"
-
-msgid "No Plex servers found on the network"
-msgstr "Ingen Plex-servere fundet på netværket"
-
-msgid "No Plex servers on the account"
-msgstr "Ingen Plex-servere på kontoen"
-
-msgid "No program guide for %s"
-msgstr "Ingen programguide for %s"
-
-msgid "No program guide - add an EPG URL under Settings (red button)"
-msgstr "Ingen programguide - tilføj en EPG-URL under Indstillinger (rød knap)"
-
 msgid "No program info"
 msgstr "Ingen programinfo"
 
 msgid "No releases found"
 msgstr "Ingen udgivelser fundet"
 
-msgid "no response"
-msgstr "intet svar"
-
-msgid "No results (or no connection to YouTube)"
-msgstr "Ingen resultater (eller ingen forbindelse til YouTube)"
-
-msgid "No servers on the account"
-msgstr "Ingen servere på kontoen"
-
-msgid "No subscriptions yet - open a channel (hold OK on a video) and choose Subscribe"
-msgstr "Ingen abonnementer endnu - åbn en kanal (hold OK på en video) og vælg Abonnér"
-
-msgid "No subscriptions yet - open a channel and choose Subscribe"
-msgstr "Ingen abonnementer endnu - åbn en kanal og vælg Abonnér"
-
 msgid "No subtitles found"
 msgstr "Ingen undertekster fundet"
-
-msgid "No suitable disks found"
-msgstr "Ingen egnede diske fundet"
 
 msgid "No update found"
 msgstr "Ingen opdatering fundet"
@@ -1582,17 +619,8 @@ msgstr "Ingen Wi-Fi-adapter fundet"
 msgid "No Wi-Fi networks found"
 msgstr "Ingen Wi-Fi-netværk fundet"
 
-msgid "No notatv.efi or notatv.iso found on USB"
-msgstr "Ingen notatv.efi eller notatv.iso fundet på USB"
-
 msgid "None"
 msgstr "Ingen"
-
-msgid "None of the channels you follow are live right now"
-msgstr "Ingen af dine fulgte kanaler sender lige nu"
-
-msgid "Norway"
-msgstr "Norge"
 
 msgid "Norwegian"
 msgstr "Norsk"
@@ -1606,17 +634,11 @@ msgstr "Ikke i parringstilstand"
 msgid "not paired"
 msgstr "ikke parret"
 
-msgid "Not paired - OK to pair"
-msgstr "Ikke parret - OK for at parre"
-
 msgid "Not selected (UTC)"
 msgstr "Ikke valgt (UTC)"
 
 msgid "Not set"
 msgstr "Ikke angivet"
-
-msgid "Not signed in"
-msgstr "Ikke logget ind"
 
 msgid "Not supported"
 msgstr "Ikke understøttet"
@@ -1624,23 +646,11 @@ msgstr "Ikke understøttet"
 msgid "Not visible"
 msgstr "Ikke synlig"
 
-msgid "Nothing found"
-msgstr "Intet fundet"
-
-msgid "Nothing found (or no connection to YouTube)"
-msgstr "Intet fundet (eller ingen forbindelse til YouTube)"
-
-msgid "Nothing here yet."
-msgstr "Her er ikke noget endnu."
-
 msgid "November"
 msgstr "november"
 
 msgid "Now"
 msgstr "Nu"
-
-msgid "NOW PLAYING"
-msgstr "SPILLER NU"
 
 msgid "October"
 msgstr "oktober"
@@ -1648,23 +658,11 @@ msgstr "oktober"
 msgid "Off"
 msgstr "Fra"
 
-msgid "OK = start · While playing, Red opens the menu (continue, stats, quit)"
-msgstr "OK = start · Under spil åbner Rød menuen (fortsæt, stats, afslut)"
-
 msgid "OK select  ·  Back/Red closes"
 msgstr "OK vælg  ·  Tilbage/Rød lukker"
 
-msgid "OK: info   ·   Play button: play   ·   Left/Right: more"
-msgstr "OK: info   ·   Afspil-tasten: afspil   ·   Venstre/Højre: flere"
-
-msgid "OK: press"
-msgstr "OK: tryk"
-
 msgid "OK: select   ·   Back: close"
 msgstr "OK: vælg   ·   Tilbage: luk"
-
-msgid "OK: unsubscribe"
-msgstr "OK: afmeld"
 
 msgid "On"
 msgstr "Til"
@@ -1690,12 +688,6 @@ msgstr "Åbn et tekstfelt på TV'et først (fx søgning eller kodeord)."
 msgid "Open Bluetooth on your phone and choose \"%s\""
 msgstr "Åbn Bluetooth på telefonen og vælg \"%s\""
 
-msgid "Open https://%s:47990 on the PC → PIN"
-msgstr "Åbn https://%s:47990 på PC'en → PIN"
-
-msgid "Open YouTube on your phone: Settings → Watch on TV → Link with TV code, and enter\n\n%s\n\nThe code works for about 5 minutes."
-msgstr "Åbn YouTube på telefonen: Indstillinger → Se på TV → Forbind med TV-kode, og skriv\n\n%s\n\nKoden virker i ca. 5 minutter."
-
 msgid "OpenSubtitles API key"
 msgstr "OpenSubtitles API-nøgle"
 
@@ -1705,26 +697,8 @@ msgstr "OpenSubtitles kodeord"
 msgid "OpenSubtitles username"
 msgstr "OpenSubtitles brugernavn"
 
-msgid "Or connect directly from the TV:"
-msgstr "Eller forbind direkte fra TV'et:"
-
-msgid "Or open this address in a browser on the same network:"
-msgstr "Eller åbn denne adresse i en browser på samme netværk:"
-
 msgid "Orange = the internet  ·  Blue = your local network  ·  Gray = ports the box listens on. Very short connections may end between two updates."
 msgstr "Orange = internettet  ·  Blå = dit lokale netværk  ·  Grå = porte boksen lytter på. Meget korte forbindelser kan nå at slutte mellem to opdateringer."
-
-msgid "Original language: %s"
-msgstr "Originalsprog: %s"
-
-msgid "Original language: %s   ·   %s: %s"
-msgstr "Originalsprog: %s   ·   %s: %s"
-
-msgid "Other"
-msgstr "Andet"
-
-msgid "Other channels"
-msgstr "Andre"
 
 msgid "Pair"
 msgstr "Par"
@@ -1738,9 +712,6 @@ msgstr "Parret"
 msgid "Paired phones reconnect by themselves. Music then just plays - choose \"NotaTV\" as the audio output."
 msgstr "Parrede telefoner forbinder selv igen. Musik spiller derefter bare - vælg \"NotaTV\" som lydudgang."
 
-msgid "Paired with %s"
-msgstr "Parret med %s"
-
 msgid "Pairing cancelled"
 msgstr "Parring annulleret"
 
@@ -1749,15 +720,6 @@ msgstr "Parring afvist"
 
 msgid "pairing failed"
 msgstr "parring fejlede"
-
-msgid "Pairing interrupted"
-msgstr "Parring afbrudt"
-
-msgid "Partitioning failed"
-msgstr "Partitionering fejlede"
-
-msgid "Partly available"
-msgstr "Delvist tilgængelig"
 
 msgid "Password"
 msgstr "Kodeord"
@@ -1768,23 +730,8 @@ msgstr "Kodeord til %s"
 msgid "PAUSE"
 msgstr "PAUSE"
 
-msgid "Pause/play"
-msgstr "Pause/afspil"
-
-msgid "PAUSED"
-msgstr "PAUSET"
-
 msgid "PC (Sunshine): %.1f ms"
 msgstr "PC (Sunshine): %.1f ms"
-
-msgid "PCs with Sunshine on the network"
-msgstr "PC'er med Sunshine på netværket"
-
-msgid "Persian"
-msgstr "Persisk"
-
-msgid "Phone"
-msgstr "Telefon"
 
 msgid "Phone page"
 msgstr "Telefon-siden"
@@ -1801,18 +748,6 @@ msgstr "Telefoner kan kun finde og forbinde til TV'et, når Musik eller \"Par en
 msgid "Picture and sound"
 msgstr "Billede og lyd"
 
-msgid "Play"
-msgstr "Afspil"
-
-msgid "Play games from your PC via Sunshine (Moonlight)"
-msgstr "Spil fra din PC via Sunshine (Moonlight)"
-
-msgid "Play music from your phone on the TV"
-msgstr "Spil musik fra din telefon på TV'et"
-
-msgid "Play music from your phone via AirPlay"
-msgstr "Spil musik fra telefonen via AirPlay"
-
 msgid "Play test sound"
 msgstr "Afspil testlyd"
 
@@ -1822,56 +757,11 @@ msgstr "Afspiller testlyd…"
 msgid "Playlist link (M3U)"
 msgstr "Playliste-link (M3U)"
 
-msgid "Playlist saved - open Live TV"
-msgstr "Playliste gemt - åbn Live TV"
-
-msgid "Playlist URL (M3U)"
-msgstr "Playliste-URL (M3U)"
-
-msgid "Plex cast"
-msgstr "Plex-cast"
-
-msgid "Plex server"
-msgstr "Plex-server"
-
-msgid "Plex servers"
-msgstr "Plex-servere"
-
-msgid "Plex: could not load what the app sent"
-msgstr "Plex: kunne ikke hente det, appen sendte"
-
-msgid "Plex: playing from your phone…"
-msgstr "Plex: afspiller fra din telefon …"
-
-msgid "Plex: unknown server"
-msgstr "Plex: ukendt server"
-
-msgid "Plug a USB drive into the box, or add a network drive under Settings → Apps."
-msgstr "Sæt et USB-drev i boksen, eller tilføj et netværksdrev under Indstillinger → Apps."
-
-msgid "Poland"
-msgstr "Polen"
-
 msgid "Polish"
 msgstr "Polsk"
 
-msgid "Popular"
-msgstr "Populært"
-
-msgid "Popular movies"
-msgstr "Populære film"
-
-msgid "Popular shows"
-msgstr "Populære serier"
-
 msgid "port %d (%s) - reachable from the network"
 msgstr "port %d (%s) - kan nås fra netværket"
-
-msgid "Portugal"
-msgstr "Portugal"
-
-msgid "Portuguese"
-msgstr "Portugisisk"
 
 msgid "Power"
 msgstr "Tænd/sluk"
@@ -1888,59 +778,20 @@ msgstr "Sluk-kommando sendt til TV"
 msgid "Power-on command sent to the TV"
 msgstr "Tænd-kommando sendt til TV"
 
-msgid "Preparing disk…"
-msgstr "Klargør disk…"
-
 msgid "Press OK to make the TV visible for 3 minutes"
 msgstr "Tryk OK for at gøre TV'et synligt i 3 minutter"
-
-msgid "Press the red button to change the playlist."
-msgstr "Tryk på den røde knap for at ændre playliste."
-
-msgid "Processing"
-msgstr "Behandles"
 
 msgid "Program guide"
 msgstr "Programguide"
 
-msgid "Program guide (EPG) URL"
-msgstr "Programguide (EPG) URL"
-
 msgid "Program guide link (XMLTV) - optional"
 msgstr "Programguide-link (XMLTV) - valgfri"
-
-msgid "Program guide URL (XMLTV)"
-msgstr "Programguide-URL (XMLTV)"
-
-msgid "Program guide: %d of %d channels"
-msgstr "Programguide: %d af %d kanaler"
-
-msgid "Program guide: could not be downloaded"
-msgstr "Programguide: kunne ikke hentes"
-
-msgid "Program guide: no channels matched"
-msgstr "Programguide: ingen kanaler matchede"
-
-msgid "Program schedule"
-msgstr "Programoversigt"
-
-msgid "Put notatv.efi or a new ISO on a USB stick"
-msgstr "Læg notatv.efi eller en ny ISO på en USB-nøgle"
 
 msgid "Quality"
 msgstr "Kvalitet"
 
-msgid "Quality: %s"
-msgstr "Kvalitet: %s"
-
 msgid "Quit and go back to NotaTV"
 msgstr "Afslut og gå tilbage til NotaTV"
-
-msgid "Quit the running game on the PC"
-msgstr "Afslut det kørende spil på PC'en"
-
-msgid "Quitting the game on the PC…"
-msgstr "Afslutter spillet på PC'en …"
 
 msgid "Ready to pair"
 msgstr "Klar til parring"
@@ -1951,86 +802,17 @@ msgstr "Modtaget → skærm: %.1f ms"
 msgid "Received → display: %.1f ms (max %.0f)"
 msgstr "Modtaget → skærm: %.1f ms (maks %.0f)"
 
-msgid "Recent channels"
-msgstr "Seneste kanaler"
-
-msgid "Recently added"
-msgstr "Senest tilføjet"
-
-msgid "Recently added · %s"
-msgstr "Senest tilføjet · %s"
-
-msgid "Recently watched"
-msgstr "Senest sete"
-
-msgid "RECENTLY WATCHED"
-msgstr "SENEST SET"
-
-msgid "RECENTLY WATCHED ON YOUTUBE"
-msgstr "SENEST SET PÅ YOUTUBE"
-
-msgid "Recommended"
-msgstr "Anbefalet"
-
-msgid "Recommended for you"
-msgstr "Anbefalet til dig"
-
-msgid "Refresh"
-msgstr "Opdater"
-
-msgid "Refresh the list"
-msgstr "Opdater listen"
-
-msgid "Refreshed"
-msgstr "Opdateret"
-
 msgid "Region in %s"
 msgstr "Område i %s"
 
 msgid "Remote control"
 msgstr "Fjernbetjening"
 
-msgid "Remove"
-msgstr "Fjern"
-
-msgid "Remove account?"
-msgstr "Fjern konto?"
-
-msgid "Remove from favorites"
-msgstr "Fjern fra favoritter"
-
-msgid "Remove the USB stick and restart to boot from the internal disk."
-msgstr "Fjern USB-nøglen og genstart for at starte fra den interne disk."
-
-msgid "Request"
-msgstr "Anmod"
-
-msgid "Request %d season"
-msgstr "Anmod om %d sæson"
-
-msgid "Request %d seasons"
-msgstr "Anmod om %d sæsoner"
-
-msgid "Request failed%s%s"
-msgstr "Anmodning fejlede%s%s"
-
-msgid "Request sent: %s"
-msgstr "Anmodning sendt: %s"
-
-msgid "Request the rest"
-msgstr "Anmod om resten"
-
-msgid "Requested"
-msgstr "Anmodet"
-
 msgid "Requires a receiver or soundbar that supports HD audio"
 msgstr "Kræver receiver eller soundbar der understøtter HD-lyd"
 
-msgid "Requires an OpenSubtitles key: Settings → Apps"
-msgstr "Kræver OpenSubtitles-nøgle: Indstillinger → Apps"
-
-msgid "Requires you to be signed in"
-msgstr "Kræver at du er logget ind"
+msgid "Requires an OpenSubtitles key: Settings → Picture and sound"
+msgstr "Kræver OpenSubtitles-nøgle: Indstillinger → Billede og lyd"
 
 msgid "Reset"
 msgstr "Nulstil"
@@ -2040,9 +822,6 @@ msgstr "Nulstil til fabriksindstillinger"
 
 msgid "Reset to factory settings?"
 msgstr "Nulstil til fabriksindstillinger?"
-
-msgid "Resolution"
-msgstr "Opløsning"
 
 msgid "Restart"
 msgstr "Genstart"
@@ -2056,38 +835,8 @@ msgstr "Genstart nu"
 msgid "Restart to use the new version."
 msgstr "Genstart for at bruge den nye version."
 
-msgid "Results for \"%s\""
-msgstr "Resultater for \"%s\""
-
-msgid "Resume"
-msgstr "Genoptag"
-
-msgid "Resume from %s"
-msgstr "Fortsæt fra %s"
-
-msgid "Right"
-msgstr "Højre"
-
-msgid "Right: move channel · The Favorite button at the bottom removes it"
-msgstr "Højre: flyt kanal · Favorit-knappen nederst fjerner den"
-
-msgid "Romanian"
-msgstr "Rumænsk"
-
 msgid "Run the setup guide again"
 msgstr "Kør opsætningsguiden igen"
-
-msgid "Running from"
-msgstr "Kører fra"
-
-msgid "Running - OK continues"
-msgstr "Kører - OK fortsætter"
-
-msgid "Russia"
-msgstr "Rusland"
-
-msgid "Russian"
-msgstr "Russisk"
 
 msgid "Saturday"
 msgstr "Lørdag"
@@ -2113,44 +862,11 @@ msgstr "Skærmspejling"
 msgid "Screensaver"
 msgstr "Pauseskærm"
 
-msgid "Scroll the comments (when Comments is selected)"
-msgstr "Rul i kommentarer (når Kommentarer er valgt)"
-
-msgid "Search"
-msgstr "Søg"
-
-msgid "Search and watch videos on YouTube"
-msgstr "Søg og se videoer på YouTube"
-
 msgid "Search for and connect to a wireless network"
 msgstr "Søg og forbind til et trådløst netværk"
 
-msgid "Search for PCs again"
-msgstr "Søg efter PC'er igen"
-
-msgid "Search Jellyfin"
-msgstr "Søg i Jellyfin"
-
-msgid "Search Plex"
-msgstr "Søg i Plex"
-
-msgid "Search Seerr"
-msgstr "Søg i Seerr"
-
 msgid "Search subtitles"
 msgstr "Søg undertekster"
-
-msgid "Search Twitch"
-msgstr "Søg på Twitch"
-
-msgid "Search YouTube"
-msgstr "Søg på YouTube"
-
-msgid "Search: %s"
-msgstr "Søgning: %s"
-
-msgid "Searching for Jellyfin servers on the network…"
-msgstr "Søger efter Jellyfin-servere på netværket…"
 
 msgid "Searching for subtitles…"
 msgstr "Søger efter undertekster…"
@@ -2158,41 +874,11 @@ msgstr "Søger efter undertekster…"
 msgid "Searching for Wi-Fi networks…"
 msgstr "Søger efter Wi-Fi-netværk…"
 
-msgid "Season %d"
-msgstr "Sæson %d"
-
-msgid "Seasons"
-msgstr "Sæsoner"
-
 msgid "See live which programs on the box talk to the internet, and to whom"
 msgstr "Se live hvilke programmer på boksen der taler med internettet og hvem"
 
 msgid "Seen on the internet since you opened this page (including closed connections):"
 msgstr "Set på internettet siden du åbnede siden (også afsluttede forbindelser):"
-
-msgid "Seerr address (e.g. 192.168.1.10:5055)"
-msgstr "Seerr-adresse (fx 192.168.1.10:5055)"
-
-msgid "Seerr: email"
-msgstr "Seerr: e-mail"
-
-msgid "Seerr: password"
-msgstr "Seerr: kodeord"
-
-msgid "Select / deselect"
-msgstr "Vælg / fravælg"
-
-msgid "Select at least one season"
-msgstr "Vælg mindst én sæson"
-
-msgid "Select the server first to choose its libraries"
-msgstr "Vælg serveren først for at vælge dens biblioteker"
-
-msgid "Selected libraries"
-msgstr "Udvalgte biblioteker"
-
-msgid "Selected: %s\n\nThe clock follows this region."
-msgstr "Valgt: %s\n\nUret følger dette område."
 
 msgid "Send an HDR signal to the TV for HDR content"
 msgstr "Send HDR-signal til TV'et for HDR-indhold"
@@ -2203,9 +889,6 @@ msgstr "Send Dolby/DTS uændret til receiver eller soundbar"
 msgid "Send to TV"
 msgstr "Send til TV"
 
-msgid "Sending…"
-msgstr "Sender…"
-
 msgid "Sent"
 msgstr "Sendt"
 
@@ -2215,35 +898,14 @@ msgstr "Sendt til TV"
 msgid "September"
 msgstr "september"
 
-msgid "Serbian"
-msgstr "Serbisk"
-
 msgid "Server (e.g. http://host:8080)"
 msgstr "Server (fx http://host:8080)"
-
-msgid "Server and login"
-msgstr "Server og login"
-
-msgid "Server, username and password from your IPTV provider"
-msgstr "Server, brugernavn og kodeord fra din IPTV-udbyder"
-
-msgid "Servers"
-msgstr "Servere"
-
-msgid "Servers updated"
-msgstr "Servere opdateret"
 
 msgid "Settings"
 msgstr "Indstillinger"
 
 msgid "Settings received"
 msgstr "Indstillinger modtaget"
-
-msgid "Shared by %s"
-msgstr "Delt af %s"
-
-msgid "Show"
-msgstr "Serie"
 
 msgid "Show FPS"
 msgstr "Vis FPS"
@@ -2254,86 +916,11 @@ msgstr "Vis kodeord"
 msgid "Show stats"
 msgstr "Vis stats"
 
-msgid "Show: movies and shows"
-msgstr "Vis: film og serier"
-
-msgid "Show: movies only"
-msgstr "Vis: kun film"
-
-msgid "Show: shows only"
-msgstr "Vis: kun serier"
-
-msgid "Shows"
-msgstr "Serier"
-
-msgid "Sign in"
-msgstr "Log ind"
-
-msgid "Sign in again"
-msgstr "Log ind igen"
-
-msgid "Sign in to Plex first, or use local login in the menu"
-msgstr "Log ind på Plex først, eller brug lokalt login i menuen"
-
-msgid "Sign in to Twitch"
-msgstr "Log ind på Twitch"
-
-msgid "Sign in to YouTube"
-msgstr "Log ind på YouTube"
-
 msgid "Sign in to youtube.com in your browser, export the cookies as <b>cookies.txt</b> (e.g. with the extension \"Get cookies.txt LOCALLY\") and choose the file here. Repeat for more accounts."
 msgstr "Log ind på youtube.com i din browser, eksportér cookies som <b>cookies.txt</b> (fx med udvidelsen \"Get cookies.txt LOCALLY\") og vælg filen her. Gentag for flere konti."
 
-msgid "Sign in with Plex again"
-msgstr "Log ind med Plex igen"
-
-msgid "Sign in with Xtream Codes"
-msgstr "Log ind med Xtream Codes"
-
-msgid "Sign in with your phone"
-msgstr "Log ind med din telefon"
-
 msgid "Sign out"
 msgstr "Log ud"
-
-msgid "Sign out of Jellyfin?"
-msgstr "Log ud af Jellyfin?"
-
-msgid "Sign out of Plex"
-msgstr "Log ud af Plex"
-
-msgid "Sign out of Plex?"
-msgstr "Log ud af Plex?"
-
-msgid "Sign out of Twitch?"
-msgstr "Log ud af Twitch?"
-
-msgid "Signed in"
-msgstr "Logget ind"
-
-msgid "Signed in as %s"
-msgstr "Logget ind som %s"
-
-msgid "Signed in to Jellyfin"
-msgstr "Logget ind på Jellyfin"
-
-msgid "Signed in to Twitch"
-msgstr "Logget ind på Twitch"
-
-msgid "Signed in - subscription until %s"
-msgstr "Logget ind - abonnement til %s"
-
-msgid "Signed out of Jellyfin"
-msgstr "Logget ud af Jellyfin"
-
-msgid "Signed out of Plex"
-msgstr "Logget ud af Plex"
-
-msgid "Signed out of Twitch"
-msgstr "Logget ud af Twitch"
-
-msgid "Signing in…"
-msgstr "Logger ind…"
 
 msgid "Sleep"
 msgstr "Dvale"
@@ -2350,20 +937,8 @@ msgstr "smb://bruger:kode@server/deling"
 msgid "smb://user:password@server/share or nfs://server/path"
 msgstr "smb://bruger:kode@server/deling eller nfs://server/sti"
 
-msgid "Something went wrong"
-msgstr "Noget gik galt"
-
-msgid "South Africa"
-msgstr "Sydafrika"
-
-msgid "South Korea"
-msgstr "Sydkorea"
-
 msgid "Space"
 msgstr "Mellemrum"
-
-msgid "Spain"
-msgstr "Spanien"
 
 msgid "Spanish"
 msgstr "Spansk"
@@ -2373,33 +948,6 @@ msgstr "Hastighed"
 
 msgid "SSH login as root (password: notatv)"
 msgstr "SSH-login som root (kodeord: notatv)"
-
-msgid "Standard time all year"
-msgstr "Fast normaltid"
-
-msgid "Start"
-msgstr "Start"
-
-msgid "Start music"
-msgstr "Start musik"
-
-msgid "Start music on the phone - or press OK"
-msgstr "Start musik på telefonen - eller tryk OK"
-
-msgid "Start over"
-msgstr "Start forfra"
-
-msgid "Start Sunshine on the PC, and check that the firewall allows ports 47984-48010."
-msgstr "Start Sunshine på PC'en, og tjek at firewallen tillader porte 47984-48010."
-
-msgid "Subscribe"
-msgstr "Abonnér"
-
-msgid "Subscribed"
-msgstr "Abonnerer"
-
-msgid "Subscriptions"
-msgstr "Abonnementer"
 
 msgid "Subtitle delay"
 msgstr "Undertekst-forsinkelse"
@@ -2425,9 +973,6 @@ msgstr "Søndag"
 msgid "Surround passthrough"
 msgstr "Surround-passthrough"
 
-msgid "Sweden"
-msgstr "Sverige"
-
 msgid "Swedish"
 msgstr "Svensk"
 
@@ -2437,26 +982,11 @@ msgstr "Skift TV'et til filmens frekvens (fx 23.976 Hz) - undgår hak"
 msgid "Switch TV to the box's input"
 msgstr "Skift TV til boksens indgang"
 
-msgid "Switzerland"
-msgstr "Schweiz"
-
 msgid "System"
 msgstr "System"
 
-msgid "Tagalog"
-msgstr "Tagalog"
-
-msgid "Taiwan"
-msgstr "Taiwan"
-
-msgid "Tamil"
-msgstr "Tamil"
-
 msgid "Technical info"
 msgstr "Teknisk info"
-
-msgid "Telugu"
-msgstr "Telugu"
 
 msgid "Text received from phone"
 msgstr "Tekst modtaget fra telefon"
@@ -2464,44 +994,8 @@ msgstr "Tekst modtaget fra telefon"
 msgid "Text…"
 msgstr "Tekst…"
 
-msgid "Thai"
-msgstr "Thai"
-
-msgid "Thailand"
-msgstr "Thailand"
-
-msgid "The account \"%s\" will be removed from NotaTV."
-msgstr "Kontoen \"%s\" fjernes fra NotaTV."
-
-msgid "The account is not active (%s)"
-msgstr "Kontoen er ikke aktiv (%s)"
-
-msgid "the AirPlay icon, or Bluetooth on the phone"
-msgstr "AirPlay-ikonet, eller Bluetooth på telefonen"
-
 msgid "the app list failed"
 msgstr "app-listen fejlede"
-
-msgid "The box is called \"%s\".\n\nThe name is shown when you send to the box from your phone (AirPlay, Bluetooth, Plex, YouTube)."
-msgstr "Boksen hedder \"%s\".\n\nNavnet vises, når du sender til boksen fra telefonen (AirPlay, Bluetooth, Plex, YouTube)."
-
-msgid "The box is connected (IP address %s).\n\nIf you would rather use Wi-Fi, choose it here."
-msgstr "Boksen er forbundet (IP-adresse %s).\n\nVil du hellere bruge Wi-Fi, så vælg det her."
-
-msgid "The box is not connected yet.\n\nPlug in a network cable, or choose a Wi-Fi network."
-msgstr "Boksen er ikke forbundet endnu.\n\nSæt et netværkskabel i, eller vælg et Wi-Fi-netværk."
-
-msgid "The cast button in the YouTube app can play on NotaTV. Control goes through YouTube (Google)"
-msgstr "Cast-knappen i YouTube-appen kan afspille på NotaTV. Styringen går via YouTube (Google)"
-
-msgid "the channel"
-msgstr "kanalen"
-
-msgid "The channel is not known yet - wait a moment"
-msgstr "Kanalen er ikke kendt endnu - vent et øjeblik"
-
-msgid "The code has expired - press OK for a new one"
-msgstr "Koden er udløbet - tryk OK for en ny"
 
 msgid "The code must be 4-8 digits"
 msgstr "Koden skal være 4-8 cifre"
@@ -2515,26 +1009,14 @@ msgstr "Filen indeholder ingen YouTube-cookies"
 msgid "The file is damaged (SHA256 does not match)"
 msgstr "Filen er beskadiget (SHA256 passer ikke)"
 
-msgid "The file is not a valid NotaTV system"
-msgstr "Filen er ikke et gyldigt NotaTV-system"
-
 msgid "The language of the menus. The user interface restarts when you change it"
 msgstr "Sproget i menuerne. Brugerfladen genstarter, når du skifter"
-
-msgid "the music now plays on the TV"
-msgstr "musikken spiller nu på TV'et"
 
 msgid "The name shown in AirPlay, Plex and on the TV"
 msgstr "Navnet der vises i AirPlay, Plex og på TV'et"
 
 msgid "The new frequency is tried once first and saved after the box has run fine for a minute"
 msgstr "Den nye frekvens prøves først én gang og gemmes, når boksen har kørt fint i et minut"
-
-msgid "The PC sent no apps."
-msgstr "PC'en sendte ingen apps."
-
-msgid "The phone %s has sent login cookies for YouTube. The box uses them to watch as your account."
-msgstr "Telefonen %s har sendt login-cookies til YouTube. Boksen bruger dem til at se som din konto."
 
 msgid "The phone and the TV show the same code - confirm it here with OK"
 msgstr "Telefonen og TV'et viser den samme kode - godkend den her med OK"
@@ -2545,36 +1027,6 @@ msgstr "Telefon-siden er slået fra på TV'et"
 msgid "The phones will need to be paired again afterwards."
 msgstr "Telefonerne skal parres igen bagefter."
 
-msgid "The Plex app on your phone can play on NotaTV (cast button) and control playback. Local network only"
-msgstr "Plex-appen på telefonen kan afspille på NotaTV (cast-knappen) og styre afspilningen. Kun lokalt netværk"
-
-msgid "The Plex trailer could not be played - trying YouTube"
-msgstr "Plex-traileren kunne ikke afspilles - prøver YouTube"
-
-msgid "The resolution the PC streams in"
-msgstr "Opløsningen PC'en sender i"
-
-msgid "The server did not respond like an Xtream server"
-msgstr "Serveren svarede ikke som en Xtream-server"
-
-msgid "The server did not respond. Choose servers in the side menu (left)."
-msgstr "Serveren svarede ikke. Vælg servere i sidemenuen (venstre)."
-
-msgid "The server is no longer selected"
-msgstr "Serveren er ikke længere valgt"
-
-msgid "The server is not responding - it cannot be selected right now"
-msgstr "Serveren svarer ikke - den kan ikke vælges lige nu"
-
-msgid "The server rejected the request (HTTP %ld)"
-msgstr "Serveren afviste forespørgslen (HTTP %ld)"
-
-msgid "The server responded with error %ld"
-msgstr "Serveren svarede med fejl %ld"
-
-msgid "The stream stopped with an error (see /tmp/tvmoon.log)"
-msgstr "Streamen stoppede med en fejl (se /tmp/tvmoon.log)"
-
 msgid "The TV stays in HDR all the time - menus too - so it never switches. Menus are converted to HDR"
 msgstr "TV'et står i HDR hele tiden - også i menuerne - så det ikke skifter. Menuer omregnes til HDR"
 
@@ -2584,20 +1036,11 @@ msgstr "Opdateringen mangler filer"
 msgid "The update will be downloaded and installed. Your settings and logins are kept."
 msgstr "Opdateringen hentes og installeres. Dine indstillinger og logins bevares."
 
-msgid "There are no movies, music or pictures in this folder."
-msgstr "Der er ingen film, musik eller billeder i denne mappe."
-
 msgid "This region has no daylight saving time"
 msgstr "Området har ikke sommertid"
 
 msgid "Thursday"
 msgstr "Torsdag"
-
-msgid "Tick the libraries that should be shown in Plex."
-msgstr "Sæt flueben ved de biblioteker, der skal vises i Plex."
-
-msgid "Tick the servers that should be shown in Plex and under Continue."
-msgstr "Sæt flueben ved de servere, der skal vises i Plex og under Fortsæt."
 
 msgid "Too large (max. 512 KB)"
 msgstr "For stor (maks. 512 KB)"
@@ -2605,38 +1048,14 @@ msgstr "For stor (maks. 512 KB)"
 msgid "Too many wrong codes - try again in 10 minutes"
 msgstr "For mange forkerte koder - prøv igen om 10 minutter"
 
-msgid "Top results"
-msgstr "Bedste match"
-
 msgid "Total before the TV: approx. %.0f ms"
 msgstr "I alt før TV'et: ca. %.0f ms"
 
 msgid "Track %s"
 msgstr "Spor %s"
 
-msgid "Tracks"
-msgstr "Numre"
-
-msgid "Trailer"
-msgstr "Trailer"
-
-msgid "Trailer (YouTube)"
-msgstr "Trailer (YouTube)"
-
-msgid "Transferring settings…"
-msgstr "Overfører indstillinger…"
-
-msgid "Trending now"
-msgstr "Populært lige nu"
-
-msgid "Try again"
-msgstr "Prøv igen"
-
 msgid "Tuesday"
 msgstr "Tirsdag"
-
-msgid "Turkey"
-msgstr "Tyrkiet"
 
 msgid "Turkish"
 msgstr "Tyrkisk"
@@ -2653,65 +1072,17 @@ msgstr "Tænd TV nu (test)"
 msgid "Turn on TV when the box turns on"
 msgstr "Tænd TV når boksen tænder"
 
-msgid "Twitch responded with error %ld"
-msgstr "Twitch svarede med fejl %ld"
-
 msgid "Type from your phone: http://%s"
 msgstr "Skriv fra telefonen: http://%s"
 
 msgid "Type text on the TV"
 msgstr "Skriv tekst til TV"
 
-msgid "Ukraine"
-msgstr "Ukraine"
-
-msgid "Ukrainian"
-msgstr "Ukrainsk"
-
-msgid "Unexpected response from the server"
-msgstr "Uventet svar fra serveren"
-
-msgid "United Kingdom"
-msgstr "Storbritannien"
-
-msgid "United States"
-msgstr "USA"
-
-msgid "Unknown disk: %s"
-msgstr "Ukendt disk: %s"
-
-msgid "Unknown track"
-msgstr "Ukendt nummer"
-
 msgid "Unpacking…"
 msgstr "Pakker ud…"
 
-msgid "Unreachable"
-msgstr "Kan ikke nås"
-
-msgid "Unsubscribe"
-msgstr "Afmeld"
-
-msgid "Unsubscribed"
-msgstr "Abonnement fjernet"
-
-msgid "Unsubscribed from %s"
-msgstr "Abonnement på %s fjernet"
-
-msgid "Up/down"
-msgstr "Op/ned"
-
-msgid "Upcoming movies"
-msgstr "Kommende film"
-
 msgid "Update"
 msgstr "Opdatér"
-
-msgid "Update channels now"
-msgstr "Opdater kanaler nu"
-
-msgid "Update from USB"
-msgstr "Opdater fra USB"
 
 msgid "Update installed"
 msgstr "Opdatering installeret"
@@ -2719,20 +1090,8 @@ msgstr "Opdatering installeret"
 msgid "Update NotaTV"
 msgstr "Opdatér NotaTV"
 
-msgid "Updating channels…"
-msgstr "Opdaterer kanaler…"
-
-msgid "Updating requires NotaTV to be installed on disk"
-msgstr "Opdatering kræver at NotaTV er installeret på disk"
-
 msgid "Uptime"
 msgstr "Oppetid"
-
-msgid "USB (live - settings are not saved)"
-msgstr "USB (live - indstillinger gemmes ikke)"
-
-msgid "Use 'Update NotaTV' (downloads from GitHub)"
-msgstr "Brug 'Opdatér NotaTV' (henter fra GitHub)"
 
 msgid "Use the remote, a keyboard or your phone"
 msgstr "Brug fjernbetjening, tastatur eller telefon"
@@ -2746,9 +1105,6 @@ msgstr "Brugernavn"
 msgid "Version"
 msgstr "Version"
 
-msgid "Videos"
-msgstr "Videoer"
-
 msgid "Visible for another %d:%02d"
 msgstr "Synlig i %d:%02d endnu"
 
@@ -2757,27 +1113,6 @@ msgstr "Lydstyrke: ${volume}%"
 
 msgid "Waiting for messages…"
 msgstr "Venter på beskeder…"
-
-msgid "Waiting for you to approve…"
-msgstr "Venter på at du godkender…"
-
-msgid "Watch"
-msgstr "Se"
-
-msgid "Watch channel"
-msgstr "Se kanal"
-
-msgid "Watch later"
-msgstr "Se senere"
-
-msgid "Watch live TV and channels from your IPTV provider"
-msgstr "Se live-tv og kanaler fra din IPTV-udbyder"
-
-msgid "Watch movies and shows from your Jellyfin server.\n\nFind the server on the network, or enter the address yourself (e.g. 192.168.1.10:8096). Then your username and password - you can also type from your phone."
-msgstr "Se film og serier fra din Jellyfin-server.\n\nFind serveren på netværket, eller indtast adressen selv (fx 192.168.1.10:8096). Derefter brugernavn og kodeord - du kan også skrive fra telefonen."
-
-msgid "Watch the channels you follow, popular streams and categories.\n\nChoose Sign in - the box then shows a code that you enter at twitch.tv/activate on your phone."
-msgstr "Se dine fulgte kanaler, populære streams og kategorier.\n\nVælg Log ind - så viser boksen en kode, som du skriver på twitch.tv/activate fra telefonen."
 
 msgid "Wednesday"
 msgstr "Onsdag"
@@ -2803,26 +1138,14 @@ msgstr "Kablet (Ethernet)"
 msgid "NotaTV %s is available"
 msgstr "NotaTV %s er klar"
 
-msgid "NotaTV appears under \"Play On\" in the Jellyfin app when you are signed in to Jellyfin here"
-msgstr "NotaTV vises under \"Afspil på\" i Jellyfin-appen, når du er logget ind på Jellyfin her"
-
-msgid "NotaTV will be installed on %s. The disk will be erased."
-msgstr "NotaTV installeres på %s. Disken bliver slettet."
-
 msgid "NotaTV · games"
 msgstr "NotaTV · spil"
-
-msgid "Without account"
-msgstr "Uden konto"
 
 msgid "Wrong code"
 msgstr "Forkert kode"
 
 msgid "Wrong code from the phone page (%s)"
 msgstr "Forkert kode fra telefon-siden (%s)"
-
-msgid "Wrong username or password"
-msgstr "Forkert brugernavn eller kodeord"
 
 msgid "Xtream Codes login"
 msgstr "Xtream Codes-login"
@@ -2836,74 +1159,20 @@ msgstr "Xtream-server"
 msgid "Xtream username"
 msgstr "Xtream-brugernavn"
 
-msgid "Xtream: password"
-msgstr "Xtream: kodeord"
-
-msgid "Xtream: server address (e.g. host.example:8080)"
-msgstr "Xtream: serveradresse (fx host.dk:8080)"
-
-msgid "Xtream: username"
-msgstr "Xtream: brugernavn"
-
 msgid "Yes"
 msgstr "Ja"
 
 msgid "You already have the latest version"
 msgstr "Du har allerede den nyeste version"
 
-msgid "You are now subscribed to %s"
-msgstr "Du abonnerer nu på %s"
-
 msgid "You have the latest version (%s)"
 msgstr "Du har den nyeste version (%s)"
-
-msgid "You will need to link again via plex.tv/link."
-msgstr "Du skal forbinde igen via plex.tv/link."
-
-msgid "You will need to sign in again to watch your movies and shows."
-msgstr "Du skal logge ind igen for at se dine film og serier."
-
-msgid "You will need to sign in again via twitch.tv/activate."
-msgstr "Du skal logge ind igen via twitch.tv/activate."
-
-msgid "Your channels"
-msgstr "Dine kanaler"
-
-msgid "Your server"
-msgstr "Din server"
-
-msgid "Your user has no access to Seerr - ask the administrator"
-msgstr "Din bruger har ikke adgang til Seerr - spørg administratoren"
-
-msgid "YouTube account %s added"
-msgstr "YouTube-konto %s tilføjet"
 
 msgid "YouTube account (optional)"
 msgstr "YouTube-konto (valgfri)"
 
-msgid "YouTube account declined"
-msgstr "YouTube-konto afvist"
-
-msgid "YouTube cast"
-msgstr "YouTube-cast"
-
-msgid "YouTube max quality"
-msgstr "YouTube maks. kvalitet"
-
 msgid "YouTube subscriptions"
 msgstr "YouTube-abonnementer"
-
-msgid "YouTube subtitles"
-msgstr "YouTube-undertekster"
-
-msgid "YouTube: %s is connected"
-msgstr "YouTube: %s er forbundet"
-
-msgid "YouTube: link with TV code"
-msgstr "YouTube: forbind med TV-kode"
-
-msgid "← → choose   ·   OK: press   ·   Back: previous step"
-msgstr "← → vælg   ·   OK: tryk   ·   Tilbage: forrige trin"
 
 
 msgid "Previous version restored"
@@ -2971,3 +1240,261 @@ msgstr "Opdateringen kunne ikke installeres"
 
 msgid "No earlier version saved"
 msgstr "Ingen tidligere version gemt"
+
+msgid "Starts in %d s"
+msgstr "Starter om %d s"
+
+msgid "OK: play now · Back: cancel"
+msgstr "OK: afspil nu · Tilbage: annullér"
+
+msgid "Cast and sharing"
+msgstr "Cast og deling"
+
+msgid "Apps"
+msgstr "Apps"
+
+msgid "Signed out of %s"
+msgstr "Logget ud af %s"
+
+msgid "Sign out of %s?"
+msgstr "Log ud af %s?"
+
+msgid "Everything saved for the account on this box is deleted."
+msgstr "Alt, der er gemt om kontoen på boksen, bliver slettet."
+
+msgid "Sign out of OpenSubtitles"
+msgstr "Log ud af OpenSubtitles"
+
+msgid "The TV does not accept it (check its sound output, e.g. Bitstream)"
+msgstr "Tv'et tager ikke imod det (tjek tv'ets lydudgang, fx Bitstream)"
+
+msgid "Install and uninstall apps"
+msgstr "Installér og afinstallér apps"
+
+msgid "Install the apps you want on the home screen. Uninstalling an app deletes everything it has saved on this box."
+msgstr "Installér de apps, du vil have på forsiden. Når du afinstallerer en app, slettes alt, hvad den har gemt på boksen."
+
+msgid "Installed"
+msgstr "Installeret"
+
+msgid "Not installed"
+msgstr "Ikke installeret"
+
+msgid "No apps are installed"
+msgstr "Ingen apps er installeret"
+
+msgid "All apps are installed"
+msgstr "Alle apps er installeret"
+
+msgid "Install"
+msgstr "Installér"
+
+msgid "Version %s"
+msgstr "Version %s"
+
+msgid "%s is uninstalled"
+msgstr "%s er afinstalleret"
+
+msgid "Uninstall %s?"
+msgstr "Afinstallér %s?"
+
+msgid "The app disappears from the home screen, and everything it has saved on this box is deleted - also your sign-in. You can install it again later."
+msgstr "Appen forsvinder fra forsiden, og alt, hvad den har gemt på boksen, slettes - også dit login. Du kan installere den igen senere."
+
+msgid "Uninstall"
+msgstr "Afinstallér"
+
+msgid "%s is installed - you find it on the home screen"
+msgstr "%s er installeret - du finder den på forsiden"
+
+msgid "Choose your apps"
+msgstr "Vælg dine apps"
+
+msgid "Update reminders"
+msgstr "Påmindelser om opdateringer"
+
+msgid "Looks for a new version on GitHub twice a day and reminds you every other day. Off: NotaTV never checks by itself"
+msgstr "Ser efter en ny version på GitHub to gange om dagen og minder dig om den hver anden dag. Fra: NotaTV tjekker aldrig selv"
+
+msgid "UPDATE AVAILABLE"
+msgstr "OPDATERING TILGÆNGELIG"
+
+msgid "NotaTV %s is ready"
+msgstr "NotaTV %s er klar"
+
+msgid "You have version %s"
+msgstr "Du har version %s"
+
+msgid "The update takes a few minutes. Then restart the box to use it. Your settings, apps and logins are kept."
+msgstr "Opdateringen tager et par minutter. Genstart derefter boksen for at bruge den. Dine indstillinger, apps og logins bevares."
+
+msgid "Update now"
+msgstr "Opdatér nu"
+
+msgid "Don't remind me"
+msgstr "Påmind mig ikke"
+
+msgid "No more update reminders - turn them on again under Settings → System"
+msgstr "Ingen flere påmindelser om opdateringer - slå dem til igen under Indstillinger → System"
+
+msgid "Living room"
+msgstr "Stue"
+
+msgid "Bedroom"
+msgstr "Soveværelse"
+
+msgid "Kitchen"
+msgstr "Køkken"
+
+msgid "Office"
+msgstr "Kontor"
+
+msgid "Continue"
+msgstr "Fortsæt"
+
+msgid "Use Wi-Fi instead"
+msgstr "Brug Wi-Fi i stedet"
+
+msgid "Continue without network"
+msgstr "Fortsæt uden netværk"
+
+msgid "Other name…"
+msgstr "Andet navn…"
+
+msgid "Region"
+msgstr "Område"
+
+msgid "Name"
+msgstr "Navn"
+
+msgid "Connect to the internet"
+msgstr "Forbind til internettet"
+
+msgid "NotaTV uses the network for apps, streaming and updates. A cable is fastest; Wi-Fi works too."
+msgstr "NotaTV bruger netværket til apps, streaming og opdateringer. Kabel er hurtigst, men Wi-Fi virker også."
+
+msgid "Where is the box?"
+msgstr "Hvor står boksen?"
+
+msgid "Choose the country (and region), so the clock is right. Daylight saving time follows the region by itself."
+msgstr "Vælg land (og område), så uret går rigtigt. Sommertid følger området af sig selv."
+
+msgid "Name your box"
+msgstr "Giv boksen et navn"
+
+msgid "The name is shown when you send to the TV from your phone - AirPlay, Bluetooth, Plex and YouTube."
+msgstr "Navnet vises, når du sender til TV'et fra din telefon - AirPlay, Bluetooth, Plex og YouTube."
+
+msgid "Select the apps you want on the home screen. You can install and uninstall apps later in the App Store."
+msgstr "Vælg de apps, du vil have på forsiden. Du kan installere og afinstallere apps senere i App Store."
+
+msgid "You're all set"
+msgstr "Så er du klar"
+
+msgid "NotaTV is ready. You can run this guide again under Settings → System."
+msgstr "NotaTV er klar. Du kan køre guiden igen under Indstillinger → System."
+
+msgid "STEP %d OF %d"
+msgstr "TRIN %d AF %d"
+
+msgid "Connected"
+msgstr "Forbundet"
+
+msgid "IP address %s"
+msgstr "IP-adresse %s"
+
+msgid "Plug in a network cable, or choose a Wi-Fi network"
+msgstr "Sæt et netværkskabel i, eller vælg et Wi-Fi-netværk"
+
+msgid "The clock shown on the box"
+msgstr "Uret, som boksen viser"
+
+msgid "%d installed"
+msgstr "%d installeret"
+
+msgid "Tip: control the box and type from your phone at http://%s - code %s"
+msgstr "Tip: styr boksen og skriv fra din telefon på http://%s - kode %s"
+
+msgid "Tip: when the box is online, you can control it and type from your phone (Settings → Network)"
+msgstr "Tip: når boksen er online, kan du styre den og skrive fra din telefon (Indstillinger → Netværk)"
+
+msgid "Arrows: choose   ·   OK: select or deselect   ·   Back: previous step"
+msgstr "Pile: vælg   ·   OK: til eller fra   ·   Tilbage: forrige trin"
+
+msgid "OK: go to the home screen   ·   Back: previous step"
+msgstr "OK: gå til forsiden   ·   Tilbage: forrige trin"
+
+msgid "↑ ↓ choose   ·   OK: select"
+msgstr "↑ ↓ vælg   ·   OK: bekræft"
+
+msgid "↑ ↓ choose   ·   OK: select   ·   Back: previous step"
+msgstr "↑ ↓ vælg   ·   OK: bekræft   ·   Tilbage: forrige trin"
+
+msgid "Installing apps… %d of %d"
+msgstr "Installerer apps… %d af %d"
+
+msgid "The App Store cannot be reached"
+msgstr "Der er ikke forbindelse til App Store"
+
+msgid "Looking for apps in the App Store…"
+msgstr "Finder apps i App Store…"
+
+msgid "Check the network, or continue and install apps later from the App Store."
+msgstr "Tjek netværket, eller fortsæt og installér apps senere fra App Store."
+
+msgid "The apps are downloaded from NotaTV's App Store on GitHub."
+msgstr "Apps hentes fra NotaTV's App Store på GitHub."
+
+msgid "Try again"
+msgstr "Prøv igen"
+
+msgid "Continue without apps"
+msgstr "Fortsæt uden apps"
+
+msgid "%s could not be started on this version of NotaTV"
+msgstr "%s kan ikke starte på denne version af NotaTV"
+
+msgid "Could not install the app"
+msgstr "Appen kunne ikke installeres"
+
+msgid "Installing your apps from the App Store…"
+msgstr "Installerer dine apps fra App Store…"
+
+msgid "Your apps are ready"
+msgstr "Dine apps er klar"
+
+msgid "Restart NotaTV?"
+msgstr "Genstart NotaTV?"
+
+msgid "The updated apps are used after a restart of the user interface. It takes a few seconds."
+msgstr "De opdaterede apps tages i brug, når brugerfladen genstarter. Det tager få sekunder."
+
+msgid "Looking for apps…"
+msgstr "Finder apps…"
+
+msgid "Could not reach the App Store - check the network. Installed apps are shown."
+msgstr "Ingen forbindelse til App Store - tjek netværket. Installerede apps vises."
+
+msgid "The App Store cannot be reached right now"
+msgstr "App Store kan ikke nås lige nu"
+
+msgid "Waiting…"
+msgstr "Venter…"
+
+msgid "Update to version %s"
+msgstr "Opdatér til version %s"
+
+msgid "Invalid request"
+msgstr "Ugyldig forespørgsel"
+
+msgid "Could not reach the App Store"
+msgstr "Ingen forbindelse til App Store"
+
+msgid "Invalid app package"
+msgstr "Ugyldig app-pakke"
+
+msgid "Could not download the app"
+msgstr "Appen kunne ikke hentes"
+
+msgid "The download is damaged - try again"
+msgstr "Det hentede er beskadiget - prøv igen"

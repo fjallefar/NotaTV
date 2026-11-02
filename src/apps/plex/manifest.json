@@ -1,0 +1,13 @@
+{
+  "id": "plex",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Plex",
+  "desc": "Movies and shows from your Plex server",
+  "icon": "plex",
+  "c1": [40, 40, 44],
+  "c2": [22, 22, 26],
+  "fg": [229, 160, 13],
+  "order": 20,
+  "default": true
+}

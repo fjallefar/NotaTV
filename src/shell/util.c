@@ -2,8 +2,10 @@
 #define _GNU_SOURCE /* pipe2 */
 #include "tv.h"
 #include <curl/curl.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <glob.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -369,17 +371,6 @@ int cfg_int(const char *key, int def) {
     return v && *v ? atoi(v) : def;
 }
 
-bool board_is_rpi(void) {
-    static int pi = -1;
-    if (pi < 0) {
-        char m[64] = "";
-        FILE *f = fopen("/proc/device-tree/model", "r");
-        if (f) { if (!fgets(m, sizeof m, f)) m[0] = 0; fclose(f); }
-        pi = strstr(m, "Raspberry Pi") != NULL;
-    }
-    return pi;
-}
-
 static void cfg_save(void) {
     char tmp[600];
     snprintf(tmp, sizeof tmp, "%s.tmp", cfg_path);
@@ -430,6 +421,23 @@ static void cfg_set_clean(const char *key, const char *val) {
     cfg = n;
     n_cfg++;
     cfg_save();
+    SDL_UnlockMutex(cfg_lock);
+}
+
+/* remove a setting (the default applies again) - e.g. an app's settings when it is uninstalled */
+void cfg_unset(const char *key) {
+    SDL_LockMutex(cfg_lock);
+    for (int i = 0; i < n_cfg; i++)
+        if (strcmp(cfg[i].k, key) == 0) {
+            /* a new array (the old one and the strings are leaked on purpose, like cfg_set: readers may hold them) */
+            Kv *n = malloc(sizeof(Kv) * (n_cfg > 1 ? n_cfg - 1 : 1));
+            int k = 0;
+            for (int j = 0; j < n_cfg; j++) if (j != i) n[k++] = cfg[j];
+            cfg = n;
+            n_cfg = k;
+            cfg_save();
+            break;
+        }
     SDL_UnlockMutex(cfg_lock);
 }
 
@@ -613,4 +621,53 @@ const char *lang_media_default(const char *key) {
     if (!strcmp(key, "sub_lang")) return da ? "da,dan,dk,en,eng" : "no-subs";
     if (!strcmp(key, "audio_lang")) return da ? "da,dan,en,eng" : "en,eng";
     return NULL;
+}
+
+/* ---------- signing out: nothing of the account is left behind ---------- */
+/* small files are overwritten with zeros first, then deleted */
+void wipe_file(const char *path) {
+    struct stat st;
+    if (stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0 && st.st_size <= (1 << 20)) {
+        FILE *f = fopen(path, "r+");
+        if (f) {
+            static const char z[4096];
+            for (off_t n = st.st_size; n > 0; n -= (off_t)sizeof z) fwrite(z, 1, n > (off_t)sizeof z ? sizeof z : (size_t)n, f);
+            fflush(f);
+            fsync(fileno(f));
+            fclose(f);
+        }
+    }
+    unlink(path);
+}
+/* everything in a folder (and below), the folder itself stays */
+void wipe_dir(const char *dir) {
+    DIR *d = opendir(dir);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        char p[1024];
+        snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
+        struct stat st;
+        if (lstat(p, &st) == 0 && S_ISDIR(st.st_mode)) { wipe_dir(p); rmdir(p); }
+        else wipe_file(p);
+    }
+    closedir(d);
+}
+/* leftovers in /tmp that can hold addresses, tokens or pictures from the account (mpv log, image cache, now playing) */
+void wipe_session_traces(void) {
+    wipe_dir("/tmp/tvimg");
+    /* mpv-out.log holds the stream URLs with tokens (Plex/Jellyfin), the yt-dlp log searches, and the subtitle
+       files and channel logos show what was watched */
+    static const char *const files[] = {"/tmp/mpv.log", "/tmp/mpv-out.log", "/tmp/yt-dlp-search.log", "/tmp/notatv-nowplaying.json",
+                                        "/tmp/notatv-subs.json", "/tmp/notatv-poster.bgra", "/tmp/notatv-poster-hdr.bgra", NULL};
+    for (int i = 0; files[i]; i++) wipe_file(files[i]);
+    static const char *const pats[] = {"/tmp/notatv-sub-*.srt", "/tmp/notatv-logo-*.bgra", NULL};
+    for (int i = 0; pats[i]; i++) {
+        glob_t g;
+        if (glob(pats[i], 0, NULL, &g) != 0) continue;
+        for (size_t k = 0; k < g.gl_pathc; k++) wipe_file(g.gl_pathv[k]);
+        globfree(&g);
+    }
+    sync();
 }

@@ -82,6 +82,7 @@ static bool preferred_res(char *out, size_t n) {
 
 static double g_probe_fps; /* result of probe_video_wait (HDR: PQ/HLG; YouTube/IPTV are not probed = SDR) */
 static bool g_probe_hdr;
+static int g_probe_w; /* video width (0 = unknown) */
 
 /* frame rate and HDR in one ffprobe call (before: two calls in a row over the network, up to 12 s
  * freeze before playback). The last result is kept, since both ask about the same URL. */
@@ -92,12 +93,13 @@ static bool probe_skip(const char *url) {
 }
 
 /* the ffprobe call itself (thread safe: no shared state) */
-static void probe_raw(const char *url, double *fps_out, bool *hdr_out) {
+static void probe_raw(const char *url, double *fps_out, bool *hdr_out, int *w_out) {
     double fps = 0;
     bool hdr = false;
+    int w = 0;
     if (!probe_skip(url)) {
         const char *argv[] = {"timeout", "6", "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                              "stream=avg_frame_rate,r_frame_rate,color_transfer", "-of", "default=nw=1", "--", url, NULL};
+                              "stream=width,avg_frame_rate,r_frame_rate,color_transfer", "-of", "default=nw=1", "--", url, NULL};
         char *out = run_capture_argv(argv);
         int a = 0, b = 1;
         double avg = 0, r = 0;
@@ -108,20 +110,22 @@ static void probe_raw(const char *url, double *fps_out, bool *hdr_out) {
         fps = avg >= 1 && avg <= 200 ? avg : r;
         if (fps <= 1 || fps >= 200) fps = 0;
         hdr = strstr(out, "smpte2084") || strstr(out, "arib-std-b67");
+        if ((p = strstr(out, "width="))) w = atoi(p + 6);
         free(out);
     }
     *fps_out = fps;
     *hdr_out = hdr;
+    *w_out = w;
 }
 
 /* ffprobe in a background thread, while the UI shows "Loading…" and Back can cancel (before: frozen screen for up to 6 s) */
-typedef struct { char *url; double fps; bool hdr; SDL_AtomicInt done, refs; } ProbeJob;
+typedef struct { char *url; double fps; bool hdr; int w; SDL_AtomicInt done, refs; } ProbeJob;
 static void probe_unref(ProbeJob *j) {
     if (SDL_AddAtomicInt(&j->refs, -1) == 1) { free(j->url); free(j); }
 }
 static int probe_thread(void *arg) {
     ProbeJob *j = arg;
-    probe_raw(j->url, &j->fps, &j->hdr);
+    probe_raw(j->url, &j->fps, &j->hdr, &j->w);
     SDL_SetAtomicInt(&j->done, 1);
     probe_unref(j);
     return 0;
@@ -132,9 +136,11 @@ static bool probe_video_wait(const char *url) {
     static char *last_url;
     static double last_fps;
     static bool last_hdr;
-    if (last_url && url && !strcmp(last_url, url)) { g_probe_fps = last_fps; g_probe_hdr = last_hdr; return true; }
+    static int last_w;
+    if (last_url && url && !strcmp(last_url, url)) { g_probe_fps = last_fps; g_probe_hdr = last_hdr; g_probe_w = last_w; return true; }
     double fps = 0;
     bool hdr = false;
+    int w = 0;
     if (!probe_skip(url)) {
         ProbeJob *j = calloc(1, sizeof *j);
         j->url = str_dup(url);
@@ -148,6 +154,7 @@ static bool probe_video_wait(const char *url) {
             cancelled = app_wait_frame(app_time() - t0 > 0.3 ? T("Loading…") : NULL); /* short probe: no spinner flash */
         fps = j->fps;
         hdr = j->hdr;
+        w = j->w;
         probe_unref(j);
         if (cancelled) return false;
     }
@@ -155,14 +162,19 @@ static bool probe_video_wait(const char *url) {
     last_url = url ? str_dup(url) : NULL;
     last_fps = fps;
     last_hdr = hdr;
+    last_w = w;
     g_probe_fps = fps;
     g_probe_hdr = hdr;
+    g_probe_w = w;
     return true;
 }
 
 /* "always HDR" on the Pi: SDR video is drawn with the GPU and converted to HDR (PQ/BT.2020), so the TV does not
    switch to SDR; HDR video goes unchanged directly onto the display plane as always */
 static bool g_sdr_to_hdr;
+/* Pi, the TV gets no HDR signal (display without HDR, or HDR turned off): HDR video is drawn with the GPU and
+   tone-mapped to SDR, because the direct display plane would show it unconverted (washed out) */
+static bool g_hdr_to_sdr;
 
 static double display_rate_for(double fps) {
     if (fps <= 0) return 0;
@@ -181,13 +193,13 @@ static pid_t spawn_mpv(char **argv) {
     /* static HDR light data for the TV (read by our mpv patch on the Pi; ignored otherwise).
        Read before fork: cfg uses a mutex that another thread may hold. */
     bool apple_hdr = strcmp(cfg_get("hdr_meta", "apple"), "film") != 0;
-    bool keep_hdr = cfg_int("hdr_always", 0) != 0;
+    bool keep_hdr = hdr_cfg("hdr_always", 0);
     pid_t pid = fork();
     if (pid == 0) {
         int dn = open("/dev/null", O_RDWR);
         dup2(dn, 0);
-        int lf = open("/tmp/mpv-out.log", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (lf >= 0) { dup2(lf, 1); dup2(lf, 2); }
+        int lf = open("/tmp/mpv-out.log", O_WRONLY | O_CREAT | O_TRUNC, 0600); /* has URLs with tokens */
+        if (lf >= 0) { fchmod(lf, 0600); dup2(lf, 1); dup2(lf, 2); }
         setsid();
         if (apple_hdr) setenv("NOTATV_HDR_STATIC", "1000,0.005,4000,1000", 1);
         else unsetenv("NOTATV_HDR_STATIC");
@@ -222,6 +234,10 @@ typedef struct {
     double scrub;          /* seeking: target time in seconds (-1 = none) */
     double scrub_t;
     int scrub_n, scrub_dir;
+    PlaySkip skip;         /* markers and "next episode" (rq->skip_info) */
+    bool skip_probed;
+    int prompt;            /* button on screen: 0 none, 1 skip intro, 2 skip credits, 3 next episode */
+    double prompt_to;      /* where the button leads: seconds, or -1 = the end (finish) */
 } MpvState;
 
 bool player_state(double *pos, double *dur, bool *paused) {
@@ -254,6 +270,50 @@ static void scrub(MpvState *st, int dir, bool big) {
     snprintf(a, sizeof a, "%.1f", st->scrub);
     snprintf(b, sizeof b, "%.0f", dir * step);
     CMD("script-message", "notatv-scrub", a, b);
+}
+
+/* skip intro / skip credits / next episode: which button belongs at the current position */
+static int skip_kind(const MpvState *st, double *to) {
+    const PlaySkip *k = &st->skip;
+    *to = -1;
+    if (!st->have_dur || st->dur <= 0) return 0;
+    bool credits_seen = false;
+    for (int i = 0; i < k->n; i++) {
+        const PlayMarker *m = &k->m[i];
+        credits_seen |= m->credits;
+        if (st->pos < m->start || st->pos >= m->end - 1.0) continue;
+        if (!m->credits) { *to = m->end; return 1; }
+        if (m->end >= st->dur - 30) return k->has_next ? 3 : 2; /* the final credits: to the end */
+        *to = m->end;
+        return 2;
+    }
+    if (k->has_next && !credits_seen && st->dur > 300 && st->pos >= st->dur - 25) return 3;
+    return 0;
+}
+
+static void skip_update(MpvState *st) {
+    double to = -1;
+    int kind = st->menu ? 0 : skip_kind(st, &to);
+    st->prompt_to = to;
+    if (kind == st->prompt) return;
+    st->prompt = kind;
+    if (!kind) { CMD("script-message", "notatv-prompt", "", ""); return; }
+    CMD("script-message", "notatv-prompt", kind == 1 ? T("Skip intro") : kind == 2 ? T("Skip credits") : T("Next episode"),
+        kind == 3 ? st->skip.next_title : "");
+}
+
+/* OK on the button */
+static void skip_press(MpvState *st, bool *quit) {
+    if (st->prompt_to >= 0) {
+        char a[32];
+        snprintf(a, sizeof a, "%.1f", st->prompt_to);
+        CMD("seek", a, "absolute");
+    } else { /* finished: the source continues with the next episode (if any) */
+        st->eof = true;
+        *quit = true;
+    }
+    st->prompt = 0;
+    CMD("script-message", "notatv-prompt", "", "");
 }
 
 /* live channel change: quick presses are gathered, and mpv only switches when you stop - otherwise
@@ -348,16 +408,20 @@ static void build_args(const PlayRequest *rq, const char *mode, char ***out, int
     /* audio */
     const char *adev = cfg_get("audio_device", "");
     if (*adev) { char *s = str_printf("--audio-device=%s", adev); add_arg(&argv, n, s); free(s); }
-    if (cfg_int("audio_passthrough", 0)) {
-        char codecs[64] = "ac3,eac3";
-        if (cfg_int("pt_dts", 1)) strcat(codecs, ",dts");
-        if (cfg_int("pt_hd", 0)) strcat(codecs, ",dts-hd,truehd");
+    if (audio_cfg("audio_passthrough", 0, DA_AC3)) {
+        /* only the formats the TV/receiver lists - an unsupported one (e.g. E-AC-3 to an AC-3-only receiver) gives silence */
+        char codecs[64] = "ac3";
+        bool pt_hd = audio_cfg("pt_hd", 0, DA_HD);
+        if (display_audio_ok(DA_EAC3)) strcat(codecs, ",eac3");
+        if (audio_cfg("pt_dts", 1, DA_DTS)) strcat(codecs, ",dts");
+        if (pt_hd && display_audio_ok(DA_DTSHD)) strcat(codecs, ",dts-hd");
+        if (pt_hd && display_audio_ok(DA_TRUEHD)) strcat(codecs, ",truehd");
         char *s = str_printf("--audio-spdif=%s", codecs);
         add_arg(&argv, n, s);
         free(s);
         /* ARC (without HD passthrough): multichannel audio that cannot be sent unchanged (TrueHD, AAC/FLAC/PCM 5.1)
          * is re-encoded to Dolby Digital 5.1 - stereo stays PCM (minch=3) */
-        if (!cfg_int("pt_hd", 0)) add_arg(&argv, n, "--af=lavcac3enc=tospdif=yes:bitrate=640:minch=3");
+        if (!pt_hd) add_arg(&argv, n, "--af=lavcac3enc=tospdif=yes:bitrate=640:minch=3");
     }
     int delay = cfg_int("audio_delay_ms", 0);
     if (delay) { char *s = str_printf("--audio-delay=%.3f", delay / 1000.0); add_arg(&argv, n, s); free(s); }
@@ -367,8 +431,27 @@ static void build_args(const PlayRequest *rq, const char *mode, char ***out, int
         add_arg(&argv, n, "--target-trc=pq");
         add_arg(&argv, n, "--target-prim=bt.2020");
     }
-    if (cfg_int("hdr", 1)) add_arg(&argv, n, "--target-colorspace-hint=yes");
-    else add_arg(&argv, n, "--tone-mapping=auto");
+    if (g_hdr_to_sdr) {
+        add_arg(&argv, n, "--gpu-hwdec-interop=drmprime");
+        add_arg(&argv, n, "--target-trc=srgb");
+        add_arg(&argv, n, "--target-prim=bt.709");
+    }
+    if (hdr_cfg("hdr", 1)) add_arg(&argv, n, "--target-colorspace-hint=yes");
+    else { /* the Pi's mpv.conf turns the hint on, so it must be turned off explicitly */
+        add_arg(&argv, n, "--target-colorspace-hint=no");
+        add_arg(&argv, n, "--tone-mapping=auto");
+    }
+    if (g_hdr_to_sdr) { /* the cheapest path: the Pi 4's GPU only just manages 4K (mobius/reinhard drop frames) */
+        static const char *const cheap[] = {"--tone-mapping=clip", "--gamut-mapping-mode=clip", "--hdr-compute-peak=no",
+            "--dither-depth=no", "--scale=bilinear", "--cscale=bilinear", "--dscale=bilinear", "--correct-downscaling=no",
+            "--linear-downscaling=no", "--sigmoid-upscaling=no", "--deband=no"};
+        for (size_t i = 0; i < SDL_arraysize(cheap); i++) add_arg(&argv, n, cheap[i]);
+        /* 4K: draw in 900p and let the display plane scale up (39 ms -> ~32 ms per frame, room for subtitles) */
+        if (g_probe_w == 0 || g_probe_w > 1920) add_arg(&argv, n, "--drm-draw-surface-size=1600x900");
+        /* brightness: 100 nits become full white (HDR reference white is 203). HDR movies are mastered darker
+           than SDR; this looks closest to an SDR version, at the cost of clipping the brightest highlights */
+        add_arg(&argv, n, "--target-peak=100");
+    }
     /* sprog */
     { char *s = str_printf("--slang=%s", cfg_get("sub_lang", lang_media_default("sub_lang"))); add_arg(&argv, n, s); free(s); }
     { char *s = str_printf("--alang=%s", cfg_get("audio_lang", lang_media_default("audio_lang"))); add_arg(&argv, n, s); free(s); }
@@ -408,6 +491,7 @@ static void handle_action(const InputEvent *ev, const PlayRequest *rq, MpvState 
     switch (ev->a) {
     case A_OK: case A_PLAYPAUSE:
         if (ev->repeat) break; /* held OK: no pause/play over and over */
+        if (ev->a == A_OK && st->prompt) { skip_press(st, quit); break; }
         CMD("cycle", "pause");
         CMD("script-message", "notatv-show");
         break;
@@ -441,7 +525,10 @@ static void handle_action(const InputEvent *ev, const PlayRequest *rq, MpvState 
         if (rq->is_live) zap(rq, st, 1);
         else CMD("add", "chapter", "-1");
         break;
-    case A_NEXT: CMD("playlist-next"); break;
+    case A_NEXT:
+        if (!rq->is_live && st->skip.has_next) { st->eof = true; *quit = true; }
+        else CMD("playlist-next");
+        break;
     case A_PREV: CMD("playlist-prev"); break;
     case A_INFO: CMD("script-message", "notatv-show", "8"); break;
     case A_SUBTITLE:
@@ -496,10 +583,17 @@ PlayResult player_run(const PlayRequest *rq) {
 
     /* frame rate and HDR are only checked if they are used */
     bool want_rate = cfg_int("match_rate", 1) && input_evdev_active() && !rq->is_live;
-    bool want_hdr = board_is_rpi() && cfg_int("hdr_always", 0);
+    bool want_hdr = hdr_cfg("hdr_always", 0);
     g_probe_fps = 0;
     g_probe_hdr = false;
-    if ((want_rate || want_hdr) && !probe_video_wait(rq->url)) {
+    g_probe_w = 0;
+    /* the TV gets no HDR signal (display without HDR, or HDR turned off), so HDR video must be converted by the
+       GPU - the direct display plane would show it unconverted (washed out). Live TV is SDR. */
+    bool sdr_out = !rq->is_live && !hdr_cfg("hdr", 1);
+    if (!want_rate && rq->media_hdr) { /* the source already knows (e.g. Plex): no ffprobe needed */
+        g_probe_hdr = rq->media_hdr == 2;
+        g_probe_w = rq->media_w;
+    } else if ((want_rate || want_hdr || sdr_out) && !probe_video_wait(rq->url)) {
         res.cancelled = true;
         return res;
     }
@@ -519,6 +613,8 @@ PlayResult player_run(const PlayRequest *rq) {
     }
     snprintf(modes[n_modes++], 48, "%s", "");
     g_sdr_to_hdr = want_hdr && !g_probe_hdr;
+    g_hdr_to_sdr = sdr_out && g_probe_hdr;
+    if (g_hdr_to_sdr) SDL_Log("player: HDR-video tone-mappes til SDR (skærmen får ikke HDR)");
     if (g_sdr_to_hdr) SDL_Log("player: SDR-video omregnes til HDR");
 
     /* metadata for media controls/pause screen (notatv-osd.lua) */
@@ -540,7 +636,7 @@ PlayResult player_run(const PlayRequest *rq) {
         int pw, ph;
         /* two versions: the OSD script picks the HDR version when the TV is in HDR (PQ) */
         if (rq->poster && img_export_bgra(rq->poster, "/tmp/notatv-poster.bgra", 420, 630, &pw, &ph)) {
-            if (board_is_rpi() && img_export_bgra_ex(rq->poster, "/tmp/notatv-poster-hdr.bgra", 420, 630, &pw, &ph, true))
+            if (img_export_bgra_ex(rq->poster, "/tmp/notatv-poster-hdr.bgra", 420, 630, &pw, &ph, true))
                 cJSON_AddStringToObject(m, "poster_hdr", "/tmp/notatv-poster-hdr.bgra");
             cJSON_AddStringToObject(m, "poster", "/tmp/notatv-poster.bgra");
             cJSON_AddNumberToObject(m, "poster_w", pw);
@@ -600,6 +696,11 @@ PlayResult player_run(const PlayRequest *rq) {
             if (ipc_fd >= 0) pfd[nf++] = (struct pollfd){ipc_fd, POLLIN, 0};
             poll(pfd, nf, 100);
             if (ipc_fd >= 0) ipc_read(&st, rq);
+            if (!rq->is_live && rq->skip_info && !st.skip_probed && st.have_dur && st.pos > 3) {
+                st.skip_probed = true;
+                rq->skip_info(rq->ud, &st.skip);
+            }
+            if (st.skip_probed) skip_update(&st);
             input_poll();
             if (!input_evdev_active()) { /* PC development: SDL events (mpv has its own window) */
                 SDL_Event e;

@@ -51,7 +51,7 @@ int subs_search(int tmdb, const char *query, int season, int episode, char ***la
     n_found = 0;
     if (!*cfg_get("os_apikey", "")) {
         *labels = calloc(1, sizeof(char *));
-        (*labels)[0] = str_dup(T("Requires an OpenSubtitles key: Settings → Apps"));
+        (*labels)[0] = str_dup(T("Requires an OpenSubtitles key: Settings → Picture and sound"));
         return 1;
     }
     char langs[64];
@@ -136,4 +136,13 @@ char *subs_fetch(int idx) {
     }
     cJSON_Delete(root);
     return path;
+}
+
+/* sign out of OpenSubtitles: the key, the login and the session token */
+void subs_forget(void) {
+    cfg_set("os_apikey", "");
+    cfg_set("os_user", "");
+    cfg_set("os_pass", "");
+    memset(token, 0, sizeof token);
+    wipe_session_traces(); /* also the downloaded subtitle files */
 }

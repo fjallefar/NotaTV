@@ -1,0 +1,13 @@
+{
+  "id": "music",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Music",
+  "desc": "Play music from your phone via AirPlay",
+  "icon": "music",
+  "c1": [250, 45, 85],
+  "c2": [150, 20, 60],
+  "fg": [255, 255, 255],
+  "order": 70,
+  "default": true
+}

@@ -1,0 +1,13 @@
+{
+  "id": "twitch",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Twitch",
+  "desc": "Live streams from the channels you follow and all of Twitch",
+  "icon": "play",
+  "c1": [145, 70, 255],
+  "c2": [88, 38, 170],
+  "fg": [255, 255, 255],
+  "order": 50,
+  "default": true
+}

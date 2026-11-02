@@ -19,3 +19,4 @@ __pycache__/
 *.img.xz
 *-update.tar.gz
 *-update.tar.gz.sha256
+src/apps/out/

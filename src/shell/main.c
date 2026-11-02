@@ -38,6 +38,7 @@ double app_time(void) { return SDL_GetTicks() / 1000.0 - t0; }
 void app_quit(void) { running = false; }
 float app_boot_time(void) { return boot_time; }
 int app_cfg_gen(void) { return cfg_gen; }
+void app_cfg_changed(void) { cfg_gen++; }
 void app_request_redraw(void) {}
 
 void app_toast(const char *fmt, ...) {
@@ -171,13 +172,13 @@ static bool kms_failed; /* own presentation failed: use SDL's KMSDRM driver */
 
 static bool video_init(void) {
     /* "always HDR": the TV is put in HDR10 before SDL takes the display, and the UI is drawn in PQ */
-    bool hdr = cfg_int("hdr_always", 0) != 0;
+    bool hdr = hdr_cfg("hdr_always", 0);
     bool kmsdrm = getenv("SDL_VIDEO_DRIVER") && !strcmp(getenv("SDL_VIDEO_DRIVER"), "kmsdrm");
     if (kmsdrm) drm_set_ui_hdr(hdr);
     gfx_set_hdr(hdr);
-    /* Pi: SDL draws without a display, and we show the frame ourselves with scaling in the display hardware (see
+    /* SDL draws without a display, and we show the frame ourselves with scaling in the display hardware (see
        kms_present.c) - SDL's own KMS path only manages 20 fps in 4K on the Pi 4 */
-    bool use_kms = kmsdrm && board_is_rpi() && !kms_failed;
+    bool use_kms = kmsdrm && !kms_failed;
     if (kmsdrm) SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, use_kms ? "offscreen" : "kmsdrm", SDL_HINT_OVERRIDE);
     if (use_kms) {
         if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
@@ -226,7 +227,7 @@ static bool video_init(void) {
     SDL_HideCursor();
     int ow, oh;
     SDL_GetRenderOutputSize(ren, &ow, &oh);
-    if (target_mode && board_is_rpi() && ow > UI_W) {
+    if (target_mode && ow > UI_W) {
         ui_rt = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, UI_W, UI_H);
         if (ui_rt) {
             SDL_SetTextureScaleMode(ui_rt, SDL_SCALEMODE_LINEAR);
@@ -480,25 +481,6 @@ static void pending_show(char *val) {
     snprintf(title, sizeof title, T("Save from phone %s?"), p->from);
     confirm_open(title, msg, T("Save"), T("Decline"), pending_cb, p);
 }
-static void ytpending_cb(void *ud, bool yes) {
-    Pending *p = ud;
-    char src[512], dst[512];
-    snprintf(src, sizeof src, "%s/youtube/pending/%s.cookies", data_dir(), p->name);
-    snprintf(dst, sizeof dst, "%s/youtube/%s.cookies", data_dir(), p->name);
-    if (yes && rename(src, dst) == 0) { cfg_set("yt_profile", p->name); cfg_gen++; app_toast(T("YouTube account %s added"), p->name); }
-    else { unlink(src); app_toast(T("YouTube account declined")); }
-    free(p);
-}
-static void ytpending_show(const char *val) {
-    Pending *p = calloc(1, sizeof *p);
-    sscanf(val, "%63[^\n]\n%63s", p->name, p->from);
-    for (char *c = p->name; *c; c++) if (*c == '/' || *c == '.') *c = '_'; /* only a file name */
-    char title[160], msg[256];
-    snprintf(title, sizeof title, T("Add YouTube account \"%s\"?"), p->name);
-    snprintf(msg, sizeof msg, T("The phone %s has sent login cookies for YouTube. The box uses them to watch as your account."), p->from);
-    confirm_open(title, msg, T("Add"), T("Decline"), ytpending_cb, p);
-}
-
 static char inbox_shot[256]; /* screenshot requested via the inbox (_shot) - for debugging */
 
 static void inbox_check(void) {
@@ -526,7 +508,6 @@ static void inbox_check(void) {
         if (!strcmp(e->d_name, "_text")) keyboard_inject(val);
         else if (!strcmp(e->d_name, "_toast")) app_toast("%s", tr_msg(val));
         else if (!strcmp(e->d_name, "_pending")) pending_show(val);
-        else if (!strcmp(e->d_name, "_ytpending")) ytpending_show(val);
         else if (!strcmp(e->d_name, "_shot")) { /* developer mode only: writes a file to any path */
             if (cfg_int("ssh_enabled", 0)) snprintf(inbox_shot, sizeof inbox_shot, "%s", *val ? val : "/tmp/shot.bmp");
         }
@@ -539,7 +520,9 @@ static void inbox_check(void) {
                 {"back", A_BACK}, {"home", A_HOME}, {"menu", A_MENU}, {"playpause", A_PLAYPAUSE}};
             for (size_t i = 0; i < sizeof km / sizeof km[0]; i++)
                 if (!strcmp(val, km[i].n)) input_push(km[i].a, 0, false);
-        } else if (e->d_name[0] != '_') {
+        } else if (e->d_name[0] == '_') {
+            apps_inbox(e->d_name, val); /* e.g. _ytpending: an account for the YouTube app */
+        } else {
             cfg_set(e->d_name, val);
             changed = true;
         }
@@ -735,8 +718,8 @@ int main(int argc, char **argv) {
     lang_init(); /* language (before anything is shown) */
     tz_init();  /* time zone from the settings (before anything shows the clock) */
     http_init();
+    apps_init(); /* the app register: built-in apps and app packages (after the language: their translations) */
     jobs_init(4);
-    music_init(); /* AirPlay metadata (background thread) */
     bt_init();    /* Bluetooth: agent + afspilningsinfo via D-Bus */
     umask(077); /* logs, configuration and cookies (also from mpv/yt-dlp) for root only */
     if (!video_init()) return 1;
@@ -769,16 +752,23 @@ int main(int argc, char **argv) {
         input_poll();
         jobs_pump();
         inbox_check();
-        music_tick();
         bt_tick();
         dlna_tick();
-        plexcast_tick();
-        ytcast_tick();
         mirror_tick();
-        jellyfin_remote_tick();
+        apps_tick(); /* the installed apps' background services (Plex cast, YouTube cast, Jellyfin "Play on") */
+        update_tick();
+        appcat_tick(); /* finishes App Store installs; moves boxes from 1.0.x to App Store apps */
         script_step();
 
         double now = app_time();
+        /* another display plugged in (e.g. an SDR monitor instead of the HDR TV): "Always HDR" draws the menus in
+           HDR only if the display can show it, so redo the video setup when that changes. Only with a known
+           display - a TV in standby can hide its EDID, which must not flip the menus back and forth. */
+        static double hdr_check_t;
+        if (now - hdr_check_t > 3) {
+            hdr_check_t = now;
+            if (display_known() && hdr_cfg("hdr_always", 0) != gfx_get_hdr() && app_video_suspend()) app_video_resume();
+        }
         float dt = (float)(now - last);
         if (dt > 0.1f) dt = 0.1f;
         last = now;

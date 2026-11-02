@@ -2,6 +2,7 @@
 #include "tv.h"
 #include <errno.h>
 #include <fcntl.h>
+#include <glob.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -157,3 +158,106 @@ void drm_set_ui_hdr(bool on) {
         if (access(path, F_OK) == 0) ui_hdr_card(path);
     }
 }
+
+/* ---------- what can the connected display do? (read from its EDID) ----------
+   HDR: a CTA-861 "HDR Static Metadata" block (extended tag 6) with PQ or HLG. Without it (e.g. an ordinary SDR
+   monitor) an HDR signal gives wrong colors.
+   Audio: the Short Audio Descriptors (tag 1) list the formats the display accepts (AC-3, DTS, TrueHD ...).
+   If the EDID cannot be read, everything is assumed to work, so TVs that hide their EDID lose nothing. */
+typedef struct { bool hdr; unsigned audio; } EdidCaps; /* audio: bit n = CTA audio format code n */
+
+static void edid_caps(const uint8_t *e, size_t len, EdidCaps *c) {
+    c->hdr = false;
+    c->audio = 0;
+    for (size_t b = 128; b + 128 <= len; b += 128) {
+        const uint8_t *x = e + b;
+        if (x[0] != 0x02) continue; /* CTA-861 extension */
+        int end = x[2];
+        if (end < 4 || end > 127) continue;
+        for (int i = 4; i < end;) {
+            int tag = x[i] >> 5, n = x[i] & 31;
+            if (i + 1 + n > 128) break;
+            if (tag == 7 && n >= 3 && x[i + 1] == 6 && (x[i + 2] & 0x0C)) c->hdr = true; /* PQ (ST 2084) or HLG */
+            if (tag == 1)
+                for (int k = 0; k + 3 <= n; k += 3) c->audio |= 1u << ((x[i + 1 + k] >> 3) & 15);
+            i += 1 + n;
+        }
+    }
+}
+
+/* reads the EDID of a connected connector (sysfs dir); false if not connected or no EDID */
+static bool connector_caps(const char *dir, EdidCaps *c) {
+    char p[300], st[16] = "";
+    snprintf(p, sizeof p, "%s/status", dir);
+    FILE *f = fopen(p, "r");
+    if (!f) return false;
+    if (!fgets(st, sizeof st, f)) st[0] = 0;
+    fclose(f);
+    if (strncmp(st, "connected", 9)) return false;
+    snprintf(p, sizeof p, "%s/edid", dir);
+    f = fopen(p, "rb");
+    if (!f) return false;
+    uint8_t buf[4096];
+    size_t n = fread(buf, 1, sizeof buf, f);
+    fclose(f);
+    if (n < 128) return false;
+    edid_caps(buf, n, c);
+    return true;
+}
+
+/* capabilities of the connected display, cached for 3 s; returns false if it is unknown.
+   HDMI connectors first, then the rest. */
+static bool display_caps(EdidCaps *out) {
+    static EdidCaps cached;
+    static bool known;
+    static Uint64 at;
+    Uint64 now = SDL_GetTicks();
+    if (at && now - at < 3000) { *out = cached; return known; }
+    at = now ? now : 1;
+    bool found = false;
+    EdidCaps nc = {0};
+    static const char *const pats[] = {"/sys/class/drm/card*-HDMI-*", "/sys/class/drm/card*-DP-*", "/sys/class/drm/card*-*"};
+    for (size_t i = 0; i < SDL_arraysize(pats) && !found; i++) {
+        glob_t g;
+        if (glob(pats[i], 0, NULL, &g) != 0) continue;
+        for (size_t k = 0; k < g.gl_pathc && !found; k++)
+            if (!strstr(g.gl_pathv[k], "Writeback")) found = connector_caps(g.gl_pathv[k], &nc);
+        globfree(&g);
+    }
+    if (found && (!known || nc.hdr != cached.hdr || nc.audio != cached.audio))
+        SDL_Log("drm: skærmen (EDID): HDR=%d lydformater=0x%x", nc.hdr, nc.audio);
+    if (found) cached = nc;
+    known = found;
+    *out = cached;
+    return known;
+}
+
+bool display_known(void) {
+    EdidCaps c;
+    return display_caps(&c);
+}
+
+bool display_hdr_ok(void) {
+    EdidCaps c;
+    return !display_caps(&c) || c.hdr;
+}
+
+/* does the display accept this audio format? CTA codes: 2 AC-3, 7 DTS, 10 E-AC-3, 11 DTS-HD, 12 TrueHD (MAT) */
+bool display_audio_ok(DisplayAudio a) {
+    EdidCaps c;
+    if (!display_caps(&c)) return true;
+    switch (a) {
+    case DA_AC3: return c.audio & (1u << 2);
+    case DA_EAC3: return c.audio & (1u << 10);
+    case DA_DTS: return c.audio & ((1u << 7) | (1u << 11)); /* a DTS-HD receiver also takes plain DTS */
+    case DA_DTSHD: return c.audio & (1u << 11);
+    case DA_TRUEHD: return c.audio & (1u << 12);
+    case DA_HD: return c.audio & ((1u << 11) | (1u << 12));
+    }
+    return true;
+}
+
+/* an HDR setting counts only if the display can do HDR */
+bool hdr_cfg(const char *key, int def) { return cfg_int(key, def) != 0 && display_hdr_ok(); }
+/* a passthrough setting counts only if the display accepts the format */
+bool audio_cfg(const char *key, int def, DisplayAudio a) { return cfg_int(key, def) != 0 && display_audio_ok(a); }

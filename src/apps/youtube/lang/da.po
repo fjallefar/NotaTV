@@ -1,0 +1,296 @@
+# NotaTV app "youtube" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "%d channels imported"
+msgstr "%d kanaler importeret"
+
+msgid "Videos"
+msgstr "Videoer"
+
+msgid "Live and past streams"
+msgstr "Live og tidligere streams"
+
+msgid "Latest from your subscriptions"
+msgstr "Nyeste fra dine abonnementer"
+
+msgid "Recommended for you"
+msgstr "Anbefalet til dig"
+
+msgid "Music"
+msgstr "Musik"
+
+msgid "News"
+msgstr "Nyheder"
+
+msgid "Documentaries"
+msgstr "Dokumentar"
+
+msgid "Not signed in"
+msgstr "Ikke logget ind"
+
+msgid "Search YouTube"
+msgstr "Søg på YouTube"
+
+msgid "Unsubscribe"
+msgstr "Afmeld"
+
+msgid "Subscribe"
+msgstr "Abonnér"
+
+msgid "Home"
+msgstr "Hjem"
+
+msgid "Search"
+msgstr "Søg"
+
+msgid "Subscriptions"
+msgstr "Abonnementer"
+
+msgid "Channels"
+msgstr "Kanaler"
+
+msgid "Recommended"
+msgstr "Anbefalet"
+
+msgid "Watch later"
+msgstr "Se senere"
+
+msgid "History"
+msgstr "Historik"
+
+msgid "Account: %s"
+msgstr "Konto: %s"
+
+msgid "Sign in"
+msgstr "Log ind"
+
+msgid "Results for \"%s\""
+msgstr "Resultater for \"%s\""
+
+msgid "Unsubscribed from %s"
+msgstr "Abonnement på %s fjernet"
+
+msgid "You are now subscribed to %s"
+msgstr "Du abonnerer nu på %s"
+
+msgid "No subscriptions yet - open a channel and choose Subscribe"
+msgstr "Ingen abonnementer endnu - åbn en kanal og vælg Abonnér"
+
+msgid "Your channels"
+msgstr "Dine kanaler"
+
+msgid "No subscriptions yet - open a channel (hold OK on a video) and choose Subscribe"
+msgstr "Ingen abonnementer endnu - åbn en kanal (hold OK på en video) og vælg Abonnér"
+
+msgid "%.1fM views"
+msgstr "%.1f mio. visninger"
+
+msgid "%.0fK views"
+msgstr "%.0fk visninger"
+
+msgid "%.0f views"
+msgstr "%.0f visninger"
+
+msgid "%.1fM subscribers"
+msgstr "%.1f mio. abonnenter"
+
+msgid "%.0fK subscribers"
+msgstr "%.0fk abonnenter"
+
+msgid "%.0f subscribers"
+msgstr "%.0f abonnenter"
+
+msgid "Play"
+msgstr "Afspil"
+
+msgid "Info and comments"
+msgstr "Info og kommentarer"
+
+msgid "Nothing found (or no connection to YouTube)"
+msgstr "Intet fundet (eller ingen forbindelse til YouTube)"
+
+msgid "Requires you to be signed in"
+msgstr "Kræver at du er logget ind"
+
+msgid "Subscribed"
+msgstr "Abonnerer"
+
+msgid "OK: unsubscribe"
+msgstr "OK: afmeld"
+
+msgid "No results (or no connection to YouTube)"
+msgstr "Ingen resultater (eller ingen forbindelse til YouTube)"
+
+msgid "Loading video…"
+msgstr "Henter video…"
+
+msgid "Channel"
+msgstr "Kanal"
+
+msgid "Quality: %s"
+msgstr "Kvalitet: %s"
+
+msgid "No comments (or they are turned off)"
+msgstr "Ingen kommentarer (eller de er slået fra)"
+
+msgid "Go to channel"
+msgstr "Gå til kanal"
+
+msgid "Description"
+msgstr "Beskrivelse"
+
+msgid "Comments"
+msgstr "Kommentarer"
+
+msgid "%ld likes"
+msgstr "%ld likes"
+
+msgid "No description"
+msgstr "Ingen beskrivelse"
+
+msgid "Loading comments…"
+msgstr "Henter kommentarer…"
+
+msgid "Up/down"
+msgstr "Op/ned"
+
+msgid "Scroll the comments (when Comments is selected)"
+msgstr "Rul i kommentarer (når Kommentarer er valgt)"
+
+msgid "The channel is not known yet - wait a moment"
+msgstr "Kanalen er ikke kendt endnu - vent et øjeblik"
+
+msgid "Unsubscribed"
+msgstr "Abonnement fjernet"
+
+msgid "the channel"
+msgstr "kanalen"
+
+msgid "Signed in as %s"
+msgstr "Logget ind som %s"
+
+msgid "Sign in to YouTube"
+msgstr "Log ind på YouTube"
+
+msgid "Choose account"
+msgstr "Vælg konto"
+
+msgid "Without account"
+msgstr "Uden konto"
+
+msgid "Remove"
+msgstr "Fjern"
+
+msgid "No accounts yet - add one with your phone →"
+msgstr "Ingen konti endnu - tilføj en med telefonen →"
+
+msgid "Add account"
+msgstr "Tilføj konto"
+
+msgid "1. Sign in to youtube.com on your computer"
+msgstr "1. Log ind på youtube.com på din computer"
+
+msgid "2. Install the extension"
+msgstr "2. Installér udvidelsen"
+
+msgid "3. Export cookies.txt"
+msgstr "3. Eksportér cookies.txt"
+
+msgid "4. Scan the QR code, give the account a"
+msgstr "4. Scan QR-koden, giv kontoen et"
+
+msgid "    name and choose the file"
+msgstr "    navn og vælg filen"
+
+msgid "Or open this address in a browser on the same network:"
+msgstr "Eller åbn denne adresse i en browser på samme netværk:"
+
+msgid "Google does not allow direct login in third-party apps, so cookies from your browser are used. Cookies expire after a while - then just repeat the steps. The TV switches to the account automatically once it has been added."
+msgstr "Google tillader ikke direkte login i tredjepartsapps, derfor bruges cookies fra din browser. Cookies udløber efter noget tid - så gentager du bare trinene. TV'et skifter automatisk til kontoen, når den er tilføjet."
+
+msgid "Account removed"
+msgstr "Konto fjernet"
+
+msgid "The account \"%s\" will be removed from NotaTV."
+msgstr "Kontoen \"%s\" fjernes fra NotaTV."
+
+msgid "Remove account?"
+msgstr "Fjern konto?"
+
+msgid "Cancel"
+msgstr "Annuller"
+
+msgid "Could not get a code from YouTube - try again"
+msgstr "Kunne ikke hente en kode fra YouTube - prøv igen"
+
+msgid "Open YouTube on your phone: Settings → Watch on TV → Link with TV code, and enter\n\n%s\n\nThe code works for about 5 minutes."
+msgstr "Åbn YouTube på telefonen: Indstillinger → Se på TV → Forbind med TV-kode, og skriv\n\n%s\n\nKoden virker i ca. 5 minutter."
+
+msgid "YouTube: link with TV code"
+msgstr "YouTube: forbind med TV-kode"
+
+msgid "Close"
+msgstr "Luk"
+
+msgid "Getting code from YouTube…"
+msgstr "Henter kode fra YouTube …"
+
+msgid "YouTube cast"
+msgstr "YouTube-cast"
+
+msgid "The cast button in the YouTube app can play on NotaTV. Control goes through YouTube (Google)"
+msgstr "Cast-knappen i YouTube-appen kan afspille på NotaTV. Styringen går via YouTube (Google)"
+
+msgid "If NotaTV does not show up under Cast in the YouTube app: link with a code"
+msgstr "Hvis NotaTV ikke dukker op under Cast i YouTube-appen: forbind med en kode"
+
+msgid "YouTube max quality"
+msgstr "YouTube maks. kvalitet"
+
+msgid "YouTube subtitles"
+msgstr "YouTube-undertekster"
+
+msgid "Downloads English subtitles - makes start about 2 sec. slower"
+msgstr "Henter danske/engelske undertekster - gør start ca. 2 sek. langsommere"
+
+msgid "Sign out of YouTube"
+msgstr "Log ud af YouTube"
+
+msgid "Deletes the accounts (cookies), subscriptions, search history and what you have watched"
+msgstr "Sletter kontoerne (cookies), abonnementer, søgehistorik og hvad du har set"
+
+msgid "YouTube account %s added"
+msgstr "YouTube-konto %s tilføjet"
+
+msgid "YouTube account declined"
+msgstr "YouTube-konto afvist"
+
+msgid "Add YouTube account \"%s\"?"
+msgstr "Tilføj YouTube-konto \"%s\"?"
+
+msgid "The phone %s has sent login cookies for YouTube. The box uses them to watch as your account."
+msgstr "Telefonen %s har sendt login-cookies til YouTube. Boksen bruger dem til at se som din konto."
+
+msgid "Add"
+msgstr "Tilføj"
+
+msgid "Decline"
+msgstr "Afvis"
+
+msgid "Search and watch videos on YouTube"
+msgstr "Søg og se videoer på YouTube"
+
+msgid "Recently watched"
+msgstr "Senest sete"
+
+msgid "RECENTLY WATCHED ON YOUTUBE"
+msgstr "SENEST SET PÅ YOUTUBE"
+
+msgid "A phone"
+msgstr "En telefon"
+
+msgid "YouTube: %s is connected"
+msgstr "YouTube: %s er forbundet"
+

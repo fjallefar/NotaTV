@@ -1,0 +1,13 @@
+{
+  "id": "seerr",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Seerr",
+  "desc": "Find and request movies and shows for Plex",
+  "icon": "star",
+  "c1": [99, 102, 241],
+  "c2": [55, 48, 163],
+  "fg": [255, 255, 255],
+  "order": 60,
+  "default": true
+}

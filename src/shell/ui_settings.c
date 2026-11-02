@@ -7,21 +7,8 @@
 #include <time.h>
 #include <unistd.h>
 
-typedef enum { IT_INFO, IT_TOGGLE, IT_CYCLE, IT_ACTION, IT_TEXT } ItemType;
 
-typedef struct {
-    const char *label;
-    ItemType type;
-    const char *key, *def;
-    const char *const *opts, *const *labels;
-    void (*action)(void);
-    const char *info_cmd; /* helper command that gives the value (IT_INFO) */
-    void (*changed)(void);
-    const char *help;
-    const char *(*value)(void); /* value computed when drawing (IT_INFO/IT_ACTION) */
-} Item;
-
-typedef struct { const char *name; IconId icon; const Item *items; int n; } Section;
+typedef struct Section { const char *name; IconId icon; const Item *items; int n; const struct Section *subs; } Section;
 
 /* ---------- handlinger ---------- */
 static void helper_bg(const char *args) { run_cmd("%s/%s >/dev/null 2>&1 &", helper_path(), args); }
@@ -176,25 +163,6 @@ static void act_phone_pin(void) { phone_pin_change(NULL); }
 static void act_netwatch(void) { app_push(netwatch_screen()); }
 static void act_bt_pair(void) { app_push(bt_pair_screen()); }
 static void forget_cb(void *ud, bool yes) { (void)ud; if (yes) bt_forget_all(); }
-/* YouTube: "Link with TV code" (the code is fetched from YouTube in the background) */
-typedef struct { char *code; } YtPair;
-static void ytpair_work(void *a) { ((YtPair *)a)->code = ytcast_pairing_code(); }
-static void ytpair_ok(void *ud, bool yes) { (void)ud; (void)yes; }
-static void ytpair_done(void *a) {
-    YtPair *p = a;
-    if (!p->code) app_toast(T("Could not get a code from YouTube - try again"));
-    else {
-        char *msg = str_printf(T("Open YouTube on your phone: Settings → Watch on TV → Link with TV code, and enter\n\n%s\n\nThe code works for about 5 minutes."), p->code);
-        confirm_open(T("YouTube: link with TV code"), msg, "OK", T("Close"), ytpair_ok, NULL);
-        free(msg);
-    }
-    free(p->code);
-    free(p);
-}
-static void act_ytpair(void) {
-    app_toast(T("Getting code from YouTube…"));
-    job_submit(ytpair_work, ytpair_done, calloc(1, sizeof(YtPair)));
-}
 static void act_bt_forget(void) { confirm_open(T("Forget all Bluetooth devices?"), T("The phones will need to be paired again afterwards."), T("Forget"), T("Cancel"), forget_cb, NULL); }
 
 /* --- name / text fields --- */
@@ -214,7 +182,6 @@ static void restart_music(void) { helper_bg("music restart"); }
 static void apply_name(void) { helper_bg("music restart"); helper_bg("cec setup"); bt_apply(); dlna_apply(); }
 void settings_apply_name(void) { apply_name(); }
 static void apply_share(void) { helper_bg("automount"); app_toast(T("Mounting network drive…")); }
-static void apply_iptv(void) { app_toast(T("Playlist saved - open Live TV")); }
 static void apply_cec(void) { helper_bg("cec setup"); }
 
 /* --- audio devices --- */
@@ -259,76 +226,27 @@ static void cec_done(char *out, void *ud) { (void)ud; str_trim(out); app_toast("
 static void act_cec_on(void) { run_async(cec_done, NULL, "cec tv-on"); }
 static void act_cec_off(void) { run_async(cec_done, NULL, "cec tv-off"); }
 
-/* --- Plex --- */
-static void act_xtream(void) { iptv_xtream_login(); }
 
-static void act_plex_logout(void) {
-    cfg_set("plex_token", "");
-    cfg_set("plex_server_uri", "");
-    cfg_set("plex_server_token", "");
-    app_toast(T("Signed out of Plex"));
+/* sign out of an app: confirm first, then everything saved for the account is deleted (see the *_forget functions) */
+static void (*signout_fn)(void);
+static const char *signout_app;
+static void signout_confirmed(void *ud, bool yes) {
+    (void)ud;
+    if (!yes || !signout_fn) return;
+    signout_fn();
+    app_toast(T("Signed out of %s"), signout_app);
 }
+void app_ask_signout(const char *app, void (*fn)(void)) {
+    char t[120];
+    snprintf(t, sizeof t, T("Sign out of %s?"), app);
+    signout_fn = fn;
+    signout_app = app;
+    confirm_open(t, T("Everything saved for the account on this box is deleted."), T("Sign out"), T("Cancel"), signout_confirmed, NULL);
+}
+static void act_os_logout(void) { app_ask_signout("OpenSubtitles", subs_forget); }
 
 /* --- system --- */
-static char **inst_devs;
-static int n_inst;
-static int inst_sel;
-static void install_finished(char *out, void *ud);
-static void install_confirm2(void *ud, bool yes) {
-    (void)ud;
-    if (!yes) return;
-    busy_open(T("Installing NotaTV…"));
-    run_async(install_finished, NULL, "install run %s", inst_devs[inst_sel]);
-}
-static void install_confirm1(void *ud, bool yes) {
-    (void)ud;
-    if (!yes) return;
-    char msg[300];
-    snprintf(msg, sizeof msg, T("EVERYTHING on %s will be permanently erased. Are you absolutely sure?"), inst_devs[inst_sel]);
-    confirm_open(T("Last chance"), msg, T("Erase and install"), T("Cancel"), install_confirm2, NULL);
-}
-static void install_pick(void *ud, int idx) {
-    (void)ud;
-    if (idx < 0) return;
-    inst_sel = idx;
-    char msg[300];
-    snprintf(msg, sizeof msg, T("NotaTV will be installed on %s. The disk will be erased."), inst_devs[idx]);
-    confirm_open(T("Install on internal disk?"), msg, T("Continue"), T("Cancel"), install_confirm1, NULL);
-}
 static void reboot_cb(void *ud, bool yes) { (void)ud; if (yes) helper_bg("power reboot"); }
-static void install_finished(char *out, void *ud) {
-    (void)ud;
-    busy_close();
-    if (strstr(out, "OK")) confirm_open(T("Installation complete"), T("Remove the USB stick and restart to boot from the internal disk."), T("Restart now"), T("Later"), reboot_cb, NULL);
-    else {
-        char *last = strrchr(out, '\n');
-        while (last && last > out && !last[1]) { *last = 0; last = strrchr(out, '\n'); }
-        app_toast(T("Installation failed: %s"), tr_msg(last ? last + 1 : out));
-    }
-}
-static void install_listed(char *out, void *ud) {
-    (void)ud;
-    for (int i = 0; i < n_inst; i++) free(inst_devs[i]);
-    free(inst_devs);
-    char **lines;
-    int n = split_lines(out, &lines);
-    inst_devs = calloc(n + 1, sizeof(char *));
-    char **labels = calloc(n + 1, sizeof(char *));
-    n_inst = 0;
-    for (int i = 0; i < n; i++) {
-        char *dev = strtok(lines[i], "\t"), *size = strtok(NULL, "\t"), *model = strtok(NULL, "\t");
-        if (!dev || strncmp(dev, "/dev/", 5)) continue;
-        inst_devs[n_inst] = str_dup(dev);
-        labels[n_inst] = str_printf("%s  ·  %s  ·  %s", dev, size ? size : "?", model ? model : "");
-        n_inst++;
-    }
-    if (n_inst == 0) app_toast(T("No suitable disks found"));
-    else choice_open(T("Choose disk"), (const char *const *)labels, n_inst, 0, install_pick, NULL);
-    for (int i = 0; i < n_inst; i++) free(labels[i]);
-    free(labels);
-    free(lines);
-}
-static void act_install(void) { run_async(install_listed, NULL, "install list"); }
 
 static void update_done(char *out, void *ud) {
     (void)ud;
@@ -338,11 +256,7 @@ static void update_done(char *out, void *ud) {
     if (!strcmp(last ? last + 1 : out, "OK")) confirm_open(T("Update installed"), T("Restart to use the new version."), T("Restart now"), T("Later"), reboot_cb, NULL);
     else app_toast("%s", *out ? tr_msg(out) : T("No update found"));
 }
-static void act_update_usb(void) {
-    busy_open(T("Looking for an update on USB…"));
-    run_async(update_done, NULL, "update usb");
-}
-/* GitHub update (Pi): check -> ask -> install -> reboot */
+/* update from GitHub releases: check -> ask -> install -> reboot */
 static void gh_installed(char *out, void *ud) { update_done(out, ud); }
 static void gh_install_cb(void *ud, bool yes) {
     (void)ud;
@@ -361,6 +275,7 @@ static void gh_checked(char *out, void *ud) {
     } else if (!strncmp(out, "NYESTE ", 7)) app_toast(T("You have the latest version (%s)"), out + 7);
     else app_toast("%s", *out ? tr_msg(out) : T("Could not check for updates"));
 }
+void settings_update_install(void) { gh_install_cb(NULL, true); }
 static void act_update_gh(void) {
     busy_open(T("Checking for updates…"));
     run_async(gh_checked, NULL, "update check");
@@ -406,13 +321,13 @@ static void act_reboot(void) { helper_bg("power reboot"); }
 static void act_poweroff(void) { helper_bg("power poweroff"); }
 
 /* ---------- sektioner ---------- */
-static const char *const onoff[] = {"0", "1", NULL};
+const char *const set_onoff[] = {"0", "1", NULL};
+#define onoff set_onoff
 static const char *const rate_o[] = {"50", "60", NULL}, *const rate_l[] = {"50 Hz", "60 Hz", NULL};
 static const char *const lang_o[] = {"da,dan,dk,en,eng", "en,eng,da,dan", "sv,swe,en,eng", "no,nor,nob,en,eng", "de,deu,ger,en,eng", "no-subs", NULL};
 static const char *const lang_l[] = {N_("Danish"), N_("English"), N_("Swedish"), N_("Norwegian"), N_("German"), N_("None"), NULL};
 static const char *const alang_o[] = {"da,dan,en,eng", "en,eng", "sv,swe,en,eng", "no,nor,en,eng", "de,deu,ger,en,eng", NULL};
 static const char *const alang_l[] = {N_("Danish"), N_("English"), N_("Swedish"), N_("Norwegian"), N_("German"), NULL};
-static const char *const ytq_o[] = {"2160", "1440", "1080", "720", NULL}, *const ytq_l[] = {"4K", "1440p", "1080p", "720p", NULL};
 static const char *const ss_o[] = {"0", "5", "10", "30", NULL}, *const ss_l[] = {N_("Off"), "5 min", "10 min", "30 min", NULL};
 static const char *const delay_o[] = {"-300", "-200", "-150", "-100", "-50", "0", "50", "100", "150", "200", "300", NULL};
 static const char *const delay_l[] = {"-300 ms", "-200 ms", "-150 ms", "-100 ms", "-50 ms", "0 ms", "+50 ms", "+100 ms", "+150 ms", "+200 ms", "+300 ms", NULL};
@@ -428,24 +343,36 @@ static const Item net_items[] = {
     {N_("Device name"), IT_TEXT, "device_name", "NotaTV", .changed = apply_name, .help = N_("The name shown in AirPlay, Plex and on the TV")},
 };
 static void apply_hdr_always(void) { if (app_video_suspend()) app_video_resume(); }
+const char *set_hdr_locked(void) { return display_hdr_ok() ? NULL : T("Not supported by the display"); }
+#define hdr_locked set_hdr_locked
+/* audio: the TV only lists the formats it accepts right now - often only after "Bitstream"/"Pass through" is
+   chosen in its own sound settings (also for a soundbar on ARC) */
+static const char *ac3_locked(void) { return display_audio_ok(DA_AC3) ? NULL : T("The TV does not accept it (check its sound output, e.g. Bitstream)"); }
+static const char *dts_locked(void) { return display_audio_ok(DA_DTS) ? NULL : T("The TV does not accept it (check its sound output, e.g. Bitstream)"); }
+static const char *hd_locked(void) { return display_audio_ok(DA_HD) ? NULL : T("The TV does not accept it (check its sound output, e.g. Bitstream)"); }
 static const char *const hdrm_o[] = {"apple", "film", NULL}, *const hdrm_l[] = {N_("Like Apple TV"), N_("From the movie"), NULL};
 static const Item av_items[] = {
     {N_("Display"), IT_INFO, .info_cmd = "display info"},
-    {"HDR", IT_TOGGLE, "hdr", "1", onoff, .help = N_("Send an HDR signal to the TV for HDR content")},
+    {"HDR", IT_TOGGLE, "hdr", "1", onoff, .help = N_("Send an HDR signal to the TV for HDR content"), .locked = hdr_locked},
     {N_("Match frame rate"), IT_TOGGLE, "match_rate", "1", onoff, .help = N_("Switch the TV to the movie's frame rate (e.g. 23.976 Hz) - avoids judder")},
     {N_("Frame rate for live TV"), IT_CYCLE, "iptv_rate", "50", rate_o, rate_l},
     {N_("Always HDR"), IT_TOGGLE, "hdr_always", "0", onoff, .changed = apply_hdr_always,
-     .help = N_("The TV stays in HDR all the time - menus too - so it never switches. Menus are converted to HDR")},
+     .help = N_("The TV stays in HDR all the time - menus too - so it never switches. Menus are converted to HDR"), .locked = hdr_locked},
     {N_("HDR brightness metadata"), IT_CYCLE, "hdr_meta", "apple", hdrm_o, hdrm_l,
-     .help = N_("Like Apple TV: fixed values (MaxCLL 4000) - brighter on many TVs. From the movie: exactly as the movie was mastered")},
+     .help = N_("Like Apple TV: fixed values (MaxCLL 4000) - brighter on many TVs. From the movie: exactly as the movie was mastered"),
+     .locked = hdr_locked},
     {N_("Audio output"), IT_ACTION, .action = act_audio_dev},
-    {N_("Surround passthrough"), IT_TOGGLE, "audio_passthrough", "0", onoff, .help = N_("Send Dolby/DTS unchanged to a receiver or soundbar")},
-    {N_("DTS passthrough"), IT_TOGGLE, "pt_dts", "1", onoff},
-    {"TrueHD / DTS-HD (Atmos)", IT_TOGGLE, "pt_hd", "0", onoff, .help = N_("Requires a receiver or soundbar that supports HD audio")},
+    {N_("Surround passthrough"), IT_TOGGLE, "audio_passthrough", "0", onoff, .help = N_("Send Dolby/DTS unchanged to a receiver or soundbar"), .locked = ac3_locked},
+    {N_("DTS passthrough"), IT_TOGGLE, "pt_dts", "1", onoff, .locked = dts_locked},
+    {"TrueHD / DTS-HD (Atmos)", IT_TOGGLE, "pt_hd", "0", onoff, .help = N_("Requires a receiver or soundbar that supports HD audio"), .locked = hd_locked},
     {N_("Audio delay (lip sync)"), IT_CYCLE, "audio_delay_ms", "0", delay_o, delay_l},
     {N_("Subtitle language"), IT_CYCLE, "sub_lang", "da,dan,dk,en,eng", lang_o, lang_l},
     {N_("Audio language"), IT_CYCLE, "audio_lang", "da,dan,en,eng", alang_o, alang_l},
     {N_("Play test sound"), IT_ACTION, .action = act_audio_test},
+    {N_("OpenSubtitles API key"), IT_TEXT, "os_apikey", "", .help = N_("Free: create an account on opensubtitles.com → Consumers → new API key")},
+    {N_("OpenSubtitles username"), IT_TEXT, "os_user", ""},
+    {N_("OpenSubtitles password"), IT_TEXT, "os_pass", ""},
+    {N_("Sign out of OpenSubtitles"), IT_ACTION, .action = act_os_logout},
 };
 static const Item bt_items[] = {
     {"Bluetooth", IT_TOGGLE, "bt_enabled", "1", onoff, .changed = bt_apply, .help = N_("Use the TV as a Bluetooth speaker for phones")},
@@ -453,6 +380,8 @@ static const Item bt_items[] = {
      .help = N_("Phones can only find and connect to the TV while Music or \"Pair a phone\" is open (and for 2 min. after). Paired controllers and keyboards can always connect. Turn off if phones should be able to connect on their own")},
     {N_("Pair a phone"), IT_ACTION, .action = act_bt_pair, .help = N_("Makes the TV visible for 3 minutes. The code is confirmed here on the TV")},
     {N_("Forget paired devices"), IT_ACTION, .action = act_bt_forget},
+    {N_("Cover art for Bluetooth music"), IT_TOGGLE, "music_cover_lookup", "1", onoff, .help = N_("Looks up cover art in MusicBrainz (open music database). Sends artist and album there")},
+    {N_("AirPlay (music from phone)"), IT_TOGGLE, "airplay_enabled", "1", onoff, .changed = restart_music, .help = N_("iPhone, iPad and Mac can play music on the TV. Local network only")},
 };
 static const Item cec_items[] = {
     {"Status", IT_INFO, .info_cmd = "cec status"},
@@ -463,28 +392,10 @@ static const Item cec_items[] = {
     {N_("Turn on TV now (test)"), IT_ACTION, .action = act_cec_on},
     {N_("Turn off TV now (test)"), IT_ACTION, .action = act_cec_off},
 };
-static const char *const plexst_o[] = {"hero", "focus", NULL}, *const plexst_l[] = {"Hero", N_("Focus"), NULL};
-static const Item app_items[] = {
-    {N_("Jellyfin: play from phone"), IT_TOGGLE, "jf_cast", "1", onoff, .help = N_("NotaTV appears under \"Play On\" in the Jellyfin app when you are signed in to Jellyfin here")},
+static const Item cast_items[] = {
     {N_("DLNA (send from apps)"), IT_TOGGLE, "dlna_enabled", "1", onoff, .changed = dlna_apply, .help = N_("Apps like BubbleUPnP and \"Cast to Device\" in Windows can send video, music and pictures. Local network only")},
     {N_("AirPlay screen mirroring"), IT_TOGGLE, "airplay_mirror", "1", onoff, .changed = mirror_apply, .help = N_("iPhone/iPad/Mac can mirror the screen to the TV (shown as \"<name> (screen)\"). Local network only")},
-    {N_("YouTube cast"), IT_TOGGLE, "ytcast_enabled", "1", onoff, .changed = ytcast_apply, .help = N_("The cast button in the YouTube app can play on NotaTV. Control goes through YouTube (Google)")},
-    {N_("YouTube: link with TV code"), IT_ACTION, .action = act_ytpair, .help = N_("If NotaTV does not show up under Cast in the YouTube app: link with a code")},
-    {N_("Plex cast"), IT_TOGGLE, "plexcast_enabled", "1", onoff, .changed = plexcast_apply, .help = N_("The Plex app on your phone can play on NotaTV (cast button) and control playback. Local network only")},
-    {N_("Cover art for Bluetooth music"), IT_TOGGLE, "music_cover_lookup", "1", onoff, .help = N_("Looks up cover art in MusicBrainz (open music database). Sends artist and album there")},
-    {N_("AirPlay (music from phone)"), IT_TOGGLE, "airplay_enabled", "1", onoff, .changed = restart_music, .help = N_("iPhone, iPad and Mac can play music on the TV. Local network only")},
-    {N_("YouTube max quality"), IT_CYCLE, "yt_quality", "2160", ytq_o, ytq_l},
-    {N_("YouTube subtitles"), IT_TOGGLE, "yt_subs", "0", onoff, .help = N_("Downloads English subtitles - makes start about 2 sec. slower")},
-    {N_("IPTV: sign in with Xtream Codes"), IT_ACTION, .action = act_xtream, .help = N_("Server, username and password from your IPTV provider")},
-    {N_("IPTV playlist (M3U link)"), IT_TEXT, "iptv_url", "", .changed = apply_iptv},
-    {N_("IPTV program guide (XMLTV)"), IT_TEXT, "iptv_epg", ""},
     {N_("Network drive"), IT_TEXT, "media_share", "", .changed = apply_share, .help = N_("smb://user:password@server/share or nfs://server/path")},
-    {N_("OpenSubtitles API key"), IT_TEXT, "os_apikey", "", .help = N_("Free: create an account on opensubtitles.com → Consumers → new API key")},
-    {N_("OpenSubtitles username"), IT_TEXT, "os_user", ""},
-    {N_("OpenSubtitles password"), IT_TEXT, "os_pass", ""},
-    {N_("Home screen (Plex and Jellyfin)"), IT_CYCLE, "plex_home_style", "hero", plexst_o, plexst_l, .help = N_("Hero: a featured title at the top. Focus: background and info follow the selected title")},
-    {N_("Plex server"), IT_INFO, .info_cmd = "plex-name"},
-    {N_("Sign out of Plex"), IT_ACTION, .action = act_plex_logout},
 };
 static const char *time_now(void) {
     static char b[96];
@@ -534,37 +445,20 @@ static const Item time_items[] = {
      .help = N_("On: the clock switches between summer and winter time by the region's rules. Off: standard time all year")},
     {"", IT_INFO, .value = dst_note},
 };
+/* NotaTV is updated from GitHub releases */
 static const Item sys_items[] = {
     {N_("Language"), IT_ACTION, .action = act_language, .value = lang_value, .help = N_("The language of the menus. The user interface restarts when you change it")},
     {N_("Version"), IT_INFO, .info_cmd = "sys version"},
     {N_("Boot time"), IT_INFO, .info_cmd = "sys boottime"},
     {N_("Uptime"), IT_INFO, .info_cmd = "sys uptime"},
     {N_("Hardware"), IT_INFO, .info_cmd = "sys hw"},
-    {N_("Running from"), IT_INFO, .info_cmd = "sys mode"},
-    {N_("Run the setup guide again"), IT_ACTION, .action = act_setup, .help = N_("Language, country, time, network, name and apps - like the first start")},
-    {N_("Screensaver"), IT_CYCLE, "screensaver_min", "10", ss_o, ss_l},
-    {N_("Show FPS"), IT_TOGGLE, "show_fps", "0", onoff, .help = N_("Frames per second and slowest frame (ms) in the top right - for troubleshooting")},
-    {N_("Developer mode (SSH)"), IT_TOGGLE, "ssh_enabled", "0", onoff, .changed = apply_ssh, .help = N_("SSH login as root (password: notatv)")},
-    {N_("Install on internal disk"), IT_ACTION, .action = act_install, .help = N_("Copies NotaTV from USB to the box's SSD")},
-    {N_("Update from USB"), IT_ACTION, .action = act_update_usb, .help = N_("Put notatv.efi or a new ISO on a USB stick")},
-    {N_("Sleep"), IT_ACTION, .action = act_sleep},
-    {N_("Restart"), IT_ACTION, .action = act_reboot},
-    {N_("Power off"), IT_ACTION, .action = act_poweroff},
-    {N_("Reset to factory settings"), IT_ACTION, .action = act_reset},
-};
-/* Pi: updated from GitHub releases - no installing/updating from USB */
-static const Item sys_items_rpi[] = {
-    {N_("Language"), IT_ACTION, .action = act_language, .value = lang_value, .help = N_("The language of the menus. The user interface restarts when you change it")},
-    {N_("Version"), IT_INFO, .info_cmd = "sys version"},
-    {N_("Boot time"), IT_INFO, .info_cmd = "sys boottime"},
-    {N_("Uptime"), IT_INFO, .info_cmd = "sys uptime"},
-    {N_("Hardware"), IT_INFO, .info_cmd = "sys hw"},
-    {N_("Running from"), IT_INFO, .info_cmd = "sys mode"},
     {N_("Run the setup guide again"), IT_ACTION, .action = act_setup, .help = N_("Language, country, time, network, name and apps - like the first start")},
     {N_("Screensaver"), IT_CYCLE, "screensaver_min", "10", ss_o, ss_l},
     {N_("Show FPS"), IT_TOGGLE, "show_fps", "0", onoff, .help = N_("Frames per second and slowest frame (ms) in the top right - for troubleshooting")},
     {N_("Developer mode (SSH)"), IT_TOGGLE, "ssh_enabled", "0", onoff, .changed = apply_ssh, .help = N_("SSH login as root (password: notatv)")},
     {N_("Update NotaTV"), IT_ACTION, .action = act_update_gh, .help = N_("Looks for a new version on GitHub and installs it")},
+    {N_("Update reminders"), IT_TOGGLE, "update_notify", "1", onoff,
+     .help = N_("Looks for a new version on GitHub twice a day and reminds you every other day. Off: NotaTV never checks by itself")},
     {N_("Undo last update"), IT_ACTION, .action = act_rollback, .help = N_("Goes back to the version from before the last update")},
     {N_("Sleep"), IT_ACTION, .action = act_sleep},
     {N_("Restart"), IT_ACTION, .action = act_reboot},
@@ -580,55 +474,65 @@ static const Item oc_items[] = {
     {N_("Apply and restart"), IT_ACTION, .action = act_oc_apply,
      .help = N_("The new frequency is tried once first and saved after the box has run fine for a minute")},
 };
-static const char *const mres_o[] = {"1280x720", "1920x1080", "2560x1440", "3840x2160", NULL};
-static const char *const mres_l[] = {"720p", "1080p", "1440p", "4K", NULL};
-static const char *const mfps_o[] = {"30", "60", "90", "120", NULL}, *const mfps_l[] = {"30", "60", "90", "120", NULL};
-static const char *const mbr_o[] = {"5000", "10000", "15000", "20000", "30000", "40000", "60000", "80000", NULL};
-static const char *const mbr_l[] = {"5 Mbit/s", "10 Mbit/s", "15 Mbit/s", "20 Mbit/s", "30 Mbit/s", "40 Mbit/s", "60 Mbit/s", "80 Mbit/s", NULL};
-static const char *const mcod_o[] = {"auto", "hevc", "h264", NULL}, *const mcod_l[] = {N_("Automatic (HEVC)"), "HEVC", N_("H.264 (slow)"), NULL};
-static const char *const mmode_o[] = {"", "1920x1080@120", "1920x1080@60", "3840x2160@60", NULL};
-static const char *const mmode_l[] = {N_("Keep the UI's"), N_("1080p 120 Hz (lowest latency)"), "1080p 60 Hz", "4K 60 Hz", NULL};
-static const Item game_items[] = {
-    {N_("Resolution"), IT_CYCLE, "moon_res", "1920x1080", mres_o, mres_l, .help = N_("The resolution the PC streams in")},
-    {N_("Frames per second"), IT_CYCLE, "moon_fps", "60", mfps_o, mfps_l, .help = N_("Above 60 requires the display mode to be 120 Hz")},
-    {"Bitrate", IT_CYCLE, "moon_bitrate", "20000", mbr_o, mbr_l, .help = N_("Higher = sharper picture, but more data on the network")},
-    {"Codec", IT_CYCLE, "moon_codec", "auto", mcod_o, mcod_l, .help = N_("HEVC decodes in ~4 ms, H.264 takes ~67 ms on a Pi 4")},
-    {N_("Display mode while gaming"), IT_CYCLE, "moon_mode", "1920x1080@120", mmode_o, mmode_l, .help = N_("120 Hz halves the wait for the next frame. The TV switches mode at start")},
-    {"HDR", IT_TOGGLE, "moon_hdr", "0", onoff, .help = N_("HEVC 10-bit HDR, if the PC's display is in HDR")},
-};
 #define NI(a) (int)(sizeof(a) / sizeof(a[0]))
-static Section sections[] = { /* not const: the System items are swapped on the Pi (settings_screen) */
+/* Settings → Apps: the installed apps that have settings (from the app register), and Cast and sharing.
+   Built when Settings opens (apps can be installed and uninstalled meanwhile). */
+#define MAX_APP_SECS 31
+static Item apps_links[MAX_APP_SECS + 1];
+static Section app_subs[MAX_APP_SECS + 1];
+static int n_app_links;
+static void build_app_sections(void) {
+    int n = 0;
+    for (int i = 0; i < app_count() && n < MAX_APP_SECS; i++) {
+        const NotaApp *a = app_at(i);
+        if (!app_installed(a) || !a->settings || a->n_settings <= 0) continue;
+        apps_links[n] = (Item){a->name, IT_SUB, .sub = n};
+        app_subs[n] = (Section){a->name, a->icon, a->settings, a->n_settings};
+        n++;
+    }
+    apps_links[n] = (Item){N_("Cast and sharing"), IT_SUB, .sub = n};
+    app_subs[n] = (Section){N_("Cast and sharing"), ICON_PLAY, cast_items, NI(cast_items)};
+    n_app_links = n + 1;
+}
+static Section sections[] = { /* not const: the number of Apps items is set when Settings opens */
     {N_("Network"), ICON_WIFI, net_items, NI(net_items)},
     {N_("Picture and sound"), ICON_FILM, av_items, NI(av_items)},
     {"HDMI-CEC", ICON_TV, cec_items, NI(cec_items)},
     {"Bluetooth", ICON_MUSIC, bt_items, NI(bt_items)},
-    {N_("Apps"), ICON_PLAY, app_items, NI(app_items)},
-    {N_("Games"), ICON_PLAY, game_items, NI(game_items)},
+    {N_("Apps"), ICON_PLAY, apps_links, 1, app_subs}, /* n is set by build_app_sections */
     {N_("Date and time"), ICON_CLOCK, time_items, NI(time_items)},
     {N_("System"), ICON_GEAR, sys_items, NI(sys_items)},
-    {"Overclock", ICON_POWER, oc_items, NI(oc_items)}, /* Pi only - must be last (see N_SEC) */
+    {"Overclock", ICON_POWER, oc_items, NI(oc_items)},
 };
-#define N_SEC (NI(sections) - (board_is_rpi() ? 0 : 1))
-#define MAX_ITEMS 32 /* the most items in one section (Apps has 20) */
+#define N_SEC NI(sections)
+#define MAX_ITEMS 32 /* the most items in one section (Picture and sound has 17) */
 _Static_assert(NI(net_items) <= MAX_ITEMS && NI(av_items) <= MAX_ITEMS && NI(cec_items) <= MAX_ITEMS && NI(bt_items) <= MAX_ITEMS &&
-               NI(app_items) <= MAX_ITEMS && NI(sys_items) <= MAX_ITEMS && NI(sys_items_rpi) <= MAX_ITEMS && NI(oc_items) <= MAX_ITEMS, "øg MAX_ITEMS");
+               NI(cast_items) <= MAX_ITEMS && NI(sys_items) <= MAX_ITEMS && NI(oc_items) <= MAX_ITEMS, "øg MAX_ITEMS");
 
 /* ---------- screen ---------- */
 typedef struct {
     int col, sec, item;
+    int sub;     /* open app section under Apps, -1 = the list */
     float scroll;
     char *info[MAX_ITEMS];
-    int info_sec;
+    int info_sec;  /* which list the info values belong to (see sec_id) */
     double info_t;
     bool info_loading;
 } Settings;
 
-typedef struct { Settings *s; int sec; char *vals[MAX_ITEMS]; int token; } InfoJob;
+typedef struct { Settings *s; int id; const Section *cs; char *vals[MAX_ITEMS]; int token; } InfoJob;
+
+/* the list of items on the right: the section, or an app's section under Apps */
+static const Section *cur_sec(const Settings *s) {
+    const Section *sec = &sections[s->sec];
+    return sec->subs && s->sub >= 0 ? &sec->subs[s->sub] : sec;
+}
+static int sec_id(const Settings *s) { return s->sec * 16 + s->sub + 1; }
 static int settings_token;
 
 static void info_work(void *arg) {
     InfoJob *j = arg;
-    const Section *sc = &sections[j->sec];
+    const Section *sc = j->cs;
     for (int i = 0; i < sc->n && i < MAX_ITEMS; i++) {
         if (sc->items[i].type != IT_INFO || !sc->items[i].info_cmd) continue;
         char *cmd = str_printf("%s/%s 2>/dev/null", helper_path(), sc->items[i].info_cmd);
@@ -640,7 +544,7 @@ static void info_work(void *arg) {
 
 static void info_done(void *arg) {
     InfoJob *j = arg;
-    if (j->token == settings_token && j->s->info_sec == j->sec) {
+    if (j->token == settings_token && j->s->info_sec == j->id) {
         for (int i = 0; i < MAX_ITEMS; i++) { free(j->s->info[i]); j->s->info[i] = j->vals[i]; }
         j->s->info_loading = false;
     } else {
@@ -655,7 +559,8 @@ static void info_refresh(Settings *s) {
     s->info_t = app_time();
     InfoJob *j = calloc(1, sizeof *j);
     j->s = s;
-    j->sec = s->info_sec = s->sec;
+    j->id = s->info_sec = sec_id(s);
+    j->cs = cur_sec(s);
     j->token = settings_token;
     job_submit(info_work, info_done, j);
 }
@@ -677,8 +582,8 @@ static void settings_destroy(Screen *sc) {
 
 static void settings_update(Screen *sc, float dt) {
     Settings *s = sc->st;
-    if (s->info_sec != s->sec || app_time() - s->info_t > 4) {
-        if (s->info_sec != s->sec) {
+    if (s->info_sec != sec_id(s) || app_time() - s->info_t > 4) {
+        if (s->info_sec != sec_id(s)) {
             for (int i = 0; i < MAX_ITEMS; i++) { free(s->info[i]); s->info[i] = NULL; }
             s->info_loading = false;
         }
@@ -713,8 +618,13 @@ static void settings_draw(Screen *sc) {
         draw_icon(sections[i].icon, 122, y + 32, 30, c);
         text_draw(F_SEMI, 28, 160, y + 15, c, AL_LEFT, T(sections[i].name));
     }
-    const Section *sec = &sections[s->sec];
+    const Section *sec = cur_sec(s);
     float x = 580, w = UI_W - x - 80;
+    if (s->sub >= 0) {
+        char crumb[160];
+        snprintf(crumb, sizeof crumb, "%s - %s", T(sections[s->sec].name), T(sec->name));
+        text_draw(F_SEMI, 26, x + 4, 112, C_TEXT2, AL_LEFT, crumb);
+    }
     clip_push(x - 10, 150, w + 20, UI_H - 240);
     for (int i = 0; i < sec->n; i++) {
         const Item *it = &sec->items[i];
@@ -728,6 +638,8 @@ static void settings_draw(Screen *sc) {
         Color vc = f ? RGB(50, 50, 55) : C_TEXT2;
         text_draw(F_SEMI, 28, x + 32, y + 21, lc, AL_LEFT, T(it->label));
         float vx = x + w - 32;
+        const char *lock = it->locked ? it->locked() : NULL;
+        if (lock) { text_draw_clip(F_REG, 26, vx, y + 23, w * 0.6f, vc, AL_RIGHT, lock); continue; }
         switch (it->type) {
         case IT_INFO: {
             const char *v = it->value ? it->value() : s->info[i] && *s->info[i] ? tr_msg(s->info[i]) : (s->info_loading ? "…" : "-");
@@ -758,6 +670,7 @@ static void settings_draw(Screen *sc) {
             text_draw_clip(F_REG, 24, vx, y + 24, w * 0.5f, vc, AL_RIGHT, !*v ? T("Not set") : secret ? "••••••••" : v);
             break;
         }
+        case IT_SUB:
         case IT_ACTION:
             fill_tri(vx - 14, y + 28, vx - 2, y + 38, vx - 14, y + 48, vc);
             if (it->value) text_draw_clip(F_REG, 26, vx - 30, y + 23, w * 0.5f, vc, AL_RIGHT, it->value());
@@ -765,8 +678,12 @@ static void settings_draw(Screen *sc) {
         }
     }
     clip_pop();
-    if (s->col == 1 && s->item < sec->n && sec->items[s->item].help)
-        text_draw(F_REG, 24, x + 32, UI_H - 70, C_TEXT3, AL_LEFT, T(sec->items[s->item].help));
+    if (s->col == 1 && s->item < sec->n && sec->items[s->item].help) {
+        /* one line as before; a longer text wraps to two lines instead of being cut off at the screen edge */
+        const char *h = T(sec->items[s->item].help);
+        if (text_width(F_REG, 24, h) <= w - 32) text_draw(F_REG, 24, x + 32, UI_H - 70, C_TEXT3, AL_LEFT, h);
+        else text_draw_wrap(F_REG, 24, x + 32, UI_H - 84, w - 32, 2, 30, C_TEXT3, h);
+    }
 }
 
 static int next_selectable(const Section *sec, int from, int dir) {
@@ -775,13 +692,20 @@ static int next_selectable(const Section *sec, int from, int dir) {
     return i >= 0 && i < sec->n ? i : from;
 }
 
+/* Back/Left: out of an app's settings to the list of apps, otherwise to the side menu */
+static bool leave_item(Settings *s) {
+    if (s->sub >= 0) { s->item = s->sub; s->sub = -1; return true; }
+    s->col = 0;
+    return true;
+}
+
 static bool settings_input(Screen *sc, const InputEvent *ev) {
     Settings *s = sc->st;
-    const Section *sec = &sections[s->sec];
+    const Section *sec = cur_sec(s);
     if (s->col == 0) {
         switch (ev->a) {
-        case A_UP: if (s->sec > 0) s->sec--; s->item = 0; return true;
-        case A_DOWN: if (s->sec < N_SEC - 1) s->sec++; s->item = 0; return true;
+        case A_UP: if (s->sec > 0) s->sec--; s->item = 0; s->sub = -1; return true;
+        case A_DOWN: if (s->sec < N_SEC - 1) s->sec++; s->item = 0; s->sub = -1; return true;
         case A_RIGHT: case A_OK: {
             s->col = 1;
             s->item = sec->items[0].type == IT_INFO ? next_selectable(sec, 0, 1) : 0;
@@ -791,10 +715,11 @@ static bool settings_input(Screen *sc, const InputEvent *ev) {
         }
     }
     const Item *it = &sec->items[s->item];
+    if (it->locked && it->locked() && (ev->a == A_OK || ev->a == A_RIGHT)) return true; /* locked item */
     switch (ev->a) {
     case A_UP: s->item = next_selectable(sec, s->item, -1); return true;
     case A_DOWN: s->item = next_selectable(sec, s->item, 1); return true;
-    case A_BACK: s->col = 0; return true;
+    case A_BACK: return leave_item(s);
     case A_LEFT: case A_RIGHT:
         if (it->type == IT_CYCLE) {
             int k = opt_index(it), n = 0;
@@ -809,7 +734,7 @@ static bool settings_input(Screen *sc, const InputEvent *ev) {
             if (it->changed) it->changed();
             return true;
         }
-        if (ev->a == A_LEFT) { s->col = 0; return true; }
+        if (ev->a == A_LEFT) return leave_item(s);
         return true;
     case A_OK:
         switch (it->type) {
@@ -828,6 +753,12 @@ static bool settings_input(Screen *sc, const InputEvent *ev) {
             text_item = it;
             keyboard_open(T(it->label), cfg_get(it->key, it->def), false, text_done, NULL);
             break;
+        case IT_SUB:
+            s->sub = it->sub;
+            s->item = 0;
+            s->scroll = 0;
+            s->item = sections[s->sec].subs[s->sub].items[0].type == IT_INFO ? next_selectable(cur_sec(s), 0, 1) : 0;
+            break;
         case IT_ACTION:
             if (it->action) it->action();
             break;
@@ -839,12 +770,14 @@ static bool settings_input(Screen *sc, const InputEvent *ev) {
 }
 
 Screen *settings_screen(void) {
-    if (board_is_rpi())
-        for (int i = 0; i < NI(sections); i++)
-            if (sections[i].items == sys_items) { sections[i].items = sys_items_rpi; sections[i].n = NI(sys_items_rpi); }
+    build_app_sections();
+    for (int i = 0; i < NI(sections); i++)
+        if (sections[i].items == apps_links) sections[i].n = n_app_links;
     Screen *s = calloc(1, sizeof *s);
     s->name = "settings";
-    s->st = calloc(1, sizeof(Settings));
+    Settings *st = calloc(1, sizeof(Settings));
+    st->sub = -1;
+    s->st = st;
     s->enter = settings_enter;
     s->resume = settings_enter;
     s->update = settings_update;

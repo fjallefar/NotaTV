@@ -1,0 +1,83 @@
+# NotaTV app "music" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Or connect directly from the TV:"
+msgstr "Eller forbind direkte fra TV'et:"
+
+msgid "+  Pair new phone"
+msgstr "+  Par ny telefon"
+
+msgid "Phone"
+msgstr "Telefon"
+
+msgid "   -   connecting…"
+msgstr "   -   forbinder …"
+
+msgid "Music"
+msgstr "Musik"
+
+msgid "Play music from your phone on the TV"
+msgstr "Spil musik fra din telefon på TV'et"
+
+msgid "Choose \"%s\""
+msgstr "Vælg \"%s\""
+
+msgid "Start music"
+msgstr "Start musik"
+
+msgid "in any app - Spotify too"
+msgstr "i en hvilken som helst app - også Spotify"
+
+msgid "AirPlay or Bluetooth"
+msgstr "AirPlay eller Bluetooth"
+
+msgid "the AirPlay icon, or Bluetooth on the phone"
+msgstr "AirPlay-ikonet, eller Bluetooth på telefonen"
+
+msgid "the music now plays on the TV"
+msgstr "musikken spiller nu på TV'et"
+
+msgid "AirPlay: iPhone, iPad and Mac on the same network  ·  Bluetooth: all phones"
+msgstr "AirPlay: iPhone, iPad og Mac på samme netværk  ·  Bluetooth: alle telefoner"
+
+msgid "CONNECTED"
+msgstr "FORBUNDET"
+
+msgid "Start music on the phone - or press OK"
+msgstr "Start musik på telefonen - eller tryk OK"
+
+msgid "Play"
+msgstr "Afspil"
+
+msgid "NOW PLAYING"
+msgstr "SPILLER NU"
+
+msgid "PAUSED"
+msgstr "PAUSET"
+
+msgid "Unknown track"
+msgstr "Ukendt nummer"
+
+msgid " from "
+msgstr " fra "
+
+msgid "   ·   ← →: previous/next"
+msgstr "   ·   ← →: forrige/næste"
+
+msgid "   ·   Control playback from the phone"
+msgstr "   ·   Styr afspilningen fra telefonen"
+
+msgid "Pause/play"
+msgstr "Pause/afspil"
+
+msgid "Bluetooth disconnected"
+msgstr "Bluetooth afbrudt"
+
+msgid "Disconnect Bluetooth"
+msgstr "Afbryd Bluetooth"
+
+msgid "Play music from your phone via AirPlay"
+msgstr "Spil musik fra telefonen via AirPlay"
+

@@ -1,18 +1,14 @@
-# NotaTV - build the whole system
-#   make            build everything and create notatv.iso
-#   make shell      build and run the user interface on the development PC (window)
-#   make qemu       start the built ISO in QEMU
+# NotaTV - build the whole system (Raspberry Pi 4)
+#   make / make rpi4  build everything: output-rpi4/, gives notatv-rpi4.img and the update package
+#                     (fetches Raspberry Pi's ffmpeg into src/rpi-ffmpeg the first time)
+#   make shell        build and run the user interface on the development PC (window)
 #   make menuconfig / linux-menuconfig   change the Buildroot/kernel configuration
 #   make clean-shell  rebuild only tvshell on the next build
-#   make rpi4       build the Raspberry Pi 4 version (output-rpi4/, gives notatv-rpi4.img)
-#                   (fetches Raspberry Pi's ffmpeg into src/rpi-ffmpeg the first time)
 .NOTPARALLEL:
 ROOT := $(CURDIR)
 BR := $(ROOT)/buildroot
-OUT := $(ROOT)/output
-BRMAKE := $(MAKE) -j1 -C $(BR) O=$(OUT) BR2_EXTERNAL=$(ROOT)/external
 BR_VERSION := 2026.08.1
-# Pi 4 is built next to x86 with per-package directories, so Buildroot can build packages in parallel
+# per-package directories, so Buildroot can build packages in parallel
 OUT_RPI := $(ROOT)/output-rpi4
 BRMAKE_RPI := $(MAKE) -C $(BR) O=$(OUT_RPI) BR2_EXTERNAL=$(ROOT)/external
 JOBS ?= $(shell nproc)
@@ -20,15 +16,10 @@ JOBS ?= $(shell nproc)
 FF_DIR := $(ROOT)/src/rpi-ffmpeg
 FF_COMMIT := $(shell cat $(ROOT)/external/board/rpi4/rpi-ffmpeg.commit)
 
-all: $(OUT)/.config
-	$(BRMAKE)
-	@echo; echo "Færdig: $(ROOT)/notatv.iso"
+all: rpi4
 
 $(BR)/Makefile:
 	git clone --depth 1 --branch $(BR_VERSION) https://gitlab.com/buildroot.org/buildroot.git $(BR)
-
-$(OUT)/.config: $(BR)/Makefile external/configs/notatv_x86_64_defconfig
-	$(BRMAKE) notatv_x86_64_defconfig
 
 rpi4: $(OUT_RPI)/.config rpi-ffmpeg
 	$(BRMAKE_RPI) -j$(JOBS)
@@ -48,20 +39,15 @@ rpi-ffmpeg:
 		echo "src/rpi-ffmpeg er ikke commit $(FF_COMMIT) - slet mappen, så hentes den igen"; exit 1; \
 	fi
 
-rpi4-menuconfig: $(OUT_RPI)/.config
-	$(BRMAKE_RPI) menuconfig
+clean-shell: $(OUT_RPI)/.config
+	$(BRMAKE_RPI) tvshell-dirclean
 
-clean-shell:
-	$(BRMAKE) tvshell-dirclean
-
-menuconfig linux-menuconfig savedefconfig: $(OUT)/.config
-	$(BRMAKE) $@
+menuconfig linux-menuconfig savedefconfig: $(OUT_RPI)/.config
+	$(BRMAKE_RPI) $@
 
 shell:
 	$(MAKE) -C src/shell
-	cd src/shell && TVSHELL_ASSETS=$$PWD/assets TVSHELL_DATA=/tmp/notatv-dev ./tvshell
+	$(MAKE) -C src/apps
+	cd src/shell && TVSHELL_ASSETS=$$PWD/assets TVSHELL_DATA=/tmp/notatv-dev TVSHELL_APPS=$(ROOT)/src/apps/out ./tvshell
 
-qemu:
-	scripts/qemu.sh $(ROOT)/notatv.iso
-
-.PHONY: all rpi4 rpi-ffmpeg rpi4-menuconfig clean-shell menuconfig linux-menuconfig savedefconfig shell qemu
+.PHONY: all rpi4 rpi-ffmpeg clean-shell menuconfig linux-menuconfig savedefconfig shell

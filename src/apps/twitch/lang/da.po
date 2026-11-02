@@ -1,0 +1,152 @@
+# NotaTV app "twitch" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "%d.%dM viewers"
+msgstr "%d,%d mio. seere"
+
+msgid "%d,%03d viewers"
+msgstr "%d.%03d seere"
+
+msgid "%d viewers"
+msgstr "%d seere"
+
+msgid "Login expired - sign in again"
+msgstr "Login er udløbet - log ind igen"
+
+msgid "Twitch responded with error %ld"
+msgstr "Twitch svarede med fejl %ld"
+
+msgid "Cannot reach Twitch"
+msgstr "Kan ikke nå Twitch"
+
+msgid "Followed channels - live now"
+msgstr "Fulgte kanaler - live nu"
+
+msgid "Trending now"
+msgstr "Populært lige nu"
+
+msgid "Categories"
+msgstr "Kategorier"
+
+msgid "Category"
+msgstr "Kategori"
+
+msgid "Search: %s"
+msgstr "Søgning: %s"
+
+msgid "Could not load your Twitch profile (%ld)"
+msgstr "Kunne ikke hente din Twitch-profil (%ld)"
+
+msgid "Connecting to Twitch…"
+msgstr "Forbinder til Twitch…"
+
+msgid "Signed in to Twitch"
+msgstr "Logget ind på Twitch"
+
+msgid "Login failed: %s"
+msgstr "Login fejlede: %s"
+
+msgid "no response"
+msgstr "intet svar"
+
+msgid "Could not start login: %s"
+msgstr "Kunne ikke starte login: %s"
+
+msgid "error from Twitch"
+msgstr "fejl fra Twitch"
+
+msgid "no connection"
+msgstr "ingen forbindelse"
+
+msgid "Getting login code…"
+msgstr "Henter login-kode…"
+
+msgid "Signed out of Twitch"
+msgstr "Logget ud af Twitch"
+
+msgid "%s is not live right now"
+msgstr "%s sender ikke lige nu"
+
+msgid "Sign in"
+msgstr "Log ind"
+
+msgid "Following"
+msgstr "Følger"
+
+msgid "Popular"
+msgstr "Populært"
+
+msgid "Search"
+msgstr "Søg"
+
+msgid "Sign out"
+msgstr "Log ud"
+
+msgid "Search Twitch"
+msgstr "Søg på Twitch"
+
+msgid "Sign out of Twitch?"
+msgstr "Log ud af Twitch?"
+
+msgid "You will need to sign in again via twitch.tv/activate."
+msgstr "Du skal logge ind igen via twitch.tv/activate."
+
+msgid "Cancel"
+msgstr "Annuller"
+
+msgid "The code has expired - press OK for a new one"
+msgstr "Koden er udløbet - tryk OK for en ny"
+
+msgid "Sign in with your phone"
+msgstr "Log ind med din telefon"
+
+msgid "1. Go to twitch.tv/activate"
+msgstr "1. Gå til twitch.tv/activate"
+
+msgid "   - or scan the QR code"
+msgstr "   - eller scan QR-koden"
+
+msgid "2. Enter the code:"
+msgstr "2. Skriv koden:"
+
+msgid "Waiting for you to approve…"
+msgstr "Venter på at du godkender…"
+
+msgid "Something went wrong"
+msgstr "Noget gik galt"
+
+msgid "Sign in to Twitch"
+msgstr "Log ind på Twitch"
+
+msgid "Watch the channels you follow, popular streams and categories.\n\nChoose Sign in - the box then shows a code that you enter at twitch.tv/activate on your phone."
+msgstr "Se dine fulgte kanaler, populære streams og kategorier.\n\nVælg Log ind - så viser boksen en kode, som du skriver på twitch.tv/activate fra telefonen."
+
+msgid "Try again"
+msgstr "Prøv igen"
+
+msgid "Left: menu"
+msgstr "Venstre: menu"
+
+msgid "None of the channels you follow are live right now"
+msgstr "Ingen af dine fulgte kanaler sender lige nu"
+
+msgid "Nothing found"
+msgstr "Intet fundet"
+
+msgid "Open"
+msgstr "Åbn"
+
+msgid "Watch"
+msgstr "Se"
+
+msgid "Sign out of Twitch"
+msgstr "Log ud af Twitch"
+
+msgid "Revokes the login at Twitch and deletes it from this box"
+msgstr "Tilbagekalder login hos Twitch og sletter det fra boksen"
+
+msgid "Live streams from the channels you follow and all of Twitch"
+msgstr "Live-streams fra dine fulgte kanaler og hele Twitch"
+

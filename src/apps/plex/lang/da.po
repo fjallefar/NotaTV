@@ -1,0 +1,323 @@
+# NotaTV app "plex" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "%s · S%d E%d"
+msgstr "%s · S%d A%d"
+
+msgid "No playable file"
+msgstr "Ingen afspilbar fil"
+
+msgid "%s%s%d min"
+msgstr "%s%s%d min"
+
+msgid "Quality: %s"
+msgstr "Kvalitet: %s"
+
+msgid "Resume from %s"
+msgstr "Fortsæt fra %s"
+
+msgid "Start over"
+msgstr "Start forfra"
+
+msgid "Play"
+msgstr "Afspil"
+
+msgid "Could not load from Plex"
+msgstr "Kunne ikke hente fra Plex"
+
+msgid "The server is no longer selected"
+msgstr "Serveren er ikke længere valgt"
+
+msgid "Plex: could not load what the app sent"
+msgstr "Plex: kunne ikke hente det, appen sendte"
+
+msgid "Plex: unknown server"
+msgstr "Plex: ukendt server"
+
+msgid "Plex: playing from your phone…"
+msgstr "Plex: afspiller fra din telefon …"
+
+msgid "Cannot get servers from plex.tv - check the network"
+msgstr "Kan ikke hente servere fra plex.tv - tjek netværket"
+
+msgid "No Plex servers on the account"
+msgstr "Ingen Plex-servere på kontoen"
+
+msgid "Found %d server(s), but none responded. Are they turned on?"
+msgstr "Fandt %d server(e), men ingen svarede. Er de tændt?"
+
+msgid "Cannot reach plex.tv - check the network"
+msgstr "Kan ikke kontakte plex.tv - tjek netværket"
+
+msgid "Connected! Finding your servers…"
+msgstr "Forbundet! Finder dine servere…"
+
+msgid "Try again"
+msgstr "Prøv igen"
+
+msgid "Find servers on the network"
+msgstr "Find servere på netværket"
+
+msgid "No Plex servers found on the network"
+msgstr "Ingen Plex-servere fundet på netværket"
+
+msgid "Found: %s - sign in with the code to use it"
+msgstr "Fundet: %s - log ind med koden for at bruge den"
+
+msgid "Found: %s - trying to connect…"
+msgstr "Fundet: %s - prøver at forbinde…"
+
+msgid "Link your Plex account"
+msgstr "Forbind din Plex-konto"
+
+msgid "Go to  plex.tv/link  on your phone or computer and enter the code:"
+msgstr "Gå til  plex.tv/link  på din telefon eller computer og indtast koden:"
+
+msgid "Connecting to Plex"
+msgstr "Forbinder til Plex"
+
+msgid "Finding your servers…"
+msgstr "Finder dine servere…"
+
+msgid "Could not get the server list from plex.tv"
+msgstr "Kunne ikke hente serverlisten fra plex.tv"
+
+msgid "The server is not responding - it cannot be selected right now"
+msgstr "Serveren svarer ikke - den kan ikke vælges lige nu"
+
+msgid "Plex servers"
+msgstr "Plex-servere"
+
+msgid "Tick the servers that should be shown in Plex and under Continue."
+msgstr "Sæt flueben ved de servere, der skal vises i Plex og under Fortsæt."
+
+msgid "No servers on the account"
+msgstr "Ingen servere på kontoen"
+
+msgid "Your server"
+msgstr "Din server"
+
+msgid "Shared by %s"
+msgstr "Delt af %s"
+
+msgid "another user"
+msgstr "en anden bruger"
+
+msgid "Selected libraries"
+msgstr "Udvalgte biblioteker"
+
+msgid "All libraries"
+msgstr "Alle biblioteker"
+
+msgid "Select / deselect"
+msgstr "Vælg / fravælg"
+
+msgid "Right"
+msgstr "Højre"
+
+msgid "Choose libraries"
+msgstr "Vælg biblioteker"
+
+msgid "Back"
+msgstr "Tilbage"
+
+msgid "Save"
+msgstr "Gem"
+
+msgid "At least one server must be selected"
+msgstr "Mindst én server skal være valgt"
+
+msgid "Select the server first to choose its libraries"
+msgstr "Vælg serveren først for at vælge dens biblioteker"
+
+msgid "Servers updated"
+msgstr "Servere opdateret"
+
+msgid "Libraries · %s"
+msgstr "Biblioteker · %s"
+
+msgid "Tick the libraries that should be shown in Plex."
+msgstr "Sæt flueben ved de biblioteker, der skal vises i Plex."
+
+msgid "No libraries (or the server is not responding)"
+msgstr "Ingen biblioteker (eller serveren svarer ikke)"
+
+msgid "Library"
+msgstr "Bibliotek"
+
+msgid "S%d E%d  ·  %s"
+msgstr "S%d A%d  ·  %s"
+
+msgid "  ·  %dh %02dm"
+msgstr "  ·  %dt %02dm"
+
+msgid "  ·  %dm"
+msgstr "  ·  %dm"
+
+msgid "  ·  %d episodes"
+msgstr "  ·  %d afsnit"
+
+msgid "Continue watching"
+msgstr "Fortsæt med at se"
+
+msgid "Movies"
+msgstr "Film"
+
+msgid "Shows"
+msgstr "Serier"
+
+msgid "Seasons"
+msgstr "Sæsoner"
+
+msgid "Episodes"
+msgstr "Afsnit"
+
+msgid "Collections"
+msgstr "Samlinger"
+
+msgid "Artists"
+msgstr "Kunstnere"
+
+msgid "Albums"
+msgstr "Albums"
+
+msgid "Tracks"
+msgstr "Numre"
+
+msgid "Actors"
+msgstr "Skuespillere"
+
+msgid "Directors"
+msgstr "Instruktører"
+
+msgid "Genres"
+msgstr "Genrer"
+
+msgid "Other"
+msgstr "Andet"
+
+msgid "Top results"
+msgstr "Bedste match"
+
+msgid "Home"
+msgstr "Hjem"
+
+msgid "Search"
+msgstr "Søg"
+
+msgid "Servers"
+msgstr "Servere"
+
+msgid "Sign out"
+msgstr "Log ud"
+
+msgid "Empty"
+msgstr "Tomt"
+
+msgid "The server did not respond. Choose servers in the side menu (left)."
+msgstr "Serveren svarede ikke. Vælg servere i sidemenuen (venstre)."
+
+msgid "Nothing here yet."
+msgstr "Her er ikke noget endnu."
+
+msgid "Resume"
+msgstr "Genoptag"
+
+msgid "OK: info   ·   Play button: play   ·   Left/Right: more"
+msgstr "OK: info   ·   Afspil-tasten: afspil   ·   Venstre/Højre: flere"
+
+msgid "Signed out of Plex"
+msgstr "Logget ud af Plex"
+
+msgid "Search: %s"
+msgstr "Søgning: %s"
+
+msgid "Search Plex"
+msgstr "Søg i Plex"
+
+msgid "Sign out of Plex?"
+msgstr "Log ud af Plex?"
+
+msgid "You will need to link again via plex.tv/link."
+msgstr "Du skal forbinde igen via plex.tv/link."
+
+msgid "Cancel"
+msgstr "Annuller"
+
+msgid "Choose servers"
+msgstr "Vælg servere"
+
+msgid "Sign out of Plex"
+msgstr "Log ud af Plex"
+
+msgid "%d min   "
+msgstr "%d min   "
+
+msgid "%s left   "
+msgstr "%s tilbage   "
+
+msgid "Continue (%s)"
+msgstr "Fortsæt (%s)"
+
+msgid "Trailer"
+msgstr "Trailer"
+
+msgid "Trailer (YouTube)"
+msgstr "Trailer (YouTube)"
+
+msgid "The Plex trailer could not be played - trying YouTube"
+msgstr "Plex-traileren kunne ikke afspilles - prøver YouTube"
+
+msgid "Finding trailer…"
+msgstr "Finder trailer…"
+
+msgid "Not needed - the TV shows HDR"
+msgstr "Ikke nødvendigt - tv'et viser HDR"
+
+msgid "Focus"
+msgstr "Fokus"
+
+msgid "Follow Plex"
+msgstr "Følg Plex"
+
+msgid "Language setting"
+msgstr "Sprogindstilling"
+
+msgid "Off"
+msgstr "Fra"
+
+msgid "Plex cast"
+msgstr "Plex-cast"
+
+msgid "The Plex app on your phone can play on NotaTV (cast button) and control playback. Local network only"
+msgstr "Plex-appen på telefonen kan afspille på NotaTV (cast-knappen) og styre afspilningen. Kun lokalt netværk"
+
+msgid "Plex subtitles"
+msgstr "Plex-undertekster"
+
+msgid "Follow Plex: the subtitle track chosen in Plex, otherwise none. Language setting: the player picks by Subtitle language under Picture and sound. Off: never"
+msgstr "Følg Plex: undertekstsporet valgt i Plex, ellers ingen. Sprogindstilling: afspilleren vælger efter Undertekstsprog under Billede og lyd. Fra: aldrig"
+
+msgid "Home screen (Plex and Jellyfin)"
+msgstr "Forside (Plex og Jellyfin)"
+
+msgid "Hero: a featured title at the top. Focus: background and info follow the selected title"
+msgstr "Hero: fremhævet titel øverst. Fokus: baggrund og info følger den titel du står på"
+
+msgid "Server converts HDR movies"
+msgstr "Serveren omregner HDR-film"
+
+msgid "Only when the TV shows HDR movies without HDR: the Plex server converts them instead of the box (1080p, stereo sound). Needs a powerful server"
+msgstr "Kun når tv'et viser HDR-film uden HDR: Plex-serveren omregner dem i stedet for boksen (1080p, stereolyd). Kræver en kraftig server"
+
+msgid "Plex server"
+msgstr "Plex-server"
+
+msgid "Movies and shows from your Plex server"
+msgstr "Film og serier fra din Plex-server"
+
+msgid "CONTINUE IN PLEX"
+msgstr "FORTSÆT I PLEX"
+

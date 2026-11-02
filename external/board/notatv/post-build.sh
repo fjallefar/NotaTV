@@ -24,22 +24,6 @@ EOR
 sed -i '/tty1/d' $TARGET/etc/inittab
 
 # --- smaller image = faster boot (the kernel unpacks everything at boot) ---
-FW=$TARGET/lib/firmware
-# Intel GPU: keep Skylake..Alder Lake/N100 (Gen9-Gen12); remove Arc/Meteor Lake and newer
-for p in dg1 dg2 mtl bmg lnl ptl pvc xe2 xe3 gsc arl; do rm -f $FW/i915/${p}_* 2>/dev/null; done
-rm -rf $FW/xe 2>/dev/null
-# iwlwifi/rtw89: keep only the newest firmware version per chip
-keep_newest() { # directory
-	d=$1; [ -d "$d" ] || return 0
-	ls "$d" | sed -n 's/^\(.*[-_]\)\([0-9][0-9]*\)\.\(ucode\|bin\|pnvm\)$/\1 \2 \3/p' | sort -k1,1 -k2,2n |
-	awk '{k=$1" "$3; last[k]=$1$2"."$3; all[k]=all[k]" "$1$2"."$3} END {for (k in all) {n=split(all[k],a," "); for (i=1;i<=n;i++) if (a[i]!=last[k]) print a[i]}}' |
-	while read -r f; do rm -f "$d/$f"; done
-}
-keep_newest $FW/intel/iwlwifi
-keep_newest $FW/rtw89
-rm -f $FW/rtw89/rtw8922* 2>/dev/null   # Wi-Fi 7 cards (not in mini PCs yet)
-# dead symlinks after the cleanup
-find $FW -xtype l -delete 2>/dev/null || true
 # fonts: only DejaVu Sans (subtitles)
 find $TARGET/usr/share/fonts/dejavu -type f ! -name 'DejaVuSans.ttf' ! -name 'DejaVuSans-Bold.ttf' -delete 2>/dev/null || true
 # time zones: all zones (country/region is chosen in Settings), but without "right/" (leap seconds, ~1.4 MB).

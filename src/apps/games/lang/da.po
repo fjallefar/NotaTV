@@ -1,0 +1,113 @@
+# NotaTV app "games" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Last used"
+msgstr "Sidst brugt"
+
+msgid "Paired with %s"
+msgstr "Parret med %s"
+
+msgid "Pairing interrupted"
+msgstr "Parring afbrudt"
+
+msgid "Games - pairing"
+msgstr "Spil - parring"
+
+msgid "Open https://%s:47990 on the PC → PIN"
+msgstr "Åbn https://%s:47990 på PC'en → PIN"
+
+msgid "Enter the code on Sunshine's page. Back = cancel"
+msgstr "Skriv koden på Sunshines side. Tilbage = annullér"
+
+msgid "Games"
+msgstr "Spil"
+
+msgid "PCs with Sunshine on the network"
+msgstr "PC'er med Sunshine på netværket"
+
+msgid "No PC found"
+msgstr "Ingen PC fundet"
+
+msgid "Start Sunshine on the PC, and check that the firewall allows ports 47984-48010."
+msgstr "Start Sunshine på PC'en, og tjek at firewallen tillader porte 47984-48010."
+
+msgid "Paired"
+msgstr "Parret"
+
+msgid "Not paired - OK to pair"
+msgstr "Ikke parret - OK for at parre"
+
+msgid "Unreachable"
+msgstr "Kan ikke nås"
+
+msgid "OK = start · While playing, Red opens the menu (continue, stats, quit)"
+msgstr "OK = start · Under spil åbner Rød menuen (fortsæt, stats, afslut)"
+
+msgid "No apps"
+msgstr "Ingen apps"
+
+msgid "The PC sent no apps."
+msgstr "PC'en sendte ingen apps."
+
+msgid "Running - OK continues"
+msgstr "Kører - OK fortsætter"
+
+msgid "The stream stopped with an error (see /tmp/tvmoon.log)"
+msgstr "Streamen stoppede med en fejl (se /tmp/tvmoon.log)"
+
+msgid "Quitting the game on the PC…"
+msgstr "Afslutter spillet på PC'en …"
+
+msgid "Search for PCs again"
+msgstr "Søg efter PC'er igen"
+
+msgid "Quit the running game on the PC"
+msgstr "Afslut det kørende spil på PC'en"
+
+msgid "Refresh the list"
+msgstr "Opdater listen"
+
+msgid "Automatic (HEVC)"
+msgstr "Automatisk (HEVC)"
+
+msgid "H.264 (slow)"
+msgstr "H.264 (langsom)"
+
+msgid "Keep the UI's"
+msgstr "Behold UI'ets"
+
+msgid "1080p 120 Hz (lowest latency)"
+msgstr "1080p 120 Hz (lavest forsinkelse)"
+
+msgid "Resolution"
+msgstr "Opløsning"
+
+msgid "The resolution the PC streams in"
+msgstr "Opløsningen PC'en sender i"
+
+msgid "Frames per second"
+msgstr "Billeder pr. sekund"
+
+msgid "Above 60 requires the display mode to be 120 Hz"
+msgstr "Over 60 kræver at skærmtilstanden er 120 Hz"
+
+msgid "Higher = sharper picture, but more data on the network"
+msgstr "Højere = skarpere billede, men mere data på netværket"
+
+msgid "HEVC decodes in ~4 ms, H.264 takes ~67 ms on a Pi 4"
+msgstr "HEVC dekodes på ~4 ms, H.264 bruger ~67 ms på Pi 4"
+
+msgid "Display mode while gaming"
+msgstr "Skærmtilstand under spil"
+
+msgid "120 Hz halves the wait for the next frame. The TV switches mode at start"
+msgstr "120 Hz halverer ventetiden på næste billede. TV'et skifter tilstand ved start"
+
+msgid "HEVC 10-bit HDR, if the PC's display is in HDR"
+msgstr "HEVC 10-bit HDR, hvis PC'ens skærm står i HDR"
+
+msgid "Play games from your PC via Sunshine (Moonlight)"
+msgstr "Spil fra din PC via Sunshine (Moonlight)"
+

@@ -287,6 +287,81 @@ void confirm_open(const char *title, const char *msg, const char *yes, const cha
     app_push(s);
 }
 
+/* ================= Next-up: "next episode" countdown (auto-advance) ================= */
+typedef struct {
+    char *poster, *title, *subtitle;
+    double deadline;
+    NextUpDone cb;
+    void *ud;
+} NextUp;
+
+static void nextup_finish(Screen *s, bool play) {
+    NextUp *n = s->st;
+    NextUpDone cb = n->cb;
+    void *ud = n->ud;
+    app_pop(); /* frees n */
+    if (cb) cb(ud, play);
+}
+
+static void nextup_update(Screen *s, float dt) {
+    (void)dt;
+    NextUp *n = s->st;
+    if (app_time() >= n->deadline) nextup_finish(s, true);
+}
+
+static void nextup_draw(Screen *s) {
+    NextUp *n = s->st;
+    double left = n->deadline - app_time();
+    int secs = left > 0 ? (int)left + (left > (int)left ? 1 : 0) : 0;
+    float w = 760, h = 250, x = UI_W - w - 60, y = UI_H - h - 60;
+    draw_shadow(x, y, w, h, 18, 30, s->anim);
+    fill_rrect(x, y, w, h, 18, RGBA(18, 20, 28, 246));
+    stroke_rrect(x, y, w, h, 18, 3, C_ACCENT);
+    if (n->poster) img_draw_cover(img_get(n->poster), x + 24, y + 24, 136, 202, 10, 1);
+    float tx = x + 190, ty = y + 30;
+    text_draw(F_SEMI, 26, tx, ty, C_TEXT2, AL_LEFT, T("Next episode"));
+    text_draw_clip(F_BOLD, 38, tx, ty + 44, w - 230, C_TEXT, AL_LEFT, n->title ? n->title : "");
+    text_draw_clip(F_REG, 26, tx, ty + 96, w - 230, C_TEXT2, AL_LEFT, n->subtitle ? n->subtitle : "");
+    char c[40];
+    snprintf(c, sizeof c, T("Starts in %d s"), secs);
+    text_draw(F_SEMI, 30, tx, y + h - 44, C_ACCENT, AL_LEFT, c);
+    text_draw(F_REG, 24, tx, y + h - 84, C_TEXT3, AL_LEFT, T("OK: play now · Back: cancel"));
+}
+
+static bool nextup_input(Screen *s, const InputEvent *ev) {
+    if ((ev->a == A_OK || ev->a == A_PLAY || ev->a == A_PLAYPAUSE) && !ev->repeat) { nextup_finish(s, true); return true; }
+    if (ev->a == A_BACK) { nextup_finish(s, false); return true; }
+    return ev->a != A_HOME; /* swallow other keys while the countdown is up */
+}
+
+static void nextup_destroy(Screen *s) {
+    NextUp *n = s->st;
+    free(n->poster);
+    free(n->title);
+    free(n->subtitle);
+    free(n);
+    free(s);
+}
+
+void nextup_open(const char *poster, const char *title, const char *subtitle, int seconds, NextUpDone cb, void *ud) {
+    Screen *s = calloc(1, sizeof *s);
+    NextUp *n = calloc(1, sizeof *n);
+    n->poster = str_dup(poster);
+    n->title = str_dup(title);
+    n->subtitle = str_dup(subtitle);
+    n->deadline = app_time() + (seconds > 0 ? seconds : 10);
+    n->cb = cb;
+    n->ud = ud;
+    s->name = "nextup";
+    s->st = n;
+    s->update = nextup_update;
+    s->draw = nextup_draw;
+    s->input = nextup_input;
+    s->destroy = nextup_destroy;
+    s->overlay = true;
+    app_push(s);
+}
+
 /* ================= Valgliste ================= */
 typedef struct {
     char title[128];

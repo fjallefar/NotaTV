@@ -1,0 +1,308 @@
+# NotaTV app "iptv" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Could not read the playlist"
+msgstr "Kunne ikke læse playlisten"
+
+msgid "Channel"
+msgstr "Kanal"
+
+msgid "Other channels"
+msgstr "Andre"
+
+msgid "No channels found in the playlist"
+msgstr "Ingen kanaler fundet i playlisten"
+
+msgid "Could not download the playlist. Check the URL and network."
+msgstr "Kunne ikke hente playlisten. Tjek URL og netværk."
+
+msgid "Denmark"
+msgstr "Danmark"
+
+msgid "Sweden"
+msgstr "Sverige"
+
+msgid "Norway"
+msgstr "Norge"
+
+msgid "Finland"
+msgstr "Finland"
+
+msgid "United Kingdom"
+msgstr "Storbritannien"
+
+msgid "English"
+msgstr "Engelsk"
+
+msgid "United States"
+msgstr "USA"
+
+msgid "Germany"
+msgstr "Tyskland"
+
+msgid "Netherlands"
+msgstr "Holland"
+
+msgid "France"
+msgstr "Frankrig"
+
+msgid "Italy"
+msgstr "Italien"
+
+msgid "Spain"
+msgstr "Spanien"
+
+msgid "Poland"
+msgstr "Polen"
+
+msgid "Turkey"
+msgstr "Tyrkiet"
+
+msgid "Russia"
+msgstr "Rusland"
+
+msgid "Arabic"
+msgstr "Arabisk"
+
+msgid "India"
+msgstr "Indien"
+
+msgid "Global"
+msgstr "Globalt"
+
+msgid "Loading channels…"
+msgstr "Henter kanaler…"
+
+msgid "Program guide: could not be downloaded"
+msgstr "Programguide: kunne ikke hentes"
+
+msgid "Program guide: no channels matched"
+msgstr "Programguide: ingen kanaler matchede"
+
+msgid "Program guide: %d of %d channels"
+msgstr "Programguide: %d af %d kanaler"
+
+msgid "No program guide - add an EPG URL under Settings (red button)"
+msgstr "Ingen programguide - tilføj en EPG-URL under Indstillinger (rød knap)"
+
+msgid "Loading program guide…"
+msgstr "Henter programguide…"
+
+msgid "Favorites"
+msgstr "Favoritter"
+
+msgid "All channels"
+msgstr "Alle kanaler"
+
+msgid "Add your IPTV provider's playlist (M3U link) or Xtream Codes login.\n\nSign in with Xtream Codes, or enter an M3U link."
+msgstr "Tilføj din IPTV-udbyders playliste (M3U-link) eller Xtream Codes-login.\n\nLog ind med Xtream Codes, eller indtast et M3U-link."
+
+msgid "\nEasiest: open http://%s on your phone and paste the link there."
+msgstr "\nNemmest: åbn http://%s på din telefon og indsæt linket der."
+
+msgid "No channels yet"
+msgstr "Ingen kanaler endnu"
+
+msgid "Sign in with Xtream Codes"
+msgstr "Log ind med Xtream Codes"
+
+msgid "Enter M3U link"
+msgstr "Indtast M3U-link"
+
+msgid "No channels"
+msgstr "Ingen kanaler"
+
+msgid "Press the red button to change the playlist."
+msgstr "Tryk på den røde knap for at ændre playliste."
+
+msgid "No favorites yet. Choose a channel and press Favorite at the bottom (or Yellow)."
+msgstr "Ingen favoritter endnu. Vælg en kanal og tryk Favorit nederst (eller Gul)."
+
+msgid "No channels in this group"
+msgstr "Ingen kanaler i gruppen"
+
+msgid "Move with up/down · OK when you are done"
+msgstr "Flyt med op/ned · OK når du er færdig"
+
+msgid "Right: move channel · The Favorite button at the bottom removes it"
+msgstr "Højre: flyt kanal · Favorit-knappen nederst fjerner den"
+
+msgid "Watch channel"
+msgstr "Se kanal"
+
+msgid "Channel menu"
+msgstr "Kanalmenu"
+
+msgid "Favorite"
+msgstr "Favorit"
+
+msgid "Updating channels…"
+msgstr "Opdaterer kanaler…"
+
+msgid "%s - expired %s"
+msgstr "%s - udløbet %s"
+
+msgid "%s - not active (%s)"
+msgstr "%s - ikke aktiv (%s)"
+
+msgid "%s - until %s"
+msgstr "%s - til %s"
+
+msgid "%s - no expiry date"
+msgstr "%s - ingen udløbsdato"
+
+msgid "M3U playlist link"
+msgstr "M3U-afspilningsliste"
+
+msgid "Not signed in"
+msgstr "Ikke logget ind"
+
+msgid "Cannot reach the server - check the address"
+msgstr "Kan ikke kontakte serveren - tjek adressen"
+
+msgid "The server did not respond like an Xtream server"
+msgstr "Serveren svarede ikke som en Xtream-server"
+
+msgid "The server rejected the request (HTTP %ld)"
+msgstr "Serveren afviste forespørgslen (HTTP %ld)"
+
+msgid "Wrong username or password"
+msgstr "Forkert brugernavn eller kodeord"
+
+msgid "The account is not active (%s)"
+msgstr "Kontoen er ikke aktiv (%s)"
+
+msgid "Signed in - subscription until %s"
+msgstr "Logget ind - abonnement til %s"
+
+msgid "Signed in"
+msgstr "Logget ind"
+
+msgid "Signing in…"
+msgstr "Logger ind…"
+
+msgid "Xtream: password"
+msgstr "Xtream: kodeord"
+
+msgid "Xtream: username"
+msgstr "Xtream: brugernavn"
+
+msgid "Switched to %s"
+msgstr "Skiftet til %s"
+
+msgid "Only one account - add another first"
+msgstr "Kun én konto - tilføj en til først"
+
+msgid "Switch account"
+msgstr "Skift konto"
+
+msgid "Signed out"
+msgstr "Logget ud"
+
+msgid "Signed out - now using %s"
+msgstr "Logget ud - bruger nu %s"
+
+msgid "Sign out of this account?"
+msgstr "Log ud af denne konto?"
+
+msgid "Its channels, favorites and history are deleted. Other accounts you have added stay saved."
+msgstr "Kontoens kanaler, favoritter og historik slettes. Andre konti, du har tilføjet, bliver gemt."
+
+msgid "Sign out"
+msgstr "Log ud"
+
+msgid "Cancel"
+msgstr "Annuller"
+
+msgid "Playlist URL (M3U)"
+msgstr "Playliste-URL (M3U)"
+
+msgid "Program guide URL (XMLTV)"
+msgstr "Programguide-URL (XMLTV)"
+
+msgid "Xtream: server address (e.g. host.example:8080)"
+msgstr "Xtream: serveradresse (fx host.dk:8080)"
+
+msgid "No program guide for %s"
+msgstr "Ingen programguide for %s"
+
+msgid "%s added to favorites"
+msgstr "%s tilføjet til favoritter"
+
+msgid "%s removed from favorites"
+msgstr "%s fjernet fra favoritter"
+
+msgid "Move with up/down - press OK when you are done"
+msgstr "Flyt med op/ned - tryk OK når du er færdig"
+
+msgid "Remove from favorites"
+msgstr "Fjern fra favoritter"
+
+msgid "Add to favorites"
+msgstr "Tilføj til favoritter"
+
+msgid "Program schedule"
+msgstr "Programoversigt"
+
+msgid "Move favorite"
+msgstr "Flyt favorit"
+
+msgid "Update channels now"
+msgstr "Opdater kanaler nu"
+
+msgid "Change playlist (M3U link)"
+msgstr "Skift playliste (M3U-link)"
+
+msgid "Xtream Codes login"
+msgstr "Xtream Codes-login"
+
+msgid "Program guide (EPG) URL"
+msgstr "Programguide (EPG) URL"
+
+msgid "Enter playlist link (M3U)"
+msgstr "Indtast playliste-link (M3U)"
+
+msgid "Add IPTV"
+msgstr "Tilføj IPTV"
+
+msgid "Playlist saved - open Live TV"
+msgstr "Playliste gemt - åbn Live TV"
+
+msgid "Account"
+msgstr "Konto"
+
+msgid "Add account"
+msgstr "Tilføj konto"
+
+msgid "Xtream Codes login from your IPTV provider. The current account stays until the new one works"
+msgstr "Xtream Codes-login fra din IPTV-udbyder. Den nuværende konto bliver, til den nye virker"
+
+msgid "Choose between the accounts you have added"
+msgstr "Vælg mellem de konti, du har tilføjet"
+
+msgid "Sign out of this account"
+msgstr "Log ud af denne konto"
+
+msgid "IPTV playlist (M3U link)"
+msgstr "IPTV playliste (M3U-link)"
+
+msgid "IPTV program guide (XMLTV)"
+msgstr "IPTV programguide (XMLTV)"
+
+msgid "RECENTLY WATCHED"
+msgstr "SENEST SET"
+
+msgid "Live TV  ·  press down for your recent channels"
+msgstr "Live TV  ·  tryk ned for dine seneste kanaler"
+
+msgid "Live TV"
+msgstr "Live TV"
+
+msgid "Watch live TV and channels from your IPTV provider"
+msgstr "Se live-tv og kanaler fra din IPTV-udbyder"
+
+msgid "Recent channels"
+msgstr "Seneste kanaler"
+

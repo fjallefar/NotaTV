@@ -1,0 +1,35 @@
+# NotaTV app "media" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Cannot open the folder"
+msgstr "Kan ikke åbne mappen"
+
+msgid "Media"
+msgstr "Medier"
+
+msgid "Drives"
+msgstr "Drev"
+
+msgid "No drives found"
+msgstr "Ingen drev fundet"
+
+msgid "Empty folder"
+msgstr "Tom mappe"
+
+msgid "Plug a USB drive into the box, or add a network drive under Settings → Cast and sharing."
+msgstr "Sæt et USB-drev i boksen, eller tilføj et netværksdrev under Indstillinger → Cast og deling."
+
+msgid "There are no movies, music or pictures in this folder."
+msgstr "Der er ingen film, musik eller billeder i denne mappe."
+
+msgid "Refreshed"
+msgstr "Opdateret"
+
+msgid "Refresh"
+msgstr "Opdater"
+
+msgid "Movies, music and pictures from USB and network"
+msgstr "Film, musik og billeder fra USB og netværk"
+

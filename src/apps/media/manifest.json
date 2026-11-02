@@ -1,0 +1,13 @@
+{
+  "id": "media",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Media",
+  "desc": "Movies, music and pictures from USB and network",
+  "icon": "folder",
+  "c1": [123, 77, 255],
+  "c2": [75, 42, 179],
+  "fg": [255, 255, 255],
+  "order": 90,
+  "default": true
+}

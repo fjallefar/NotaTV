@@ -1,0 +1,215 @@
+# NotaTV app "jellyfin" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "S%d E%d · %s"
+msgstr "S%d A%d · %s"
+
+msgid "%dh %02dm"
+msgstr "%dt %02dm"
+
+msgid "%d season"
+msgstr "%d sæson"
+
+msgid "%d seasons"
+msgstr "%d sæsoner"
+
+msgid "Continue watching"
+msgstr "Fortsæt med at se"
+
+msgid "Next episode"
+msgstr "Næste afsnit"
+
+msgid "Recently added · %s"
+msgstr "Senest tilføjet · %s"
+
+msgid "Home"
+msgstr "Hjem"
+
+msgid "Search"
+msgstr "Søg"
+
+msgid "Change server"
+msgstr "Skift server"
+
+msgid "Sign out"
+msgstr "Log ud"
+
+msgid "Login expired - sign in again"
+msgstr "Login er udløbet - log ind igen"
+
+msgid "The server responded with error %ld"
+msgstr "Serveren svarede med fejl %ld"
+
+msgid "Cannot reach %s"
+msgstr "Kan ikke nå %s"
+
+msgid "Connecting to Jellyfin…"
+msgstr "Forbinder til Jellyfin…"
+
+msgid "Signed in to Jellyfin"
+msgstr "Logget ind på Jellyfin"
+
+msgid "Unexpected response from the server"
+msgstr "Uventet svar fra serveren"
+
+msgid "Wrong username or password"
+msgstr "Forkert brugernavn eller kodeord"
+
+msgid "Login failed (HTTP %ld)"
+msgstr "Login fejlede (HTTP %ld)"
+
+msgid "Signing in…"
+msgstr "Logger ind…"
+
+msgid "Jellyfin: password"
+msgstr "Jellyfin: kodeord"
+
+msgid "Jellyfin: username"
+msgstr "Jellyfin: brugernavn"
+
+msgid "Jellyfin address (e.g. 192.168.1.10:8096)"
+msgstr "Jellyfin-adresse (fx 192.168.1.10:8096)"
+
+msgid "No Jellyfin servers found on the network"
+msgstr "Ingen Jellyfin-servere fundet på netværket"
+
+msgid "No Jellyfin servers found - enter the address"
+msgstr "Ingen Jellyfin-servere fundet - indtast adressen"
+
+msgid "Enter address manually"
+msgstr "Indtast adresse selv"
+
+msgid "Found 1 Jellyfin server"
+msgstr "Fandt 1 Jellyfin-server"
+
+msgid "Jellyfin servers on the network"
+msgstr "Jellyfin-servere på netværket"
+
+msgid "Searching for Jellyfin servers on the network…"
+msgstr "Søger efter Jellyfin-servere på netværket…"
+
+msgid "Signed out of Jellyfin"
+msgstr "Logget ud af Jellyfin"
+
+msgid "Try again"
+msgstr "Prøv igen"
+
+msgid "Sign in again"
+msgstr "Log ind igen"
+
+msgid "Find server"
+msgstr "Find server"
+
+msgid "Find server on the network"
+msgstr "Find server på netværket"
+
+msgid "Enter address"
+msgstr "Indtast adresse"
+
+msgid "Results for \"%s\""
+msgstr "Resultater for \"%s\""
+
+msgid "Search Jellyfin"
+msgstr "Søg i Jellyfin"
+
+msgid "Sign out of Jellyfin?"
+msgstr "Log ud af Jellyfin?"
+
+msgid "You will need to sign in again to watch your movies and shows."
+msgstr "Du skal logge ind igen for at se dine film og serier."
+
+msgid "Cancel"
+msgstr "Annuller"
+
+msgid "Resume"
+msgstr "Genoptag"
+
+msgid "Play"
+msgstr "Afspil"
+
+msgid "OK: info   ·   Play button: play   ·   Left/Right: more"
+msgstr "OK: info   ·   Afspil-tasten: afspil   ·   Venstre/Højre: flere"
+
+msgid "Connect to Jellyfin"
+msgstr "Forbind til Jellyfin"
+
+msgid "Watch movies and shows from your Jellyfin server.\n\nFind the server on the network, or enter the address yourself (e.g. 192.168.1.10:8096). Then your username and password - you can also type from your phone."
+msgstr "Se film og serier fra din Jellyfin-server.\n\nFind serveren på netværket, eller indtast adressen selv (fx 192.168.1.10:8096). Derefter brugernavn og kodeord - du kan også skrive fra telefonen."
+
+msgid "Could not connect"
+msgstr "Kunne ikke forbinde"
+
+msgid "Left (from the first button): menu"
+msgstr "Venstre (fra første knap): menu"
+
+msgid "Nothing found"
+msgstr "Intet fundet"
+
+msgid "Collection"
+msgstr "Samling"
+
+msgid "%s - trailer"
+msgstr "%s - trailer"
+
+msgid "Finding trailer…"
+msgstr "Finder trailer…"
+
+msgid "Continue (%s)"
+msgstr "Fortsæt (%s)"
+
+msgid "Start over"
+msgstr "Start forfra"
+
+msgid "Trailer (YouTube)"
+msgstr "Trailer (YouTube)"
+
+msgid "Seasons"
+msgstr "Sæsoner"
+
+msgid "Episodes"
+msgstr "Afsnit"
+
+msgid "Jellyfin: could not load the title (%ld)"
+msgstr "Jellyfin: kunne ikke hente titlen (%ld)"
+
+msgid "Focus"
+msgstr "Fokus"
+
+msgid "Follow Jellyfin"
+msgstr "Følg Jellyfin"
+
+msgid "Language setting"
+msgstr "Sprogindstilling"
+
+msgid "Off"
+msgstr "Fra"
+
+msgid "Jellyfin subtitles"
+msgstr "Jellyfin-undertekster"
+
+msgid "Follow Jellyfin: the audio and subtitles your Jellyfin user settings pick (language, smart, forced only). Language setting: the player picks by Subtitle language under Picture and sound. Off: never"
+msgstr "Følg Jellyfin: lyd og undertekster som dine Jellyfin-brugerindstillinger vælger (sprog, smart, kun tvungne). Sprogindstilling: afspilleren vælger efter Undertekstsprog under Billede og lyd. Fra: aldrig"
+
+msgid "Jellyfin: play from phone"
+msgstr "Jellyfin: afspil fra telefonen"
+
+msgid "NotaTV appears under \"Play On\" in the Jellyfin app when you are signed in to Jellyfin here"
+msgstr "NotaTV vises under \"Afspil på\" i Jellyfin-appen, når du er logget ind på Jellyfin her"
+
+msgid "Home screen (Plex and Jellyfin)"
+msgstr "Forside (Plex og Jellyfin)"
+
+msgid "Hero: a featured title at the top. Focus: background and info follow the selected title"
+msgstr "Hero: fremhævet titel øverst. Fokus: baggrund og info følger den titel du står på"
+
+msgid "Sign out of Jellyfin"
+msgstr "Log ud af Jellyfin"
+
+msgid "Invalidates the login at the server and deletes it from this box"
+msgstr "Gør loginnet ugyldigt på serveren og sletter det fra boksen"
+
+msgid "Movies and shows from your Jellyfin server"
+msgstr "Film og serier fra din Jellyfin-server"
+
