@@ -95,9 +95,11 @@ typedef struct {
     char *id, *type, *name, *series, *series_id, *overview, *year, *backdrop_id, *logo_id, *rating;
     int index, parent_index, child_count;
     int unplayed;
+    int tmdb; /* ProviderIds.Tmdb (0 = unknown): finds the right subtitles for a movie */
     int rt_critic, community10; /* Rotten Tomatoes % and community rating x10; -1 = unknown */
     double pos, run; /* seconds */
     bool played;
+    char last_played[32]; /* UserData.LastPlayedDate (ISO 8601, compares as text); "" = never */
 } JItem;
 
 static void jitem_free(JItem *j) {
@@ -134,10 +136,14 @@ static void jitem_parse(JItem *j, cJSON *o) {
     j->index = (int)jnum(o, "IndexNumber");
     j->parent_index = (int)jnum(o, "ParentIndexNumber");
     j->child_count = (int)jnum(o, "ChildCount");
+    cJSON *tm = cJSON_GetObjectItem(cJSON_GetObjectItem(o, "ProviderIds"), "Tmdb");
+    if (cJSON_IsString(tm)) j->tmdb = atoi(tm->valuestring);
     j->run = jnum(o, "RunTimeTicks") / TICKS;
     cJSON *ud = cJSON_GetObjectItem(o, "UserData");
     j->pos = jnum(ud, "PlaybackPositionTicks") / TICKS;
     j->played = cJSON_IsTrue(cJSON_GetObjectItem(ud, "Played"));
+    cJSON *lp = cJSON_GetObjectItem(ud, "LastPlayedDate");
+    if (cJSON_IsString(lp)) snprintf(j->last_played, sizeof j->last_played, "%s", lp->valuestring);
     j->unplayed = (int)jnum(ud, "UnplayedItemCount");
     /* backdrop: its own, otherwise the series'/parent's */
     cJSON *bt = cJSON_GetObjectItem(o, "BackdropImageTags");
@@ -370,6 +376,16 @@ static void jf_streams(const JItem *j, JStreams *t) {
     cJSON_Delete(info);
 }
 
+/* OpenSubtitles search in the player menu (the shell does the search and the download) */
+static int jf_sub_search(void *ud, char ***labels) {
+    JItem *j = ((PlayCtxJ *)ud)->it;
+    if (is_ep(j) && j->series && j->parent_index > 0) return subs_search(0, j->series, j->parent_index, j->index, labels);
+    char q[300];
+    snprintf(q, sizeof q, "%s %s", j->name ? j->name : "", j->year ? j->year : "");
+    return subs_search(j->tmdb, q, 0, 0, labels);
+}
+static char *jf_sub_fetch(void *ud, int idx) { (void)ud; return subs_fetch(idx); }
+
 /* true = played to the end (or "Next episode" was pressed). watched (optional): counted as watched. next (optional):
    receives the next episode when it is known, also when playback was stopped early. */
 static bool jf_play(JItem *j, bool resume, bool *watched, JItem *next) {
@@ -411,6 +427,8 @@ static bool jf_play(JItem *j, bool resume, bool *watched, JItem *next) {
     rq.tick = remote_play_tick;
     rq.skip_info = is_ep(j) || (j->type && !strcmp(j->type, "Movie")) ? jf_skip_info : NULL;
     rq.extra = (const char *const *)extra;
+    rq.sub_search = is_ep(j) || (j->type && !strcmp(j->type, "Movie")) ? jf_sub_search : NULL;
+    rq.sub_fetch = jf_sub_fetch;
     rq.ud = &c;
     rq.media_hdr = ts.hdr;
     rq.media_w = ts.w;
@@ -541,7 +559,7 @@ static JRow *add_row(Jf *v, const char *title, const char *path, bool landscape)
     return r;
 }
 
-#define FIELDS "Fields=Overview,ProductionYear,ChildCount,OfficialRating,CommunityRating,CriticRating&EnableImageTypes=Primary,Backdrop,Logo"
+#define FIELDS "Fields=Overview,ProductionYear,ChildCount,ProviderIds,OfficialRating,CommunityRating,CriticRating&EnableImageTypes=Primary,Backdrop,Logo"
 
 static void show_home(Jf *v) {
     free_rows(v);
@@ -732,12 +750,112 @@ static void find_servers(Jf *v) {
 
 /* ---------- log out ---------- */
 /* sign out: the token is invalidated on the server, and the server, user and login are forgotten here */
+/* ---------- the row on the home screen: what you can continue (like Plex's On Deck) ----------
+   Resume (started, newest first) and then Next Up (the next episode of series you watch), one per series, max 12.
+   Fetched when the home screen opens and after playback (row_refresh); OK plays from where you stopped. */
+#define HOME_MAX 12
+static JItem home_it[HOME_MAX];
+static HomeItem home_rows[HOME_MAX];
+static int n_home, home_gen, home_pending;
+static JItem *home_got[2]; /* the replies: 0 = Resume, 1 = Next Up */
+static int n_home_got[2];
+
+static void home_got_free(void) {
+    for (int w = 0; w < 2; w++) {
+        for (int i = 0; i < n_home_got[w]; i++) jitem_free(&home_got[w][i]);
+        free(home_got[w]);
+        home_got[w] = NULL;
+        n_home_got[w] = 0;
+    }
+}
+
+static void home_clear(void) {
+    for (int i = 0; i < n_home; i++) {
+        jitem_free(&home_it[i]);
+        free(home_rows[i].title); free(home_rows[i].subtitle); free(home_rows[i].image); free(home_rows[i].key); free(home_rows[i].logo);
+    }
+    memset(home_rows, 0, sizeof home_rows);
+    n_home = 0;
+}
+
+static bool home_has_series(const JItem *list, int n, const JItem *j) {
+    for (int i = 0; i < n; i++) {
+        if (list[i].id && j->id && !strcmp(list[i].id, j->id)) return true;
+        if (list[i].series_id && j->series_id && !strcmp(list[i].series_id, j->series_id)) return true;
+    }
+    return false;
+}
+
+static void home_build(void) {
+    home_clear();
+    for (int w = 0; w < 2; w++)
+        for (int i = 0; i < n_home_got[w]; i++) {
+            JItem *j = &home_got[w][i];
+            if (n_home >= HOME_MAX || !j->id || home_has_series(home_it, n_home, j)) continue;
+            home_it[n_home] = *j;
+            memset(j, 0, sizeof *j); /* moved */
+            const JItem *e = &home_it[n_home];
+            HomeItem *h = &home_rows[n_home];
+            char t[300], st[300];
+            item_label(e, t, sizeof t, st, sizeof st);
+            h->title = str_dup(t);
+            h->subtitle = str_dup(st);
+            h->image = backdrop_url(e, 640);
+            h->logo = logo_url(e);
+            h->key = str_printf("jf:%s", e->id);
+            h->progress = e->run > 0 ? e->pos / e->run : 0;
+            n_home++;
+        }
+    home_got_free();
+}
+
+/* ud: (gen << 1) | which (0 = Resume, 1 = Next Up) */
+static void home_cb(void *ud, cJSON *json, long status) {
+    intptr_t u = (intptr_t)ud;
+    int w = (int)(u & 1);
+    home_pending--;
+    if ((u >> 1) != home_gen) return; /* signed out meanwhile */
+    if (status == 200 && json) {
+        cJSON *arr = cJSON_IsArray(json) ? json : cJSON_GetObjectItem(json, "Items"), *o;
+        home_got[w] = calloc(cJSON_GetArraySize(arr) + 1, sizeof(JItem));
+        cJSON_ArrayForEach(o, arr) jitem_parse(&home_got[w][n_home_got[w]++], o);
+    }
+    if (home_pending == 0) home_build();
+}
+
+static void jellyfin_row_refresh(void) {
+    if (!*jf_token() || !*jf_uid() || home_pending > 0) return;
+    home_gen++;
+    home_got_free();
+    char p[600];
+    snprintf(p, sizeof p, "/UserItems/Resume?userId=%s&Limit=12&MediaTypes=Video&" FIELDS, jf_uid());
+    home_pending++;
+    jf_call_ex("GET", p, NULL, home_cb, (void *)(intptr_t)(home_gen << 1), true);
+    snprintf(p, sizeof p, "/Shows/NextUp?userId=%s&Limit=12&" FIELDS, jf_uid());
+    home_pending++;
+    jf_call_ex("GET", p, NULL, home_cb, (void *)(intptr_t)((home_gen << 1) | 1), true);
+}
+
+static int jellyfin_row(HomeItem **items) {
+    *items = home_rows;
+    return *jf_token() ? n_home : 0;
+}
+
+static void jellyfin_row_open(const HomeItem *it, int idx) {
+    (void)idx;
+    for (int i = 0; it->key && i < n_home; i++)
+        if (!strcmp(it->key + 3, home_it[i].id)) { jf_play_chain(&home_it[i], true, NULL); return; }
+}
+
 void jellyfin_forget(void) {
     if (*jf_token()) cJSON_Delete(jf_get_sync("POST", "/Sessions/Logout", "", 4));
     cfg_set("jf_token", "");
     cfg_set("jf_uid", "");
     cfg_set("jf_url", "");
     cfg_set("jf_name", "");
+    home_gen++; /* replies on the way are dropped */
+    home_got_free();
+    home_clear();
     wipe_session_traces();
 }
 static void logout_cb(void *ud, bool yes) {
@@ -1258,78 +1376,193 @@ static void jf_play_chain(const JItem *it, bool resume, JItem *back) {
     jf_chain_run(c, resume);
 }
 
+/* ---- detail page: a movie (buttons), or a series: the series at the top, Play/Continue, the seasons and the
+   episodes of the chosen season. A series page is also opened from an episode (e.g. "Continue watching" or
+   "Latest") or a season; all episodes are fetched at once and grouped by season (like in Plex). ---- */
+#define JD_MAX_SEASONS 128
 typedef struct {
     JItem it;
-    bool series;
-    JRow seasons, eps; /* series only */
-    int focus;         /* 0 buttons, 1 seasons, 2 episodes */
+    bool series, have_info, placed;
+    JRow eps;                               /* series: every episode, in season/episode order */
+    int seasons[JD_MAX_SEASONS], n_seasons; /* season numbers, specials (0) last */
+    int *sidx, n_sidx;                      /* episodes of the chosen season */
+    int next;                               /* the episode Play/Continue plays (-1 = none) */
+    char focus_id[64];                      /* opened from this episode */
+    int want_season;                        /* opened from this season (-1 = the next episode's) */
+    int focus;                              /* 0 buttons, 1 seasons, 2 episodes */
     int btn, scol, ecol;
-    float ssx, esx, scroll;
-    int token;
+    float ssx, esx;
+    int gen; /* jf_play_gen when the episodes were fetched */
 } JDetail;
 static JDetail *live_d;
 
-static void eps_load(JDetail *d) {
-    jf_gen++; /* replies for the previously chosen season are ignored */
-    row_free(&d->eps);
-    d->ecol = 0;
-    if (d->scol >= d->seasons.n) return;
-    d->eps.loading = true;
-    d->eps.landscape = true;
-    char *p = str_printf("/Shows/%s/Episodes?SeasonId=%s&userId=%s&" FIELDS, d->it.id, d->seasons.it[d->scol].id, jf_uid());
-    jf_call("GET", p, NULL, row_done, &d->eps);
-    free(p);
+/* which episode Play means (same rules as Plex): the one in progress if it was watched last, otherwise the first
+   unwatched after the one watched most recently, otherwise the first unwatched - specials only when nothing else */
+static int jf_pick_next(const JItem *e, int n) {
+    int prog = -1, last = -1;
+    for (int i = 0; i < n; i++) {
+        if (e[i].pos > 30 && !e[i].played && (prog < 0 || strcmp(e[i].last_played, e[prog].last_played) > 0)) prog = i;
+        if (e[i].played && (last < 0 || strcmp(e[i].last_played, e[last].last_played) >= 0)) last = i;
+    }
+    if (prog >= 0 && (last < 0 || strcmp(e[prog].last_played, e[last].last_played) >= 0)) return prog;
+    for (int pass = 0; pass < 2; pass++) {
+        if (last >= 0)
+            for (int i = last + 1; i < n; i++) if (!e[i].played && (pass || e[i].parent_index > 0)) return i;
+        for (int i = 0; i < n; i++) if (!e[i].played && (pass || e[i].parent_index > 0)) return i;
+    }
+    for (int i = 0; i < n; i++) if (e[i].parent_index > 0) return i;
+    return n ? 0 : -1;
 }
 
-static void seasons_done(void *ud, cJSON *json, long status) {
+static void jd_pick_season(JDetail *d, int si) {
+    d->scol = si < 0 ? 0 : si >= d->n_seasons ? d->n_seasons - 1 : si;
+    d->n_sidx = 0;
+    if (!d->n_seasons) return;
+    for (int i = 0; i < d->eps.n; i++) if (d->eps.it[i].parent_index == d->seasons[d->scol]) d->sidx[d->n_sidx++] = i;
+}
+static int jd_season_of(JDetail *d, int s) {
+    for (int i = 0; i < d->n_seasons; i++) if (d->seasons[i] == s) return i;
+    return -1;
+}
+static int jd_ep_pos(JDetail *d, const char *id) {
+    for (int i = 0; id && *id && i < d->n_sidx; i++) if (d->eps.it[d->sidx[i]].id && !strcmp(d->eps.it[d->sidx[i]].id, id)) return i;
+    return -1;
+}
+
+static void info_done(void *ud, cJSON *json, long status) {
+    JDetail *d = ud;
+    if (d != live_d || status != 200 || !json) return;
+    cJSON *o = cJSON_GetArrayItem(cJSON_GetObjectItem(json, "Items"), 0);
+    if (!o) return;
+    JItem it;
+    jitem_parse(&it, o);
+    if (!it.id) { jitem_free(&it); return; }
+    jitem_free(&d->it);
+    d->it = it;
+    d->have_info = true;
+}
+
+static void eps_done(void *ud, cJSON *json, long status) {
     JDetail *d = ud;
     if (d != live_d) return;
-    row_done(&d->seasons, json, status);
-    /* start at the first season with unwatched episodes */
-    d->scol = 0;
-    eps_load(d);
+    int keep_season = d->n_seasons ? d->seasons[d->scol] : -1;
+    char keep_id[64] = "";
+    if (d->ecol < d->n_sidx && d->eps.it[d->sidx[d->ecol]].id) snprintf(keep_id, sizeof keep_id, "%s", d->eps.it[d->sidx[d->ecol]].id);
+    if (status != 200 || !json) { d->eps.loading = false; return; }
+    row_free(&d->eps);
+    row_done(&d->eps, json, status);
+    int w = 0; /* only episodes, with the series filled in (for playback and "next episode") */
+    for (int i = 0; i < d->eps.n; i++) {
+        JItem *e = &d->eps.it[i];
+        if (!is_ep(e)) { jitem_free(e); continue; }
+        if (!e->series) e->series = str_dup(d->it.name);
+        if (!e->series_id) e->series_id = str_dup(d->it.id);
+        d->eps.it[w++] = *e;
+    }
+    d->eps.n = w;
+    free(d->sidx);
+    d->sidx = calloc(d->eps.n + 1, sizeof(int));
+    d->n_seasons = 0;
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < d->eps.n; i++) {
+            int s = d->eps.it[i].parent_index;
+            if ((s == 0) != (pass == 1) || jd_season_of(d, s) >= 0 || d->n_seasons >= JD_MAX_SEASONS) continue;
+            d->seasons[d->n_seasons++] = s;
+        }
+    d->next = jf_pick_next(d->eps.it, d->eps.n);
+    if (!d->placed) {
+        d->placed = true;
+        int season = d->want_season >= 0 ? d->want_season : d->next >= 0 ? d->eps.it[d->next].parent_index : -1;
+        int si = jd_season_of(d, season);
+        jd_pick_season(d, si < 0 ? 0 : si);
+        int pos = jd_ep_pos(d, d->focus_id);
+        if (pos < 0 && d->next >= 0) pos = jd_ep_pos(d, d->eps.it[d->next].id);
+        d->ecol = pos < 0 ? 0 : pos;
+    } else {
+        int si = jd_season_of(d, keep_season);
+        jd_pick_season(d, si < 0 ? 0 : si);
+        int pos = jd_ep_pos(d, keep_id);
+        d->ecol = pos < 0 ? 0 : pos;
+    }
+    if (d->next < 0 && d->focus == 0) d->focus = 1;
+}
+
+static void jd_load(JDetail *d) {
+    if (!d->series) return;
+    d->gen = jf_play_gen;
+    d->eps.loading = true;
+    char *p = str_printf("/Shows/%s/Episodes?userId=%s&SortBy=ParentIndexNumber,IndexNumber&SortOrder=Ascending&" FIELDS, d->it.id, jf_uid());
+    jf_call("GET", p, NULL, eps_done, d);
+    free(p);
 }
 
 static void jd_enter(Screen *s) {
     JDetail *d = s->st;
     live_d = d;
-    if (d->series && !d->seasons.n) {
-        d->seasons.loading = true;
-        char *p = str_printf("/Shows/%s/Seasons?userId=%s&" FIELDS, d->it.id, jf_uid());
-        jf_call("GET", p, NULL, seasons_done, d);
+    if (d->series && !d->have_info) { /* opened from an episode or a season: fetch the series itself */
+        char *p = str_printf("/Items?userId=%s&Ids=%s&" FIELDS, jf_uid(), d->it.id);
+        jf_call("GET", p, NULL, info_done, d);
         free(p);
     }
+    jd_load(d);
 }
 static void jd_resume(Screen *s) {
     JDetail *d = s->st;
     live_d = d;
-    if (d->series && d->seasons.n) eps_load(d); /* progress after playback */
+    if (d->gen != jf_play_gen) jd_load(d); /* progress, watched marks and the next episode after playback */
 }
 
 static void jd_destroy(Screen *s) {
     JDetail *d = s->st;
     if (live_d == d) live_d = NULL;
-    jf_gen++; /* pending replies must not write into the freed rows */
+    jf_gen++; /* pending replies must not write into the freed page */
     jitem_free(&d->it);
-    row_free(&d->seasons);
     row_free(&d->eps);
+    free(d->sidx);
     free(d);
     free(s);
 }
 
+static void season_label(int s, char *b, size_t n) {
+    if (s == 0) snprintf(b, n, "%s", T("Specials"));
+    else snprintf(b, n, T("Season %d"), s);
+}
+static float pill_w(int s) {
+    char l[64];
+    season_label(s, l, sizeof l);
+    return text_width(F_SEMI, 26, l) + 60;
+}
+#define JD_PILL_Y 610.0f
+#define JD_EP_Y 712.0f
+#define JD_EP_W 384.0f
+#define JD_EP_H 216.0f
+#define JD_EP_GAP 28.0f
+
 static void jd_update(Screen *s, float dt) {
     JDetail *d = s->st;
-    d->scroll = anim_to(d->scroll, d->focus >= 1 ? 380 : 0, dt, 12);
-    float t1 = d->scol * 230 - 700, t2 = d->ecol * 470 - 900;
-    d->ssx = anim_to(d->ssx, t1 > 0 ? t1 : 0, dt, 14);
-    d->esx = anim_to(d->esx, t2 > 0 ? t2 : 0, dt, 14);
+    if (d->series && d->gen != jf_play_gen) jd_load(d); /* after a playback */
+    float avail = UI_W - 240, px = 0, t = 0;
+    for (int i = 0; i < d->n_seasons; i++) {
+        float w = pill_w(d->seasons[i]);
+        if (i == d->scol && px + w > avail) t = px + w - avail;
+        px += w + 16;
+    }
+    d->ssx = anim_to(d->ssx, t, dt, 12);
+    float sel = d->ecol * (JD_EP_W + JD_EP_GAP);
+    d->esx = anim_to(d->esx, sel > avail - JD_EP_W ? sel - (avail - JD_EP_W) : 0, dt, 12);
 }
 
-/* buttons: [Resume] [Start over | Play] [Trailer] */
+/* buttons: [Resume] [Start over | Play] [Trailer]; for a series they are about the next episode */
 typedef enum { JB_RESUME, JB_PLAY, JB_START, JB_TRAILER } JBtn;
+static const JItem *jd_target(const JDetail *d) {
+    if (!d->series) return &d->it;
+    return d->next >= 0 && d->next < d->eps.n ? &d->eps.it[d->next] : NULL;
+}
 static int jd_buttons(const JDetail *d, JBtn *k) {
+    const JItem *t = jd_target(d);
+    if (!t) return 0;
     int n = 0;
-    if (d->it.pos > 30 && d->it.run > 0) { k[n++] = JB_RESUME; k[n++] = JB_START; }
+    if (t->pos > 30 && t->run > 0) { k[n++] = JB_RESUME; k[n++] = JB_START; }
     else k[n++] = JB_PLAY;
     if (d->it.type && !strcmp(d->it.type, "Movie")) k[n++] = JB_TRAILER;
     return n;
@@ -1354,76 +1587,105 @@ static void jd_draw(Screen *s) {
     JItem *it = &d->it;
     draw_background();
     char *bu = backdrop_url(it, 1920);
-    if (img_draw_cover(img_get(bu), 0, 0, UI_W, UI_H, 0, 0.55f)) {
+    if (img_draw_cover(img_get(bu), 0, 0, UI_W, UI_H, 0, 0.5f)) {
         fill_hgrad(0, 0, UI_W * 0.8f, UI_H, RGBA(8, 9, 13, 250), RGBA(8, 9, 13, 0));
-        fill_vgrad(0, UI_H * 0.5f, UI_W, UI_H * 0.5f, RGBA(8, 9, 13, 0), RGBA(8, 9, 13, 240));
+        fill_vgrad(0, UI_H * 0.4f, UI_W, UI_H * 0.6f, RGBA(8, 9, 13, 0), RGBA(8, 9, 13, 245));
     }
     free(bu);
-    float sc = d->scroll, x = 120;
-    draw_jinfo(it, x, 150 - sc, 1, d->series ? 3 : 5, false);
-    if (!d->series) {
-        JBtn k[4];
-        int nb = jd_buttons(d, k);
-        if (d->btn >= nb) d->btn = nb - 1;
-        float bx = x, by = 780;
-        for (int b = 0; b < nb; b++) {
-            char lb[64], dur[32];
-            switch (k[b]) {
-            case JB_RESUME: snprintf(lb, sizeof lb, T("Continue (%s)"), fmt_duration(it->pos, dur, sizeof dur)); break;
-            case JB_PLAY: snprintf(lb, sizeof lb, T("Play")); break;
-            case JB_START: snprintf(lb, sizeof lb, T("Start over")); break;
-            default: snprintf(lb, sizeof lb, T("Trailer (YouTube)")); break;
-            }
-            bool f = d->btn == b;
-            float w = text_width(F_SEMI, 28, lb) + 110;
-            fill_rrect(bx, by, w, 76, 38, f ? C_FOCUS : RGBA(255, 255, 255, 40));
-            draw_icon(k[b] == JB_TRAILER ? ICON_FILM : ICON_PLAY, bx + 42, by + 38, 26, f ? RGB(10, 10, 10) : C_TEXT);
-            text_draw(F_SEMI, 28, bx + 70, by + 20, f ? RGB(10, 10, 10) : C_TEXT, AL_LEFT, lb);
-            bx += w + 24;
-        }
+    float x = 120;
+    const JItem *fe = d->series && d->focus == 2 && d->ecol < d->n_sidx ? &d->eps.it[d->sidx[d->ecol]] : NULL;
+    if (fe) { /* the episode in focus, with the series' logo */
+        JItem tmp = *fe;
+        if (!tmp.logo_id) tmp.logo_id = it->logo_id;
+        draw_jinfo(&tmp, x, d->series ? 90 : 150, 1, 3, false);
+    } else if (d->series && d->n_seasons) { /* the number of seasons from the episodes (not counting specials) */
+        int ns = 0;
+        for (int i = 0; i < d->n_seasons; i++) if (d->seasons[i] > 0) ns++;
+        int cc = it->child_count;
+        it->child_count = ns;
+        draw_jinfo(it, x, 90, 1, 3, false);
+        it->child_count = cc;
+    } else draw_jinfo(it, x, d->series ? 90 : 150, 1, d->series ? 3 : 5, false);
+    if (d->series && !d->n_seasons) {
+        if (d->eps.loading) draw_spinner(UI_W / 2, JD_EP_Y + 60, 30, C_TEXT2);
         return;
     }
-    /* seasons */
-    float sy = 800 - sc;
-    text_draw(F_SEMI, 30, 120, sy, d->focus == 1 ? C_TEXT : C_TEXT2, AL_LEFT, T("Seasons"));
-    if (d->seasons.loading && !d->seasons.n) draw_spinner(220, sy + 160, 24, C_TEXT2);
-    for (int i = 0; i < d->seasons.n; i++) {
-        float px = 120 + i * 230 - d->ssx;
-        if (px > UI_W || px + 200 < 0) continue;
-        bool f = d->focus == 1 && d->scol == i;
-        bool cur = d->scol == i;
-        draw_tile(&d->seasons.it[i], px, sy + 56, 200, 300, false, f);
-        if (cur && !f) fill_rrect(px + 60, sy + 56 + 306, 80, 5, 2, JF_ACCENT);
+    /* buttons */
+    JBtn k[4];
+    int nb = jd_buttons(d, k);
+    if (d->btn >= nb) d->btn = nb ? nb - 1 : 0;
+    const JItem *t = jd_target(d);
+    float bx = x, by = d->series ? 500 : 780;
+    for (int b = 0; b < nb; b++) {
+        char lb[96], dur[32];
+        switch (k[b]) {
+        case JB_RESUME:
+            if (d->series) snprintf(lb, sizeof lb, T("Continue S%d E%d (%s)"), t->parent_index, t->index, fmt_duration(t->pos, dur, sizeof dur));
+            else snprintf(lb, sizeof lb, T("Continue (%s)"), fmt_duration(t->pos, dur, sizeof dur));
+            break;
+        case JB_PLAY:
+            if (d->series) snprintf(lb, sizeof lb, T("Play S%d E%d"), t->parent_index, t->index);
+            else snprintf(lb, sizeof lb, T("Play"));
+            break;
+        case JB_START: snprintf(lb, sizeof lb, T("Start over")); break;
+        default: snprintf(lb, sizeof lb, T("Trailer (YouTube)")); break;
+        }
+        bool f = d->focus == 0 && d->btn == b;
+        float w = text_width(F_SEMI, 28, lb) + 110;
+        fill_rrect(bx, by, w, 76, 38, f ? C_FOCUS : RGBA(255, 255, 255, 40));
+        draw_icon(k[b] == JB_TRAILER ? ICON_FILM : ICON_PLAY, bx + 42, by + 38, 26, f ? RGB(10, 10, 10) : C_TEXT);
+        text_draw(F_SEMI, 28, bx + 70, by + 20, f ? RGB(10, 10, 10) : C_TEXT, AL_LEFT, lb);
+        bx += w + 24;
     }
-    /* episodes in the chosen season */
-    float ey = sy + 470;
-    text_draw(F_SEMI, 30, 120, ey, d->focus == 2 ? C_TEXT : C_TEXT2, AL_LEFT, T("Episodes"));
-    if (d->eps.loading && !d->eps.n) draw_spinner(220, ey + 140, 24, C_TEXT2);
-    for (int i = 0; i < d->eps.n; i++) {
-        float px = 120 + i * 470 - d->esx;
-        if (px > UI_W || px + 440 < 0) continue;
-        JItem *e = &d->eps.it[i];
+    if (!d->series) return;
+    /* seasons */
+    clip_push(0, JD_PILL_Y - 10, UI_W, 80);
+    float px = x - d->ssx;
+    for (int i = 0; i < d->n_seasons; i++) {
+        char l[64];
+        season_label(d->seasons[i], l, sizeof l);
+        float w = pill_w(d->seasons[i]);
+        bool chosen = i == d->scol, f = d->focus == 1 && chosen;
+        if (px + w > 0 && px < UI_W) {
+            fill_rrect(px, JD_PILL_Y, w, 58, 29, f ? C_FOCUS : chosen ? RGBA(255, 255, 255, 70) : RGBA(255, 255, 255, 22));
+            text_draw(F_SEMI, 26, px + w / 2, JD_PILL_Y + 14, f ? RGB(10, 10, 10) : chosen ? C_TEXT : C_TEXT2, AL_CENTER, l);
+        }
+        px += w + 16;
+    }
+    clip_pop();
+    /* episodes of the chosen season */
+    clip_push(0, JD_EP_Y - 30, UI_W, UI_H - JD_EP_Y + 30);
+    for (int i = 0; i < d->n_sidx; i++) {
+        JItem *e = &d->eps.it[d->sidx[i]];
+        float ex = x + i * (JD_EP_W + JD_EP_GAP) - d->esx, ey = JD_EP_Y;
+        if (ex > UI_W || ex + JD_EP_W < 0) continue;
         bool f = d->focus == 2 && d->ecol == i;
-        float sc2 = f ? 1.05f : 1, w = 440 * sc2, h = 248 * sc2, xx = px - (w - 440) / 2, yy = ey + 56 - (h - 248) / 2;
-        if (f) draw_shadow(xx, yy, w, h, 14, 26, 1);
+        float sc = f ? 1.06f : 1, w = JD_EP_W * sc, h = JD_EP_H * sc, xx = ex - (w - JD_EP_W) / 2, yy = ey - (h - JD_EP_H) / 2;
+        if (f) draw_shadow(xx, yy, w, h, 14, 24, 1);
         fill_rrect(xx, yy, w, h, 14, C_SURFACE);
         char *u = str_printf("%s/Items/%s/Images/Primary?maxWidth=640&quality=85", jf_url(), e->id);
-        img_draw_cover(img_get(u), xx, yy, w, h, 14, 1);
+        if (!img_draw_cover(img_get(u), xx, yy, w, h, 14, 1)) draw_icon(ICON_TV, xx + w / 2, yy + h / 2, 60, C_TEXT3);
         free(u);
         draw_badges(e, xx, yy, w, h);
         if (f) stroke_rrect(xx - 4, yy - 4, w + 8, h + 8, 18, 4, C_FOCUS);
         char et[300];
         snprintf(et, sizeof et, "%d. %s", e->index, e->name ? e->name : "");
-        text_draw_clip(F_SEMI, 24, px, ey + 56 + 262, 440, f ? C_TEXT : C_TEXT2, AL_LEFT, et);
+        text_draw_clip(F_SEMI, 24, ex, ey + JD_EP_H + 14, JD_EP_W, f ? C_TEXT : C_TEXT2, AL_LEFT, et);
+        if (e->run > 0) {
+            char dm[32];
+            snprintf(dm, sizeof dm, T("%d min"), (int)(e->run / 60 + 0.5));
+            text_draw(F_REG, 22, ex, ey + JD_EP_H + 46, C_TEXT3, AL_LEFT, dm);
+        }
     }
+    clip_pop();
 }
 
 static bool jd_input(Screen *s, const InputEvent *ev) {
     JDetail *d = s->st;
     JItem *it = &d->it;
+    JBtn k[4];
+    int nb = jd_buttons(d, k);
     if (!d->series) {
-        JBtn k[4];
-        int nb = jd_buttons(d, k);
         if (ev->a == A_LEFT) { if (d->btn > 0) d->btn--; return true; }
         if (ev->a == A_RIGHT) { if (d->btn < nb - 1) d->btn++; return true; }
         if ((ev->a == A_OK || ev->a == A_PLAYPAUSE || ev->a == A_PLAY) && !ev->repeat) {
@@ -1437,40 +1699,57 @@ static bool jd_input(Screen *s, const InputEvent *ev) {
         }
         return false;
     }
+    if (!d->n_seasons) return false;
     switch (ev->a) {
-    case A_UP: if (d->focus > 1) d->focus--; else d->focus = 0; return true;
+    case A_UP:
+        if (d->focus > 0) d->focus--;
+        if (d->focus == 0 && !nb) d->focus = 1;
+        return true;
     case A_DOWN:
-        if (d->focus == 0 && d->seasons.n) d->focus = 1;
-        else if (d->focus == 1 && d->eps.n) d->focus = 2;
+        if (d->focus == 0) d->focus = 1;
+        else if (d->focus == 1 && d->n_sidx) d->focus = 2;
         return true;
     case A_LEFT:
-        if (d->focus == 1 && d->scol > 0) { d->scol--; eps_load(d); }
+        if (d->focus == 0 && d->btn > 0) d->btn--;
+        else if (d->focus == 1 && d->scol > 0) { jd_pick_season(d, d->scol - 1); d->ecol = 0; d->esx = 0; }
         else if (d->focus == 2 && d->ecol > 0) d->ecol--;
         return true;
     case A_RIGHT:
-        if (d->focus == 1 && d->scol < d->seasons.n - 1) { d->scol++; eps_load(d); }
-        else if (d->focus == 2 && d->ecol < d->eps.n - 1) d->ecol++;
+        if (d->focus == 0 && d->btn < nb - 1) d->btn++;
+        else if (d->focus == 1 && d->scol < d->n_seasons - 1) { jd_pick_season(d, d->scol + 1); d->ecol = 0; d->esx = 0; }
+        else if (d->focus == 2 && d->ecol < d->n_sidx - 1) d->ecol++;
         return true;
     case A_OK: case A_PLAYPAUSE: case A_PLAY:
         if (ev->repeat) return true;
-        if (d->focus == 1 && d->eps.n) d->focus = 2;
-        else if (d->focus == 2 && d->ecol < d->eps.n) {
-            JItem *e = &d->eps.it[d->ecol];
-            if (!e->series) e->series = str_dup(it->name);
-            if (!e->series_id) e->series_id = str_dup(it->id);
-            jf_play_chain(e, true, NULL); /* the season list stays; the next episode is offered */
-        }
+        if (d->focus == 0 && nb) jf_play_chain(jd_target(d), k[d->btn] == JB_RESUME, NULL);
+        else if (d->focus == 1 && d->n_sidx) d->focus = 2;
+        else if (d->focus == 2 && d->ecol < d->n_sidx) jf_play_chain(&d->eps.it[d->sidx[d->ecol]], true, NULL);
         return true;
     default: return false;
     }
 }
 
+/* a movie/video, or a series page: from a series, a season (that season) or an episode (that episode in focus) */
 static Screen *jf_detail(const JItem *src) {
     Screen *s = calloc(1, sizeof *s);
     JDetail *d = calloc(1, sizeof *d);
-    d->it = jitem_copy(src);
+    d->want_season = -1;
+    d->next = -1;
+    bool ep = is_ep(src) && src->series_id, season = src->type && !strcmp(src->type, "Season") && src->series_id;
+    if (ep || season) {
+        memset(&d->it, 0, sizeof d->it);
+        d->it.id = str_dup(src->series_id);
+        d->it.type = str_dup("Series");
+        d->it.name = str_dup(src->series);
+        d->it.backdrop_id = str_dup(src->series_id);
+        d->it.rt_critic = d->it.community10 = -1;
+        if (ep) { snprintf(d->focus_id, sizeof d->focus_id, "%s", src->id ? src->id : ""); d->want_season = src->parent_index; }
+        else d->want_season = src->index;
+    } else {
+        d->it = jitem_copy(src);
+        d->have_info = true;
+    }
     d->series = d->it.type && !strcmp(d->it.type, "Series");
-    d->focus = d->series ? 1 : 0;
     s->name = "jellyfin-detail";
     s->st = d;
     s->enter = jd_enter;
@@ -1706,6 +1985,8 @@ static void jellyfin_app_apply(void) { next_conf = 0; jellyfin_remote_tick(); }
 const NotaApp nota_app = {
     NOTA_API, "jellyfin", "Jellyfin", N_("Movies and shows from your Jellyfin server"), APP_VERSION, 30, APP_DEFAULT_OFF,
     ICON_FILM, {0, 164, 220, 255}, {120, 70, 190, 255}, {255, 255, 255, 255},
+    .row_title = N_("Continue watching"), .shelf_label = N_("CONTINUE IN JELLYFIN"),
+    .row = jellyfin_row, .row_refresh = jellyfin_row_refresh, .row_open = jellyfin_row_open,
     .open = jellyfin_screen, .tick = jellyfin_remote_tick, .apply = jellyfin_app_apply, .forget = jellyfin_forget,
     .settings = jf_items, .n_settings = sizeof jf_items / sizeof jf_items[0],
 };

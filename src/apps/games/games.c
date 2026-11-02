@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define MAXROW 32
@@ -24,6 +25,11 @@ typedef struct {
     int mode, sel;
     pthread_mutex_t mu;
     bool busy;          /* background job running */
+    bool quiet;         /* the running job is a silent re-search (no spinner, input stays free) */
+    double next_scan;   /* when to search again while no PC answers (0 = do not) */
+    int scans;          /* re-searches since the screen opened (for the back-off) */
+    bool scan;          /* the next search also port-scans the subnet if mDNS finds nothing */
+    unsigned gen;       /* bumped by every job start; a search whose gen is stale drops its result */
     Row rows[MAXROW];
     int n;
     int running;        /* running app id on the PC (0 = none) */
@@ -39,13 +45,31 @@ static char *field(char **p) {
     return s ? s : "";
 }
 
-/* ---------- baggrundsjob ---------- */
+static double mono_s(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec + t.tv_nsec / 1e9;
+}
+
+/* ---------- background jobs ---------- */
 
 static void *discover_job(void *arg) {
     Games *g = arg;
-    const char *av[] = {"/usr/bin/tvmoon", "discover", "2000", NULL};
+    pthread_mutex_lock(&g->mu);
+    unsigned gen = g->gen;
+    bool scan = g->scan;
+    g->scan = false;
+    pthread_mutex_unlock(&g->mu);
+    const char *av[] = {"/usr/bin/tvmoon", "discover", "2000", scan ? "scan" : NULL, NULL};
     char *out = run_capture_argv(av);
     pthread_mutex_lock(&g->mu);
+    if (gen != g->gen || g->mode != M_SERVERS) {
+        /* the user moved on (OK on a PC, pairing) while a silent search ran: drop the result */
+        if (gen == g->gen) g->busy = g->quiet = false;
+        pthread_mutex_unlock(&g->mu);
+        free(out);
+        return NULL;
+    }
     g->n = 0;
     for (char *line = strtok(out, "\n"); line && g->n < MAXROW; line = strtok(NULL, "\n")) {
         if (strncmp(line, "server\t", 7) != 0) continue;
@@ -68,7 +92,16 @@ static void *discover_job(void *arg) {
         snprintf(r->addr, sizeof r->addr, "%s", last);
         snprintf(r->status, sizeof r->status, "?");
     }
-    g->busy = false;
+    if (g->sel >= g->n) g->sel = g->n > 0 ? g->n - 1 : 0;
+    /* Keep searching while no PC answers: one small mDNS query, 3 s apart at first, then every 10 s.
+     * It stops when a PC that answers shows up, or when the screen is left (update only runs on top).
+     * The port scan (one connect per address on our subnet) only runs on open, on "Search again"
+     * and on every 3rd re-search (~every 30 s), so the network is not flooded. */
+    bool reachable = false;
+    for (int i = 0; i < g->n; i++)
+        reachable |= !strcmp(g->rows[i].status, "paired") || !strcmp(g->rows[i].status, "unpaired");
+    g->next_scan = reachable ? 0 : mono_s() + (g->scans < 5 ? 3 : 10);
+    g->busy = g->quiet = false;
     pthread_mutex_unlock(&g->mu);
     free(out);
     return NULL;
@@ -138,12 +171,17 @@ static void *pair_job(void *arg) {
     return NULL;
 }
 
-static void start_job(Games *g, void *(*fn)(void *)) {
+static void start_job_q(Games *g, void *(*fn)(void *), bool quiet) {
     pthread_t t;
     g->busy = true;
+    g->quiet = quiet;
+    g->gen++;
+    g->next_scan = 0;
     if (pthread_create(&t, NULL, fn, g) == 0) pthread_detach(t);
-    else g->busy = false;
+    else g->busy = g->quiet = false;
 }
+
+static void start_job(Games *g, void *(*fn)(void *)) { start_job_q(g, fn, false); }
 
 static void open_apps(Games *g) {
     g->mode = M_APPS;
@@ -159,6 +197,8 @@ static void games_enter(Screen *s) {
     Games *g = s->st;
     g->mode = M_SERVERS;
     g->sel = 0;
+    g->scans = 0;
+    g->scan = true;
     start_job(g, discover_job);
 }
 
@@ -169,8 +209,14 @@ static void games_update(Screen *s, float dt) {
         g->pair_done = false;
         if (g->pair_ok) { pthread_mutex_unlock(&g->mu); app_toast(T("Paired with %s"), g->host_name); open_apps(g); return; }
         g->mode = M_SERVERS;
+        g->next_scan = mono_s() + 3;
         if (!g->msg[0]) snprintf(g->msg, sizeof g->msg, T("Pairing interrupted"));
         app_toast("%s", tr_msg(g->msg));
+    }
+    if (g->mode == M_SERVERS && !g->busy && g->next_scan > 0 && mono_s() >= g->next_scan) {
+        g->scans++;
+        g->scan = g->scans % 3 == 0; /* ~9 s, ~25 s, ~55 s after opening, then every 30 s */
+        start_job_q(g, discover_job, true);
     }
     pthread_mutex_unlock(&g->mu);
 }
@@ -200,8 +246,8 @@ static void games_draw(Screen *s) {
     } else if (g->mode == M_SERVERS) {
         draw_topbar(T("Games"));
         text_draw(F_REG, 24, 96, 118, C_TEXT3, AL_LEFT, T("PCs with Sunshine on the network"));
-        if (g->busy) draw_spinner(UI_W / 2, 400, 30, C_TEXT2);
-        else if (g->n == 0) draw_empty(T("No PC found"), T("Start Sunshine on the PC, and check that the firewall allows ports 47984-48010."));
+        if (g->busy && !g->quiet) draw_spinner(UI_W / 2, 400, 30, C_TEXT2);
+        else if (g->n == 0) draw_empty(T("No PC found"), T("Searching… Start Sunshine on the PC. Its firewall must allow TCP 47984-48010 and UDP 47998-48000 (UDP 5353 makes it found faster)."));
         else {
             const char *l[MAXROW], *r[MAXROW];
             char lb[MAXROW][160];
@@ -262,8 +308,8 @@ static void *quit_job(void *arg) {
 /* Red = menu (the same meaning everywhere in NotaTV) */
 static void games_menu_cb(void *ud, int idx) {
     Games *g = ud;
-    if (idx < 0 || g->busy) return;
-    if (g->mode == M_SERVERS) { g->sel = 0; start_job(g, discover_job); return; }
+    if (idx < 0 || (g->busy && !g->quiet)) return;
+    if (g->mode == M_SERVERS) { g->sel = 0; g->scan = true; start_job(g, discover_job); return; }
     if (g->running && idx == 0) { app_toast(T("Quitting the game on the PC…")); start_job(g, quit_job); return; }
     start_job(g, apps_job); /* "Refresh the list" */
 }
@@ -278,7 +324,7 @@ static bool games_input(Screen *s, const InputEvent *ev) {
         }
         return true;
     }
-    if (g->busy && ev->a != A_BACK) return ev->a != A_HOME;
+    if (g->busy && !g->quiet && ev->a != A_BACK) return ev->a != A_HOME;
     switch (ev->a) {
     case A_UP: if (g->sel > 0) g->sel--; return true;
     case A_DOWN: if (g->sel < g->n - 1) g->sel++; return true;
@@ -295,17 +341,22 @@ static bool games_input(Screen *s, const InputEvent *ev) {
         }
         return true;
     case A_BACK: case A_LEFT:
-        if (g->mode == M_APPS) { g->mode = M_SERVERS; g->sel = 0; start_job(g, discover_job); return true; }
+        if (g->mode == M_APPS) { g->mode = M_SERVERS; g->sel = 0; g->scan = true; start_job(g, discover_job); return true; }
         app_pop();
         return true;
     case A_OK:
         if (g->n == 0) return true;
         if (g->mode == M_SERVERS) {
+            pthread_mutex_lock(&g->mu); /* a silent search may be rewriting the rows */
+            if (g->sel >= g->n) { pthread_mutex_unlock(&g->mu); return true; }
             Row *r = &g->rows[g->sel];
             snprintf(g->host, sizeof g->host, "%s", r->addr);
             snprintf(g->host_name, sizeof g->host_name, "%s", r->name);
-            if (!strcmp(r->status, "unpaired")) {
-                g->mode = M_PAIR;
+            bool pair = !strcmp(r->status, "unpaired");
+            if (pair) g->mode = M_PAIR;
+            else g->gen++; /* open_apps below; any silent search drops its result */
+            pthread_mutex_unlock(&g->mu);
+            if (pair) {
                 g->pin[0] = g->msg[0] = 0;
                 g->pair_done = false;
                 pthread_t t;

@@ -15,6 +15,8 @@ JOBS ?= $(shell nproc)
 # Raspberry Pi's ffmpeg fork (not in git): fetched automatically at the pinned commit + our fixes
 FF_DIR := $(ROOT)/src/rpi-ffmpeg
 FF_COMMIT := $(shell cat $(ROOT)/external/board/rpi4/rpi-ffmpeg.commit)
+# commit + hash of our patches: src/rpi-ffmpeg is out of date when either changed
+FF_STAMP := $(FF_COMMIT) $(shell cat $(ROOT)/external/board/rpi4/rpi-ffmpeg-patches/*.patch | sha256sum | cut -c1-16)
 
 all: rpi4
 
@@ -34,10 +36,13 @@ rpi-ffmpeg:
 		git -C $(FF_DIR) fetch --depth 1 https://github.com/jc-kynesim/rpi-ffmpeg $(FF_COMMIT); \
 		git -C $(FF_DIR) checkout -q FETCH_HEAD; \
 		for p in $(ROOT)/external/board/rpi4/rpi-ffmpeg-patches/*.patch; do git -C $(FF_DIR) apply $$p; done; \
-		rm -rf $(FF_DIR)/.git; echo $(FF_COMMIT) > $(FF_DIR)/.notatv-commit; \
-	elif [ "$$(cat $(FF_DIR)/.notatv-commit 2>/dev/null)" != "$(FF_COMMIT)" ]; then \
-		echo "src/rpi-ffmpeg er ikke commit $(FF_COMMIT) - slet mappen, så hentes den igen"; exit 1; \
+		rm -rf $(FF_DIR)/.git; echo '$(FF_STAMP)' > $(FF_DIR)/.notatv-commit; \
+	elif [ "$$(cat $(FF_DIR)/.notatv-commit 2>/dev/null)" != '$(FF_STAMP)' ]; then \
+		echo "src/rpi-ffmpeg er ikke commit $(FF_COMMIT) med de nuværende patches - slet mappen, så hentes den igen"; exit 1; \
 	fi
+
+rpi-ffmpeg-stamp:
+	@echo '$(FF_STAMP)'
 
 clean-shell: $(OUT_RPI)/.config
 	$(BRMAKE_RPI) tvshell-dirclean
@@ -50,4 +55,4 @@ shell:
 	$(MAKE) -C src/apps
 	cd src/shell && TVSHELL_ASSETS=$$PWD/assets TVSHELL_DATA=/tmp/notatv-dev TVSHELL_APPS=$(ROOT)/src/apps/out ./tvshell
 
-.PHONY: all rpi4 rpi-ffmpeg clean-shell menuconfig linux-menuconfig savedefconfig shell
+.PHONY: all rpi4 rpi-ffmpeg rpi-ffmpeg-stamp clean-shell menuconfig linux-menuconfig savedefconfig shell

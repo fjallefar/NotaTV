@@ -1,6 +1,6 @@
 {
   "id": "iptv",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "Live TV",
   "desc": "Watch live TV and channels from your IPTV provider",
@@ -11,10 +11,12 @@
   "order": 10,
   "default": true,
   "changes": {
-    "summary": "Big channel lists and program guides load much faster",
+    "summary": "A TV guide with your favorites on a timeline",
     "points": [
-      "Channel groups and the program guide are matched in a fraction of the time",
-      "The program guide is only downloaded again when it has changed"
+      "New TV guide in the list on the left: your favorites on a timeline, browse programs with left/right",
+      "All channels is gone from the list; find channels under their country",
+      "Large XMLTV guides are read in seconds instead of minutes",
+      "Says so when the provider's program guide is not responding"
     ]
   }
 }

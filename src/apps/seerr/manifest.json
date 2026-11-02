@@ -1,6 +1,6 @@
 {
   "id": "seerr",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "Seerr",
   "desc": "Find and request movies and shows for Plex",
@@ -11,10 +11,11 @@
   "order": 60,
   "default": true,
   "changes": {
-    "summary": "Signing out removes the whole session",
+    "summary": "Netflix top lists on the Discover page, now also the worldwide top 20",
     "points": [
-      "After you sign out, the old login is no longer kept in memory or written back to the box",
-      "Settings say where the Netflix Top 10 row comes from"
+      "Further down on Discover: Netflix top 10 for your country and the worldwide top 20, movies and shows",
+      "The worldwide top 20 puts Netflix's English and other-language lists together by views",
+      "A show with two seasons on the list is shown once"
     ]
   }
 }

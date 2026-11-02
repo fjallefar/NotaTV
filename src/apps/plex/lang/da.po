@@ -323,21 +323,39 @@ msgstr "FORTSÆT I PLEX"
 
 
 
-msgid "Casting and the remote in the Plex app only work from your account or your Plex Home"
-msgstr "Cast og fjernbetjening i Plex-appen virker kun fra din konto eller dit Plex Home"
-
-
-msgid "A server you cast from is no longer saved in the server list"
-msgstr "En server, du caster fra, gemmes ikke længere i serverlisten"
-
-msgid "Only your own Plex account can control the box, and no freezes around playback"
-msgstr "Kun din egen Plex-konto kan styre boksen, og ingen frysninger omkring afspilning"
-
-msgid "A slow server no longer freezes the box before and after a video"
-msgstr "En langsom server får ikke længere boksen til at fryse før og efter en video"
-
-msgid "Intro and credits markers are fetched without stopping the keys"
-msgstr "Markører for intro og rulletekster hentes, uden at tasterne går i stå"
 
 msgid "Loading…"
 msgstr "Henter…"
+
+msgid "1 season"
+msgstr "1 sæson"
+
+msgid "%d seasons"
+msgstr "%d sæsoner"
+
+msgid "Specials"
+msgstr "Ekstra"
+
+msgid "Season %d"
+msgstr "Sæson %d"
+
+msgid "Continue S%d E%d (%s)"
+msgstr "Fortsæt S%d A%d (%s)"
+
+msgid "Play S%d E%d"
+msgstr "Afspil S%d A%d"
+
+msgid "%d min"
+msgstr "%d min"
+
+msgid "A proper page for every series, with all seasons and episodes"
+msgstr "En rigtig side for hver serie med alle sæsoner og afsnit"
+
+msgid "Choose season and episode on the series page"
+msgstr "Vælg sæson og afsnit på seriens side"
+
+msgid "Play starts where you left off, or at the first new episode"
+msgstr "Afspil starter, hvor du slap, eller ved det første nye afsnit"
+
+msgid "Series show how many seasons they have"
+msgstr "Serier viser, hvor mange sæsoner de har"

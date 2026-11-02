@@ -57,7 +57,11 @@ jobs:
           OUT=output-rpi4
           LAST=$(cat $OUT/.notatv-built 2>/dev/null || true)
           # changes Buildroot does not notice by itself -> start over (ccache keeps that from being too slow)
-          FULL='^(Makefile|external/(Config\.in|external\.(mk|desc)|configs/|package/)|external/board/[^/]+/(patches/|[^/]*\.fragment|rpi-ffmpeg|ffmpeg-override))'
+          # (config.txt/cmdline.txt are only copied when rpi-firmware is built, uapi/ only when ffmpeg is built)
+          FULL='^(Makefile|external/(Config\.in|external\.(mk|desc)|configs/|package/)|external/board/[^/]+/(patches/|uapi/|[^/]*\.fragment|rpi-ffmpeg|ffmpeg-override|config\.txt|cmdline\.txt))'
+          # overlays and post-build/post-image run on every build, but a deleted or renamed overlay file stays in
+          # target/ and would go into the update package -> also start over then
+          GONE='^external/board/[^/]+/(rootfs-overlay|overlay)/'
           OWN='^external/package/(tvshell|tvmoon|rpi-tools)/'
           if [ ! -d $OUT ]; then
             echo "No earlier build - full build"
@@ -68,12 +72,16 @@ jobs:
             echo "Configuration, patches or packages changed since $LAST - full build:"
             git diff --name-only "$LAST" HEAD | grep -vE "$OWN" | grep -E "$FULL"
             rm -rf $OUT
+          elif git diff --name-only --diff-filter=DR "$LAST" HEAD | grep -qE "$GONE"; then
+            echo "Overlay files removed or renamed since $LAST - full build:"
+            git diff --name-status --diff-filter=DR "$LAST" HEAD | grep -E "$GONE"
+            rm -rf $OUT
           else
             echo "Only NotaTV's own code changed since $LAST - rebuilding tvshell, tvmoon and rpi-tools"
             make -C buildroot O=$TREE/$OUT BR2_EXTERNAL=$TREE/external tvshell-dirclean tvmoon-dirclean rpi-tools-dirclean
           fi
-          # rpi-ffmpeg is fetched again if the pinned commit changed
-          if [ -d src/rpi-ffmpeg ] && [ "$(cat src/rpi-ffmpeg/.notatv-commit 2>/dev/null)" != "$(cat external/board/rpi4/rpi-ffmpeg.commit)" ]; then
+          # rpi-ffmpeg is fetched again if the pinned commit or our patches for it changed
+          if [ -d src/rpi-ffmpeg ] && [ "$(cat src/rpi-ffmpeg/.notatv-commit 2>/dev/null)" != "$(make -s rpi-ffmpeg-stamp)" ]; then
             rm -rf src/rpi-ffmpeg
           fi
 

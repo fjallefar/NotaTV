@@ -16,9 +16,23 @@ S=$(mktemp -d)
 mkdir -p "$S/boot"
 cp -a "$BINARIES_DIR/Image" "$BINARIES_DIR"/bcm2711-rpi-4-b.dtb "$BINARIES_DIR"/bcm2711-rpi-400.dtb \
 	"$BINARIES_DIR/rpi-firmware/start4.elf" "$BINARIES_DIR/rpi-firmware/fixup4.dat" "$BINARIES_DIR/rpi-firmware/overlays" "$S/boot/"
-tar -czf "$U" --owner=0 --group=0 -C "$S" boot --transform 's,^\./,rootfs/,' -C "$TARGET_DIR" \
+# users and groups: Buildroot adds the packages' users (dbus, avahi ...) only inside the rootfs image, not in
+# $TARGET_DIR. An update with $TARGET_DIR's /etc/passwd removed them, so dbus-daemon and avahi-daemon could not
+# start (no Bluetooth, AirPlay or PC search). Take the three files from the finished rootfs instead.
+mkdir -p "$S/users/etc"
+for f in passwd group shadow; do
+	"$HOST_DIR/sbin/debugfs" -R "dump -p /etc/$f $S/users/etc/$f" "$BINARIES_DIR/rootfs.ext4" >/dev/null 2>&1
+	[ -s "$S/users/etc/$f" ] || { echo "post-image: could not read /etc/$f from rootfs.ext4" >&2; exit 1; }
+done
+for u in dbus avahi; do
+	grep -q "^$u:" "$S/users/etc/passwd" || { echo "post-image: user $u missing from /etc/passwd" >&2; exit 1; }
+done
+# (added as "etc/..." without "./", so the excludes below do not drop them; the 2nd transform puts them in rootfs/)
+tar -czf "$U" --owner=0 --group=0 -C "$S" boot --transform 's,^\./,rootfs/,' --transform 's,^etc/,rootfs/etc/,' -C "$TARGET_DIR" \
 	--exclude=./dev --exclude=./proc --exclude=./sys --exclude=./tmp --exclude=./run --exclude=./data \
-	--exclude=./media --exclude=./mnt --exclude=./THIS_IS_NOT_YOUR_ROOT_FILESYSTEM .
+	--exclude=./media --exclude=./mnt --exclude=./THIS_IS_NOT_YOUR_ROOT_FILESYSTEM \
+	--exclude=./etc/passwd --exclude=./etc/group --exclude=./etc/shadow . \
+	-C "$S/users" etc/passwd etc/group etc/shadow
 rm -rf "$S"
 (cd "${U%/*}" && sha256sum "${U##*/}" > "${U##*/}.sha256")
 echo "Opdateringspakke: $U ($(du -h "$U" | cut -f1))"

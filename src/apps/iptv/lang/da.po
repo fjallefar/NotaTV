@@ -93,9 +93,6 @@ msgstr "Henter programguide…"
 msgid "Favorites"
 msgstr "Favoritter"
 
-msgid "All channels"
-msgstr "Alle kanaler"
-
 msgid "Add your IPTV provider's playlist (M3U link) or Xtream Codes login.\n\nSign in with Xtream Codes, or enter an M3U link."
 msgstr "Tilføj din IPTV-udbyders playliste (M3U-link) eller Xtream Codes-login.\n\nLog ind med Xtream Codes, eller indtast et M3U-link."
 
@@ -315,3 +312,39 @@ msgstr "Kanalgrupper og programguiden kobles på en brøkdel af tiden"
 
 msgid "The program guide is only downloaded again when it has changed"
 msgstr "Programguiden hentes kun igen, når den er ændret"
+
+msgid "A program guide from an XMLTV address loads much faster"
+msgstr "En programguide fra en XMLTV-adresse indlæses meget hurtigere"
+
+msgid "Large XMLTV guides are read in seconds instead of minutes"
+msgstr "Store XMLTV-guider læses på sekunder i stedet for minutter"
+
+msgid "Says so when the provider's program guide is not responding"
+msgstr "Siger til, når udbyderens programguide ikke svarer"
+
+msgid "The provider's program guide is not responding"
+msgstr "Udbyderens programguide svarer ikke"
+
+msgid "TV guide"
+msgstr "TV-guide"
+
+msgid "Left/right: earlier and later programs"
+msgstr "Venstre/højre: tidligere og senere programmer"
+
+msgid "Add favorites to see their programs here (Yellow on a channel)."
+msgstr "Tilføj favoritter for at se deres programmer her (gul på en kanal)."
+
+msgid "No program info"
+msgstr "Ingen programinfo"
+
+msgid "Loading…"
+msgstr "Indlæser…"
+
+msgid "A TV guide with your favorites on a timeline"
+msgstr "En TV-guide med dine favoritter på en tidslinje"
+
+msgid "New TV guide in the list on the left: your favorites on a timeline, browse programs with left/right"
+msgstr "Ny TV-guide i listen til venstre: dine favoritter på en tidslinje, bladr i programmerne med venstre/højre"
+
+msgid "All channels is gone from the list; find channels under their country"
+msgstr "Alle kanaler er fjernet fra listen; find kanalerne under deres land"

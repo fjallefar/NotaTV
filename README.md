@@ -86,7 +86,7 @@ The box only contacts outside services when you use a feature:
    ```
 3. Connect the TV to **HDMI 0**, the port next to the USB-C power input.
 
-On first boot the data partition grows to fill the SD card.
+On first boot the data partition grows to fill the SD card. While the box starts, the TV shows the NotaTV name with three pulsing dots until the menus appear.
 
 ### First start
 
@@ -151,21 +151,23 @@ Keys and text work right away. **Playlists, logins, network drives, names and Yo
 
 Everything on the home screen is an app, and NotaTV comes without any: you pick them in the setup guide, and they are downloaded from the **App Store**. The App Store is the GitHub release `apps` of this repository, with one package per app and a catalog (version, SHA256). A package is only installed when its SHA256 matches the catalog.
 
-In the App Store on the home screen you can install more apps, update apps (*Update* shows when the catalog has a newer version) and uninstall them. When apps have updates, a bar at the top updates them all at once (*Update all*), and a short card says what is new in each version before it is installed. Uninstalling an app deletes everything it has saved on the box, including your sign-in, and stops its background services (e.g. Plex cast). Each app's settings are under *Settings → Apps*. Boxes updated from NotaTV 1.0 download the apps they had by themselves.
+In the App Store on the home screen you can install more apps, update apps (*Update* shows when the catalog has a newer version) and uninstall them. When apps have updates, a bar at the top updates them all at once (*Update all*), and a short card says what is new in each version before it is installed. Uninstalling an app deletes everything it has saved on the box, including your sign-in, and stops its background services (e.g. Plex cast). Each app's settings are under *Settings → Apps*. To move an app on the home screen, press 🟢 Green on it, move it with the arrows and press OK. Boxes updated from NotaTV 1.0 download the apps they had by themselves.
 
 | App | Details |
 |---|---|
-| **Live TV** | M3U playlist or Xtream Codes login (live channels only). Channels are grouped by country. Favorites can be sorted. Channel numbers and now/next information come from XMLTV or Xtream's short EPG. |
-| **Plex** | Sign in via `plex.tv/link`. Supports several servers, hubs, libraries, "Continue watching" and direct play. Search covers all servers. The home screen has two styles: *hero* or *focus*. |
-| **Jellyfin** | Server address, username and password. Libraries, "Continue watching" and "Next episode". Always plays the original file (no server transcoding), with the audio and subtitles chosen for your Jellyfin user. Playback progress is reported to the server, and the server sees the box under its own name. |
-| **YouTube** | yt-dlp with Node.js and mpv. Videos are resolved while they are in focus, so playback starts almost instantly. Optional account via cookies from the phone page. Subscriptions can be imported from Google Takeout. |
-| **Twitch** | Sign in with a code or QR code at `twitch.tv/activate`. Following, Popular, Categories and Search. Chat is read anonymously and shown as a sidebar. |
+| **Live TV** | M3U playlist or Xtream Codes login (live channels only). Channels are grouped by country. Favorites can be sorted. **TV guide** shows your favorites on a timeline (left/right moves between programs, OK watches the channel). Channel numbers and now/next information come from XMLTV or Xtream's short EPG. |
+| **Plex** | Sign in via `plex.tv/link`. Supports several servers, hubs, libraries, "Continue watching" and direct play. Search covers all servers. The home screen has two styles: *hero* or *focus*. *Search subtitles* in the player menu finds subtitles on OpenSubtitles (see below). |
+| **Jellyfin** | Server address, username and password. Libraries, a series page with seasons and episodes, and "Continue watching" and "Next episode" (also on the home screen). Always plays the original file (no server transcoding), with the audio and subtitles chosen for your Jellyfin user. Playback progress is reported to the server, and the server sees the box under its own name. *Search subtitles* in the player menu finds subtitles on OpenSubtitles (see below). |
+| **YouTube** | yt-dlp with Node.js and mpv. Videos are resolved while they are in focus, so playback starts almost instantly. Quality up to 1080p on a Raspberry Pi 4 (1440p and 4K are greyed out: YouTube only has them as VP9/AV1). Optional account via cookies from the phone page. Subscriptions can be imported from Google Takeout. |
+| **Twitch** | Sign in with a code or QR code at `twitch.tv/activate`. Following, Popular, Categories and Search. Chat is read anonymously and shown as a sidebar. Quality (1080p to 360p) in the player menu. |
 | **Seerr** | Find and request movies and shows (Overseerr/Jellyseerr) with Plex login. Season picker, trailers, "More like this" and Netflix top 10 for your country. |
 | **Music** | Receives music from your phone over **AirPlay** (iPhone/iPad/Mac) or **Bluetooth** (any phone). "Now playing" shows cover art, title and progress. |
 | **Games** | Game streaming from a PC running Sunshine with our own client `tvmoon`. HEVC is decoded in hardware straight to the screen, at 1080p 120 Hz. |
 | **Media** | USB drives are mounted automatically. SMB/NFS network drives are supported. Plays movies, music and pictures. |
 
 **Find servers on the network** (Plex and Jellyfin) only searches the local network: Plex GDM, Jellyfin UDP 7359 and a scan of your own subnet.
+
+**Subtitles from OpenSubtitles** (Plex and Jellyfin): press Red while a movie or episode plays and choose *Search subtitles*. It needs a free API key: create an account on opensubtitles.com, make a key under *Consumers* and enter it in *Settings → Picture and sound*. Add your OpenSubtitles username and password there too: OpenSubtitles may refuse downloads without a login. Without a key, the menu says where to add it. Movies are found by their TMDB id, episodes by show, season and episode; the subtitle you pick is downloaded and turned on at once.
 
 ---
 
@@ -214,7 +216,7 @@ YouTube cast goes through YouTube's servers because the protocol requires it. Pl
 
 *Settings → System → Update NotaTV* downloads the newest release from GitHub, checks its SHA256 and installs it. Your settings and logins on `/data` are kept.
 - Nothing is changed until the whole package is downloaded and checked. Only files that differ are written, each with a single rename, so a power cut leaves either the old or the new version (an interrupted update is finished at the next boot).
-- The kernel, device trees and overlays are kept as two complete sets on the boot partition (the root and `nota-b/`). `notatv-slot.txt`, included from `config.txt`, tells the firmware which one to load (`os_prefix`). An update fills the set that is not in use and switches with one small write, so the box always has a complete kernel to start. Boxes are moved to this the first time they update from 1.0.3 or newer.
+- The kernel, device trees and overlays are kept as two complete sets on the boot partition (the root and `nota-b/`). `notatv-slot.txt`, included from `config.txt`, tells the firmware which one to load (`os_prefix`). An update fills the set that is not in use and switches with one small write, so the box always has a complete kernel to start. Boxes are moved to this the first time they update from 1.0.4 or newer.
 - The update card and *Update NotaTV* show a short summary of what is new (the quote at the top of the version's section in [CHANGELOG.md](CHANGELOG.md)).
 - **Update reminders:** the box looks for a new release on GitHub twice a day and shows a reminder on the home screen at most every other day (*Update now*, *Later* or *Don't remind me*). Turn it off under *Settings → System → Update reminders*; then the box never contacts GitHub by itself.
 - *Undo last update* (same menu) puts the previous version back (and switches back to the previous kernel set). This also happens by itself if the user interface keeps crashing right after an update.
@@ -269,7 +271,7 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) on a self
 3. The runner builds in `/opt/notatv` and publishes a release with `notatv-rpi4.img.xz`, `notatv-rpi4-update.tar.gz` and its `.sha256`. Boxes then find it under *Update NotaTV*.
 4. The same run packs the apps (`scripts/apps-catalog.py`) and uploads them, with the catalog `apps-api<N>.json`, to the pre-release `apps` (the App Store). Files with the same name are replaced. Raise an app's `version` in its `manifest.json` when it changes, so boxes are offered the update, and write what is new in its `changes` (see [src/apps/README.md](src/apps/README.md)).
 
-The build folder is kept between releases. Normally only NotaTV's own packages are rebuilt, which takes minutes. Changes to the Makefile, defconfig, packages, kernel fragments, patches or the rpi-ffmpeg commit trigger a full build. The Twitch Client ID comes from the repository secret `TWITCH_CLIENT_ID`.
+The build folder is kept between releases. Normally only NotaTV's own packages are rebuilt, which takes minutes. Changes to the Makefile, defconfig, packages, kernel fragments, patches, `config.txt`/`cmdline.txt`, the V4L2 headers in `uapi/`, the rpi-ffmpeg commit or its patches trigger a full build, and so does an overlay file that was deleted or renamed (it would otherwise stay in the image). The Twitch Client ID comes from the repository secret `TWITCH_CLIENT_ID`.
 
 ---
 
@@ -278,7 +280,7 @@ The build folder is kept between releases. Normally only NotaTV's own packages a
 Code and comments are written in English. User-facing text goes through `T("…")` and the language files.
 
 **Live updates on a running Pi:**
-1. Turn on *Settings → System → Developer mode (SSH)*, then log in with `ssh root@<ip>`. The password is shown right below the setting - every box makes its own (NotaTV 1.0.2 and older used `notatv`).
+1. Turn on *Settings → System → Developer mode (SSH)*, then log in with `ssh root@<ip>`. The password is shown right below the setting - every box makes its own (NotaTV 1.0.3 and older used `notatv`).
 2. Build with `make rpi4` and copy `output-rpi4/target/usr/bin/tvshell` to `/usr/bin/tvshell.new` on the box.
 3. Check that the file is not empty, `mv` it into place and run `killall tvshell`. It restarts by itself.
 4. Before you replace a shared library, compare its dependencies (`readelf -d … | grep NEEDED`) with what is on the box.

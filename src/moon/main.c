@@ -11,6 +11,13 @@
 #include <avahi-client/lookup.h>
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>
+#include <arpa/inet.h>
+#include <curl/curl.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <sys/socket.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -106,7 +113,103 @@ static void browse_cb(AvahiServiceBrowser *b, AvahiIfIndex iface, AvahiProtocol 
     }
 }
 
-static int cmd_discover(int ms) {
+/* ---------- fallback: port scan of our own subnet for 47989 (when mDNS is blocked, e.g. by the PC's firewall) ---------- */
+
+static size_t grow_cb(char *p, size_t sz, size_t n, void *ud) {
+    char *b = ud;
+    size_t l = strlen(b), add = sz * n;
+    if (l + add < 4096) { memcpy(b + l, p, add); b[l + add] = 0; }
+    return sz * n;
+}
+
+/* the PC's name from Sunshine's /serverinfo (answers over HTTP without pairing); false = not a GameStream host */
+static bool host_name(const char *ip, char *out, size_t n) {
+    char url[96], buf[4096] = "";
+    snprintf(url, sizeof url, "http://%s:47989/serverinfo", ip);
+    CURL *c = curl_easy_init();
+    if (!c) return false;
+    curl_easy_setopt(c, CURLOPT_URL, url);
+    curl_easy_setopt(c, CURLOPT_TIMEOUT, 2L);
+    curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, grow_cb);
+    curl_easy_setopt(c, CURLOPT_WRITEDATA, buf);
+    CURLcode r = curl_easy_perform(c);
+    curl_easy_cleanup(c);
+    if (r != CURLE_OK || !strstr(buf, "<root")) return false;
+    const char *h = strstr(buf, "<hostname>");
+    snprintf(out, n, "%s", ip);
+    if (h) {
+        h += 10;
+        size_t l = strcspn(h, "<");
+        if (l > 0 && l < n) { memcpy(out, h, l); out[l] = 0; }
+    }
+    return true;
+}
+
+static void port_scan(void) {
+    enum { MAXH = 1024, BATCH = 256 };
+    static uint32_t hosts[MAXH];
+    int nh = 0;
+    struct ifaddrs *ifa;
+    if (getifaddrs(&ifa) < 0) return;
+    for (struct ifaddrs *i = ifa; i; i = i->ifa_next) {
+        if (!i->ifa_addr || i->ifa_addr->sa_family != AF_INET || !i->ifa_netmask) continue;
+        if ((i->ifa_flags & IFF_LOOPBACK) || !(i->ifa_flags & IFF_UP)) continue;
+        uint32_t self = ((struct sockaddr_in *)i->ifa_addr)->sin_addr.s_addr;
+        uint32_t mask = ntohl(((struct sockaddr_in *)i->ifa_netmask)->sin_addr.s_addr);
+        if (~mask + 1u > 1024u) mask = 0xffffff00; /* bigger than /22: only our own /24 */
+        uint32_t net = ntohl(self) & mask, size = ~mask + 1u;
+        for (uint32_t h = 1; h + 1 < size && nh < MAXH; h++) {
+            uint32_t ip = htonl(net + h);
+            bool dup = ip == self;
+            for (int k = 0; k < nh && !dup; k++) dup = hosts[k] == ip;
+            if (!dup) hosts[nh++] = ip;
+        }
+    }
+    freeifaddrs(ifa);
+    /* non-blocking connect in batches of 256, 0.8 s per batch (a /24 = one batch) */
+    for (int base = 0; base < nh; base += BATCH) {
+        int cnt = nh - base < BATCH ? nh - base : BATCH, np = 0, left_n;
+        struct pollfd pf[BATCH];
+        uint32_t ipof[BATCH];
+        for (int k = 0; k < cnt; k++) {
+            int s = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+            if (s < 0) break;
+            struct sockaddr_in a = {.sin_family = AF_INET, .sin_port = htons(47989), .sin_addr.s_addr = hosts[base + k]};
+            if (connect(s, (struct sockaddr *)&a, sizeof a) < 0 && errno != EINPROGRESS) { close(s); continue; }
+            pf[np] = (struct pollfd){s, POLLOUT, 0};
+            ipof[np++] = hosts[base + k];
+        }
+        double end = now_s() + 0.8;
+        left_n = np;
+        while (left_n > 0) {
+            int ms = (int)((end - now_s()) * 1000);
+            if (ms <= 0 || poll(pf, np, ms) <= 0) break;
+            for (int k = 0; k < np; k++) {
+                if (pf[k].fd < 0 || !pf[k].revents) continue;
+                int err = 0;
+                socklen_t el = sizeof err;
+                getsockopt(pf[k].fd, SOL_SOCKET, SO_ERROR, &err, &el);
+                close(pf[k].fd);
+                pf[k].fd = -1;
+                left_n--;
+                if (err || !(pf[k].revents & POLLOUT) || n_found >= (int)(sizeof found / sizeof found[0])) continue;
+                char ip[INET_ADDRSTRLEN], name[64];
+                inet_ntop(AF_INET, &ipof[k], ip, sizeof ip);
+                if (!host_name(ip, name, sizeof name)) continue; /* something else listens on 47989 */
+                Found *f = &found[n_found++];
+                snprintf(f->name, sizeof f->name, "%s", name);
+                snprintf(f->addr, sizeof f->addr, "%s", ip);
+                f->port = 47989;
+                tlog("discover: %s (%s) found by port scan", ip, name);
+            }
+        }
+        for (int k = 0; k < np; k++) if (pf[k].fd >= 0) close(pf[k].fd);
+    }
+}
+
+/* scan: 1 = port scan the subnet if mDNS found nothing */
+static int cmd_discover(int ms, bool scan) {
     AvahiSimplePoll *sp = avahi_simple_poll_new();
     int err = 0;
     av_client = sp ? avahi_client_new(avahi_simple_poll_get(sp), 0, NULL, NULL, &err) : NULL;
@@ -124,6 +227,7 @@ static int cmd_discover(int ms) {
     if (sb) avahi_service_browser_free(sb);
     avahi_client_free(av_client);
     avahi_simple_poll_free(sp);
+    if (scan && n_found == 0) port_scan();
     /* status per PC: paired, running game (serverinfo over HTTP/HTTPS) */
     for (int i = 0; i < n_found; i++) {
         SERVER_DATA srv;
@@ -352,7 +456,7 @@ int videotest_run(const char *path, int fps, const char *mode); /* videotest.c *
 
 static void usage(void) {
     fprintf(stderr,
-            "brug: tvmoon discover [ms]\n"
+            "brug: tvmoon discover [ms] [scan]\n"
             "      tvmoon info|pair|unpair|apps|quit <pc[:port]>\n"
             "      tvmoon stream <pc[:port]> <app-id> [-r 1920x1080] [-f 60] [-b 20000] [-c auto|hevc|h264] [--hdr] [-m WxH]\n"
             "      tvmoon videotest <fil.h264|fil.hevc> [-f 60] [-m WxH]\n");
@@ -372,7 +476,7 @@ int main(int argc, char **argv) {
     }
     if (argc < 2) { usage(); return 1; }
     const char *cmd = argv[1];
-    if (!strcmp(cmd, "discover")) return cmd_discover(argc > 2 ? atoi(argv[2]) : 1500);
+    if (!strcmp(cmd, "discover")) return cmd_discover(argc > 2 ? atoi(argv[2]) : 1500, argc > 3 && !strcmp(argv[3], "scan"));
     if (argc < 3) { usage(); return 1; }
     if (!strcmp(cmd, "info")) return cmd_info(argv[2]);
     if (!strcmp(cmd, "pair")) return cmd_pair(argv[2]);

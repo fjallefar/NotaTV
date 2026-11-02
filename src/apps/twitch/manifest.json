@@ -1,6 +1,6 @@
 {
   "id": "twitch",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "Twitch",
   "desc": "Live streams from the channels you follow and all of Twitch",
@@ -11,9 +11,9 @@
   "order": 50,
   "default": true,
   "changes": {
-    "summary": "The chat is encrypted",
+    "summary": "Choose the quality",
     "points": [
-      "The chat is read over an encrypted connection"
+      "The player menu has Quality: 1080p, 720p, 480p or 360p, and the choice is remembered"
     ]
   }
 }

@@ -136,8 +136,8 @@ msgstr "Lydudgang"
 msgid "Audio output saved"
 msgstr "Lydudgang gemt"
 
-msgid "Audio: ${current-tracks/audio/lang:} ${current-tracks/audio/title:} (${current-tracks/audio/codec:})"
-msgstr "Lyd: ${current-tracks/audio/lang:} ${current-tracks/audio/title:} (${current-tracks/audio/codec:})"
+msgid "Audio: %s"
+msgstr "Lyd: %s"
 
 msgid "August"
 msgstr "august"
@@ -417,6 +417,12 @@ msgstr "Gå til forsiden"
 
 msgid "Good afternoon"
 msgstr "God eftermiddag"
+
+msgid "Move app"
+msgstr "Flyt app"
+
+msgid "Move with the arrows · OK when you are done"
+msgstr "Flyt med pilene · OK, når du er færdig"
 
 msgid "Good evening"
 msgstr "God aften"
@@ -805,8 +811,14 @@ msgstr "Fjernbetjening"
 msgid "Requires a receiver or soundbar that supports HD audio"
 msgstr "Kræver receiver eller soundbar der understøtter HD-lyd"
 
-msgid "Requires an OpenSubtitles key: Settings → Picture and sound"
-msgstr "Kræver OpenSubtitles-nøgle: Indstillinger → Billede og lyd"
+msgid "Needs a key"
+msgstr "Kræver nøgle"
+
+msgid "Searching for subtitles needs a free OpenSubtitles key."
+msgstr "Søgning efter undertekster kræver en gratis OpenSubtitles-nøgle."
+
+msgid "Add it in Settings → Picture and sound."
+msgstr "Tilføj den under Indstillinger → Billede og lyd."
 
 msgid "Reset"
 msgstr "Nulstil"
@@ -953,8 +965,8 @@ msgstr "Fundne undertekster"
 msgid "Subtitles loaded"
 msgstr "Undertekster indlæst"
 
-msgid "Subtitles: ${current-tracks/sub/lang:${?sid==no:Off}} ${current-tracks/sub/title:}"
-msgstr "Undertekster: ${current-tracks/sub/lang:${?sid==no:Fra}} ${current-tracks/sub/title:}"
+msgid "Subtitles: %s"
+msgstr "Undertekster: %s"
 
 msgid "Sunday"
 msgstr "Søndag"
@@ -1622,3 +1634,15 @@ msgstr "AirPlay-kode"
 
 msgid "Enter %s on your iPhone, iPad or Mac. It is only asked the first time."
 msgstr "Indtast %s på din iPhone, iPad eller Mac. Der spørges kun første gang."
+
+msgid "The box's system service is not running. Restart the box."
+msgstr "Boksens systemtjeneste kører ikke. Genstart boksen."
+
+msgid "The box's Bluetooth did not start. Restart the box - if it keeps happening, the board's Bluetooth chip may be faulty."
+msgstr "Boksens Bluetooth startede ikke. Genstart boksen - sker det igen og igen, kan kortets Bluetooth-chip være defekt."
+
+msgid "NotaTV keeps trying by itself while this screen is open."
+msgstr "NotaTV bliver ved med at prøve selv, mens denne skærm er åben."
+
+msgid "This box cannot play that quality"
+msgstr "Denne boks kan ikke afspille den kvalitet"

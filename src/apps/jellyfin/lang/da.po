@@ -165,11 +165,7 @@ msgstr "Start forfra"
 msgid "Trailer (YouTube)"
 msgstr "Trailer (YouTube)"
 
-msgid "Seasons"
-msgstr "Sæsoner"
 
-msgid "Episodes"
-msgstr "Afsnit"
 
 msgid "Jellyfin: could not load the title (%ld)"
 msgstr "Jellyfin: kunne ikke hente titlen (%ld)"
@@ -213,3 +209,35 @@ msgstr "Gør loginnet ugyldigt på serveren og sletter det fra boksen"
 msgid "Movies and shows from your Jellyfin server"
 msgstr "Film og serier fra din Jellyfin-server"
 
+msgid "Specials"
+msgstr "Ekstra"
+
+msgid "Season %d"
+msgstr "Sæson %d"
+
+msgid "Continue S%d E%d (%s)"
+msgstr "Fortsæt S%d A%d (%s)"
+
+msgid "Play S%d E%d"
+msgstr "Afspil S%d A%d"
+
+msgid "%d min"
+msgstr "%d min"
+
+msgid "A series page with all seasons and episodes"
+msgstr "En serieside med alle sæsoner og afsnit"
+
+msgid "Play starts where you left off, or at the first new episode"
+msgstr "Afspil starter, hvor du slap, eller ved det første nye afsnit"
+
+msgid "Episodes from Continue and Latest open the series page"
+msgstr "Afsnit fra Fortsæt og Seneste åbner seriens side"
+
+msgid "Search subtitles in the player menu (with an OpenSubtitles key)"
+msgstr "Søg efter undertekster i afspillerens menu (med en OpenSubtitles-nøgle)"
+
+msgid "CONTINUE IN JELLYFIN"
+msgstr "FORTSÆT I JELLYFIN"
+
+msgid "Continue watching on the home screen, like Plex"
+msgstr "Fortsæt med at se på forsiden, ligesom Plex"

@@ -129,6 +129,8 @@ static void cat_done(void *arg) {
             c->order = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(a, "order"));
             c->def = cJSON_IsTrue(cJSON_GetObjectItem(a, "default"));
             c->size = (long)cJSON_GetNumberValue(cJSON_GetObjectItem(a, "size"));
+            cJSON *is = cJSON_GetObjectItem(a, "installed_size");
+            c->isize = cJSON_IsNumber(is) ? (long)is->valuedouble : 0;
             /* what is new: {"summary": "...", "points": ["...", ...]}, translated in i18n.<lang>.changes */
             cJSON *ch = cJSON_GetObjectItem(tr, "changes");
             if (!cJSON_IsObject(ch)) ch = cJSON_GetObjectItem(a, "changes");
@@ -296,4 +298,24 @@ static void migrate_tick(void) {
     }
 }
 
-void appcat_tick(void) { migrate_tick(); }
+/* ---------- updates in the background ---------- */
+/* the home screen shows a badge on the App Store when an installed app has an update, so the catalog is fetched now
+   and then: first a little after boot (the network), then every 6 hours - only from the home screen, so a failed
+   fetch never replaces the list while the App Store is open */
+#define CAT_CHECK_EVERY (6 * 3600.0)
+static void bg_check_tick(void) {
+    static double next = -1;
+    if (getenv("TVSHELL_SCRIPT") || !cfg_int("setup_done", 0)) return;
+    double now = app_time();
+    if (next < 0) next = now + 120;
+    if (now < next || state == CAT_LOADING) return;
+    Screen *top = app_top();
+    if (!top || !top->name || strcmp(top->name, "home")) return;
+    next = now + (state == CAT_ERROR ? 1800 : CAT_CHECK_EVERY);
+    appcat_refresh();
+}
+
+void appcat_tick(void) {
+    migrate_tick();
+    bg_check_tick();
+}

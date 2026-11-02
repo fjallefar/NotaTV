@@ -561,27 +561,45 @@ static void chat_tick(void *ud) {
 }
 
 /* ---------- playback ---------- */
+/* quality in the player menu, remembered in cfg tw_quality. Twitch sends H.264: the Pi decodes it in
+   hardware up to 1080p, and Twitch rarely sends more */
+static const char *const tw_qualities[] = {"1080p", "720p", "480p", "360p", NULL};
+
 static void tw_play(const TItem *t) {
     if (!t->login) return;
     if (t->kind == K_CHANNEL && !t->live) { app_toast(T("%s is not live right now"), t->name ? t->name : t->login); return; }
     char *url = str_printf("https://www.twitch.tv/%s", t->login);
-    /* Twitch sends H.264: the Pi decodes it in hardware up to 1080p */
-    const char *extra[] = {"--ytdl-format=best[height<=1080]/best", NULL};
     char sub[300];
     snprintf(sub, sizeof sub, "%s%s%s", t->name ? t->name : t->login, t->game ? " · " : "", t->game ? t->game : "");
     char *poster = t->kind == K_STREAM ? sized(t->thumb, 640, 360) : NULL;
-    PlayRequest rq = {0};
-    rq.url = url;
-    rq.title = t->title && *t->title ? t->title : (t->name ? t->name : t->login);
-    rq.subtitle = sub;
-    rq.poster = poster;
-    rq.extra = extra;
     ChatSession cs = {.shown = -1};
     snprintf(cs.chan, sizeof cs.chan, "%s", t->login);
-    rq.chat = true;
-    rq.tick = chat_tick;
-    rq.ud = &cs;
-    player_run(&rq);
+    for (;;) {
+        int h = atoi(cfg_get("tw_quality", "1080p"));
+        if (h <= 0 || h > 1080) h = 1080;
+        char quality[16], fmt[96];
+        snprintf(quality, sizeof quality, "%dp", h);
+        snprintf(fmt, sizeof fmt, "--ytdl-format=best[height<=%d]/best", h);
+        const char *extra[] = {fmt, NULL};
+        PlayRequest rq = {0};
+        rq.url = url;
+        rq.title = t->title && *t->title ? t->title : (t->name ? t->name : t->login);
+        rq.subtitle = sub;
+        rq.poster = poster;
+        rq.extra = extra;
+        rq.qualities = tw_qualities;
+        rq.quality = quality;
+        rq.chat = true;
+        rq.tick = chat_tick;
+        rq.ud = &cs;
+        PlayResult res = player_run(&rq);
+        if (res.quality[0] && strcmp(res.quality, quality)) { /* new quality: start the stream again */
+            cfg_set("tw_quality", res.quality);
+            app_toast(T("Quality: %s"), res.quality);
+            continue;
+        }
+        break;
+    }
     chat_stop(cs.conn);
     free(url);
     free(poster);

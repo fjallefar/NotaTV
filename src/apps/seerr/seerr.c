@@ -168,15 +168,16 @@ typedef struct {
     int pending;
 } SRow;
 
+#define SROWS 12 /* Discover: 5 Seerr rows + 4 Netflix rows */
 enum { V_DISCOVER, V_GRID };
 enum { SM_DISCOVER, SM_SEARCH, SM_RECENT, SM_MOVIES, SM_TV, SM_NETFLIX, SM_UPCOMING, SM_FILTER, SM_SETTINGS };
 
 typedef struct {
     int state; /* 0 setup, 1 signing in, 2 ready, 3 login failed */
     char msg[200], user[128];
-    SRow rows[8];
+    SRow rows[SROWS];
     int n_rows, row, col, view;
-    float sy, sx[8];
+    float sy, sx[SROWS];
     SideMenu side;
     int side_map[16];
     char grid_title[200];
@@ -204,7 +205,7 @@ static bool type_ok(const char *t) {
 static void row_push(SRow *r, SItem *it) {
     if (r->n == r->cap) { r->cap = r->cap ? r->cap * 2 : 24; r->it = realloc(r->it, sizeof(SItem) * r->cap); }
     int pos = r->n;
-    if (it->rank > 0) /* Netflix top 10: insert in ranking order */
+    if (it->rank > 0) /* Netflix top lists: insert in ranking order */
         while (pos > 0 && (r->it[pos - 1].rank == 0 || r->it[pos - 1].rank > it->rank)) pos--;
     memmove(r->it + pos + 1, r->it + pos, sizeof(SItem) * (r->n - pos));
     r->it[pos] = *it;
@@ -260,9 +261,16 @@ static void recent_done(void *ud, cJSON *json, long status) {
     }
 }
 
-/* ---- Netflix top 10 (Netflix's official weekly data, last week for the country) ---- */
+/* ---- Netflix top lists (Netflix's official weekly data from netflix.com/tudum/top10) ----
+   Per country Netflix only publishes a top 10 (movies and shows). Worldwide it publishes a top 10 in English and a
+   top 10 in other languages, each with the week's views - put together and sorted by views, that is a real
+   worldwide top 20 */
+#define NF_MAX 20
 typedef struct { SRow *r; bool tv; int rank; char *title; } NfFind;
-typedef struct { SRow *r; bool tv; int token; char region[8]; char titles[10][256]; int n; int ranks[10]; } NfJob;
+typedef struct {
+    SRow *r; bool tv, world; int token; char region[8];
+    char titles[NF_MAX][256]; int n; int ranks[NF_MAX]; double views[NF_MAX];
+} NfJob;
 
 static void nf_search_done(void *ud, cJSON *json, long status) {
     NfFind *f = ud;
@@ -285,34 +293,66 @@ static void nf_search_done(void *ud, cJSON *json, long status) {
     free(f);
 }
 
+/* the week's list from one of Netflix's files (fetched again when older than a day) */
 static void nf_work(void *arg) {
     NfJob *j = arg;
     char path[512];
-    snprintf(path, sizeof path, "%s/netflix-top10.tsv", data_dir());
+    snprintf(path, sizeof path, "%s/%s", data_dir(), j->world ? "netflix-top10-global.tsv" : "netflix-top10.tsv");
     struct stat st;
     if (stat(path, &st) != 0 || time(NULL) - st.st_mtime > 24 * 3600)
-        http_download_ua("https://www.netflix.com/tudum/top10/data/all-weeks-countries.tsv", path, 120, "Mozilla/5.0");
+        http_download_ua(j->world ? "https://www.netflix.com/tudum/top10/data/all-weeks-global.tsv"
+                                  : "https://www.netflix.com/tudum/top10/data/all-weeks-countries.tsv", path, 120, "Mozilla/5.0");
     FILE *f = fopen(path, "r");
     if (!f) return;
+    /* countries: country_name, country_iso2, week, category ("Films"/"TV"), weekly_rank, show_title, ...
+       worldwide: week, category ("Films (English)", "TV (Non-English)" ...), weekly_rank, show_title, season_title,
+       weekly_hours_viewed, runtime, weekly_views, ... */
+    int c_week = j->world ? 0 : 2, c_cat = c_week + 1, c_rank = c_week + 2, c_title = c_week + 3;
     char line[1024], best_week[16] = "";
     const char *cat = j->tv ? "TV" : "Films";
-    /* two passes: find the latest week, then gather the top 10 */
+    /* two passes: find the latest week, then gather that week's list */
     for (int pass = 0; pass < 2; pass++) {
         rewind(f);
         while (fgets(line, sizeof line, f)) {
-            char *fld[8];
+            char *fld[10];
             int n = 0;
-            for (char *p = line, *t; n < 8 && (t = strsep(&p, "\t\n")); ) fld[n++] = t;
-            if (n < 7 || strcmp(fld[1], j->region) || strncmp(fld[3], cat, strlen(cat))) continue;
-            if (pass == 0) { if (strcmp(fld[2], best_week) > 0) snprintf(best_week, sizeof best_week, "%s", fld[2]); }
-            else if (!strcmp(fld[2], best_week) && j->n < 10) {
-                j->ranks[j->n] = atoi(fld[4]);
-                snprintf(j->titles[j->n], sizeof j->titles[0], "%s", fld[5]);
-                j->n++;
+            for (char *p = line, *t; n < 10 && (t = strsep(&p, "\t\n")); ) fld[n++] = t;
+            if (n < c_title + 2 || strncmp(fld[c_cat], cat, strlen(cat))) continue;
+            if (!j->world && strcmp(fld[1], j->region)) continue;
+            if (pass == 0) { if (strcmp(fld[c_week], best_week) > 0) snprintf(best_week, sizeof best_week, "%s", fld[c_week]); continue; }
+            if (strcmp(fld[c_week], best_week) || j->n >= NF_MAX) continue;
+            bool dup = false; /* each season of a show is on the list by itself: show the show once */
+            for (int k = 0; k < j->n && !dup; k++) dup = !strcmp(j->titles[k], fld[c_title]);
+            if (dup) {
+                if (j->world && n > 7) for (int k = 0; k < j->n; k++) if (!strcmp(j->titles[k], fld[c_title])) j->views[k] += atof(fld[7]);
+                continue;
             }
+            /* worldwide: views (hours viewed when a week has no views) decide the place across both lists */
+            double views = j->world && n > 7 ? atof(fld[7]) : 0;
+            if (j->world && views <= 0) views = atof(fld[5]) / 2;
+            j->ranks[j->n] = atoi(fld[c_rank]);
+            j->views[j->n] = views;
+            snprintf(j->titles[j->n], sizeof j->titles[0], "%s", fld[c_title]);
+            j->n++;
         }
     }
     fclose(f);
+    if (!j->world) { /* in Netflix's order; numbered again 1..n (a show dropped as a second season leaves no gap) */
+        for (int a = 1; a < j->n; a++)
+            for (int b = a; b > 0 && j->ranks[b] < j->ranks[b - 1]; b--) {
+                int tr = j->ranks[b]; j->ranks[b] = j->ranks[b - 1]; j->ranks[b - 1] = tr;
+                char tt[256]; memcpy(tt, j->titles[b], sizeof tt); memcpy(j->titles[b], j->titles[b - 1], sizeof tt); memcpy(j->titles[b - 1], tt, sizeof tt);
+            }
+        for (int a = 0; a < j->n; a++) j->ranks[a] = a + 1;
+    }
+    if (j->world) { /* sort by views and number 1..n */
+        for (int a = 1; a < j->n; a++)
+            for (int b = a; b > 0 && j->views[b] > j->views[b - 1]; b--) {
+                double tv = j->views[b]; j->views[b] = j->views[b - 1]; j->views[b - 1] = tv;
+                char tt[256]; memcpy(tt, j->titles[b], sizeof tt); memcpy(j->titles[b], j->titles[b - 1], sizeof tt); memcpy(j->titles[b - 1], tt, sizeof tt);
+            }
+        for (int a = 0; a < j->n; a++) j->ranks[a] = a + 1;
+    }
 }
 
 static void nf_done(void *arg) {
@@ -345,7 +385,7 @@ static void free_rows(Seerr *v) {
 }
 
 static void add_row(Seerr *v, const char *title, const char *path) {
-    if (v->n_rows >= 8) return;
+    if (v->n_rows >= SROWS) return;
     SRow *r = &v->rows[v->n_rows];
     memset(r, 0, sizeof *r);
     r->title = str_dup(title);
@@ -354,14 +394,25 @@ static void add_row(Seerr *v, const char *title, const char *path) {
     v->sx[v->n_rows] = 0;
     v->n_rows++;
     if (!strncmp(path, "/api/v1/media?", 14)) { r->recent = true; seerr_call("GET", path, NULL, recent_done, r); }
-    else if (!strncmp(path, "@netflix:", 9)) {
+    else if (!strncmp(path, "@netflix", 8)) { /* "@netflix:tv" = the country's top 10, "@netflixw:tv" = worldwide top 20 */
         NfJob *j = calloc(1, sizeof *j);
         j->r = r;
-        j->tv = !strcmp(path + 9, "tv");
+        j->world = path[8] == 'w';
+        j->tv = !strcmp(strchr(path, ':') + 1, "tv");
         j->token = seerr_token;
         snprintf(j->region, sizeof j->region, "%s", cfg_get("seerr_region", seerr_region_def()));
         job_submit_q(JQ_SLOW, nf_work, nf_done, j);
     } else seerr_call("GET", path, NULL, row_done, r);
+}
+
+/* the Netflix rows: the country's top 10 and the worldwide top 20, for movies and shows (follows the filter) */
+static void add_netflix_rows(Seerr *v) {
+    char t[160];
+    const char *cn = tz_country_name(seerr_region_def());
+    if (sfilter() != 2) { snprintf(t, sizeof t, T("Netflix top 10 · movies (%s, this week)"), cn); add_row(v, t, "@netflix:film"); }
+    if (sfilter() != 1) { snprintf(t, sizeof t, T("Netflix top 10 · shows (%s, this week)"), cn); add_row(v, t, "@netflix:tv"); }
+    if (sfilter() != 2) add_row(v, T("Netflix top 20 · movies (worldwide, this week)"), "@netflixw:film");
+    if (sfilter() != 1) add_row(v, T("Netflix top 20 · shows (worldwide, this week)"), "@netflixw:tv");
 }
 
 #define RECENT_PATH "/api/v1/media?filter=allavailable&take=20&skip=0&sort=mediaAdded"
@@ -378,6 +429,7 @@ static void show_discover(Seerr *v) {
     if (f != 2) add_row(v, T("Popular movies"), "/api/v1/discover/movies?page=1");
     if (f != 1) add_row(v, T("Popular shows"), "/api/v1/discover/tv?page=1");
     if (f != 2) add_row(v, T("Upcoming movies"), "/api/v1/discover/movies/upcoming?page=1");
+    add_netflix_rows(v); /* further down; also its own page in the side menu */
     v->row = v->col = 0;
 }
 
@@ -406,7 +458,7 @@ static void build_side(Seerr *v) {
     ADD(T("Recently added"), ICON_CHECK, true, SM_RECENT);
     if (sfilter() != 2) ADD(T("Popular movies"), ICON_FILM, false, SM_MOVIES);
     if (sfilter() != 1) ADD(T("Popular shows"), ICON_TV, false, SM_TV);
-    ADD(T("Netflix top 10"), ICON_PLAY, false, SM_NETFLIX);
+    ADD(T("Netflix top lists"), ICON_PLAY, false, SM_NETFLIX);
     if (sfilter() != 2) ADD(T("Upcoming movies"), ICON_MOON, false, SM_UPCOMING);
     ADD(filter_label(), ICON_GEAR, true, SM_FILTER);
     ADD(T("Server and login"), ICON_LOCK, false, SM_SETTINGS);
@@ -530,14 +582,7 @@ static void side_activate(Seerr *v, int idx) {
         free_rows(v);
         v->view = V_DISCOVER;
         (void)p;
-        {
-            char t1[160], t2[160];
-            const char *cn = tz_country_name(seerr_region_def());
-            snprintf(t1, sizeof t1, T("Netflix top 10 · movies (%s, this week)"), cn);
-            snprintf(t2, sizeof t2, T("Netflix top 10 · shows (%s, this week)"), cn);
-            if (sfilter() != 2) add_row(v, t1, "@netflix:film");
-            if (sfilter() != 1) add_row(v, t2, "@netflix:tv");
-        }
+        add_netflix_rows(v);
         v->row = v->col = 0;
         break;
     case SM_FILTER:
@@ -1312,7 +1357,7 @@ void seerr_forget(void) {
         http_request_cookies("POST", url, hdr, "{}", &b, 4, jar);
         http_free(&b);
     }
-    if (http_cookies_forget) http_cookies_forget(); /* the session also leaves memory (NotaTV 1.0.3 and newer) */
+    if (http_cookies_forget) http_cookies_forget(); /* the session also leaves memory (NotaTV 1.0.4 and newer) */
     wipe_file(jar);
     cfg_set("seerr_url", "");
     seerr_token++; /* answers on their way are ignored */
@@ -1324,8 +1369,8 @@ static void act_seerr_logout(void) { app_ask_signout("Seerr", seerr_forget); }
 static const char *seerr_signed_out(void) { return *seerr_url() ? NULL : ITEM_HIDDEN; }
 static const char *netflix_value(void) { return T("netflix.com, once a day"); }
 static const Item seerr_items[] = {
-    {N_("Netflix Top 10 row"), IT_INFO, .value = netflix_value, .locked = seerr_signed_out,
-     .help = N_("The row is fetched from Netflix's public top 10 list for your country. Nothing about you is sent")},
+    {N_("Netflix rows"), IT_INFO, .value = netflix_value, .locked = seerr_signed_out,
+     .help = N_("The rows are fetched from Netflix's public top lists: the top 10 for your country and the worldwide top 20. Nothing about you is sent")},
     {N_("Sign out of Seerr"), IT_ACTION, .action = act_seerr_logout, .help = N_("Closes the session at Seerr and deletes the address and login from this box"),
      .locked = seerr_signed_out},
 };

@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <linux/kd.h>
 #include <math.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -779,6 +780,32 @@ static void set_kd_graphics(void) {
     close(fd);
 }
 
+/* the boot animation (notasplash, S01notasplash) holds the display until now: stop it and wait until it has
+   closed the device (it removes its pid file after that), so we become the display's master */
+static void splash_stop(void) {
+    FILE *f = fopen("/run/notasplash.pid", "r");
+    if (!f) return;
+    int pid = 0;
+    if (fscanf(f, "%d", &pid) != 1) pid = 0;
+    fclose(f);
+    char path[64], comm[32] = "";
+    snprintf(path, sizeof path, "/proc/%d/comm", pid);
+    f = pid > 1 ? fopen(path, "r") : NULL;
+    if (f) {
+        if (!fgets(comm, sizeof comm, f)) comm[0] = 0;
+        fclose(f);
+    }
+    /* "S01notasplash": the init script's subshell, still loading the display driver before it becomes notasplash */
+    if (strncmp(comm, "notasplash", 10) && strncmp(comm, "S01notasplash", 13)) {
+        unlink("/run/notasplash.pid"); /* stale file */
+        return;
+    }
+    kill(pid, SIGTERM);
+    for (int i = 0; i < 100 && access("/run/notasplash.pid", F_OK) == 0 && kill(pid, 0) == 0; i++) SDL_Delay(10);
+    unlink("/run/notasplash.pid");
+    SDL_Log("boot animation stopped");
+}
+
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
     /* TZ and NOTATV_LANG exist before any thread starts: changing them later (time zone in Settings) then only
@@ -798,6 +825,7 @@ int main(int argc, char **argv) {
     jobs_init(4);
     bt_init();    /* Bluetooth: agent + afspilningsinfo via D-Bus */
     umask(077); /* logs, configuration and cookies (also from mpv/yt-dlp) for root only */
+    if (getenv("SDL_VIDEO_DRIVER") && !strcmp(getenv("SDL_VIDEO_DRIVER"), "kmsdrm")) splash_stop();
     if (!video_init()) return 1;
     if (target_mode) set_kd_graphics();
     input_init(target_mode || getenv("TVSHELL_EVDEV"));

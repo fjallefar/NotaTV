@@ -1,6 +1,6 @@
 {
   "id": "jellyfin",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "api": 2,
   "name": "Jellyfin",
   "desc": "Movies and shows from your Jellyfin server",
@@ -9,5 +9,14 @@
   "c2": [120, 70, 190],
   "fg": [255, 255, 255],
   "order": 30,
-  "default": false
+  "default": false,
+  "changes": {
+    "summary": "A series page with all seasons and episodes",
+    "points": [
+      "Play starts where you left off, or at the first new episode",
+      "Episodes from Continue and Latest open the series page",
+      "Search subtitles in the player menu (with an OpenSubtitles key)",
+      "Continue watching on the home screen, like Plex"
+    ]
+  }
 }

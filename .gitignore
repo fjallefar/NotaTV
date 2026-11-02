@@ -4,6 +4,7 @@ dl/
 .ccache/
 *.iso
 src/shell/tvshell
+src/shell/notasplash
 src/shell/*.o
 output-rpi4/
 *.img

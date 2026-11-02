@@ -35,6 +35,7 @@ typedef struct {
     bool loading, epg_loading;
     bool short_epg;   /* Xtream: program data is fetched per channel when needed (no big XMLTV file) */
     int sepg_busy;
+    int sepg_ok, sepg_fail; /* get_short_epg replies with data / failed (the provider's guide may be down) */
     char epg_msg[160];
     int *gcount;      /* number of channels per group */
     char **countries; /* country codes from group names ("DK: SPORT" -> "DK") */
@@ -561,6 +562,7 @@ static void load_done(void *arg) {
         int with_sid = 0;
         for (int i = 0; i < D.n_ch; i++) with_sid += D.ch[i].sid > 0;
         D.short_epg = !*cfg_get("iptv_epg", "") && with_sid > D.n_ch / 2;
+        D.sepg_ok = D.sepg_fail = 0;
         free(D.gcount);
         D.gcount = calloc(D.n_groups + 1, sizeof(int));
         { /* channels per group: one sorted copy of the group names and a binary search per channel */
@@ -887,9 +889,12 @@ static void epg_work(void *arg) {
         len += n;
         buf[len] = 0;
         char *p = buf;
+        /* where the next <channel is: searched again only when passed (searching the rest of the buffer
+           for every <programme took minutes, since the channels all come first) */
+        char *sc = strstr(p, "<channel ");
         for (;;) {
             char *sp = strstr(p, "<programme");
-            char *sc = strstr(p, "<channel ");
+            if (sc && sc < p) sc = strstr(p, "<channel ");
             bool is_ch = sc && (!sp || sc < sp);
             char *s = is_ch ? sc : sp;
             if (!s) { p = buf + (len > 16 ? len - 16 : 0); break; }
@@ -998,7 +1003,7 @@ static void epg_start(void) {
 }
 
 /* ---------- EPG via Xtream (get_short_epg): only for the channels you look at ---------- */
-typedef struct SepgRes { int ci, gen; Prog *p; int n; struct SepgRes *next; } SepgRes;
+typedef struct SepgRes { int ci, gen; Prog *p; int n; bool failed; struct SepgRes *next; } SepgRes;
 static SDL_Mutex *sepg_lock;
 static SepgRes *sepg_inbox; /* replies from background threads - emptied by the UI and the playback loop */
 typedef struct { char *url; int ci, gen; } SepgJob;
@@ -1040,6 +1045,8 @@ static void sepg_work(void *arg) {
             r->p[r->n++] = (Prog){ta, tz, b64dec(t->valuestring)};
         }
         cJSON_Delete(root);
+    } else {
+        r->failed = true;
     }
     http_free(&b);
     SDL_LockMutex(sepg_lock);
@@ -1061,6 +1068,10 @@ static bool sepg_drain(int watch) {
     while (r) {
         SepgRes *nx = r->next;
         D.sepg_busy--;
+        if (r->gen == D.gen) {
+            if (r->failed) D.sepg_fail++;
+            else if (r->n > 0) D.sepg_ok++;
+        }
         if (r->gen == D.gen && r->ci >= 0 && r->ci < D.n_ch) {
             Channel *c = &D.ch[r->ci];
             for (int k = 0; k < c->n_progs; k++) free(c->progs[k].title);
@@ -1076,6 +1087,11 @@ static bool sepg_drain(int watch) {
         }
         free(r);
         r = nx;
+    }
+    /* say so instead of just showing nothing (the guide comes back by itself when the provider fixes it) */
+    if (D.short_epg) {
+        const char *m = D.sepg_ok == 0 && D.sepg_fail > 0 ? T("The provider's program guide is not responding") : "";
+        snprintf(D.epg_msg, sizeof D.epg_msg, "%s", m);
     }
     return hit;
 }
@@ -1127,19 +1143,20 @@ typedef struct {
     double digit_t;
     int playing_list_owner;
     double ok_pending; /* time of the OK press: short press = play, held down = menu */
+    time_t gtime, gview; /* TV guide: the chosen time (picks the program) and the start of the visible window */
 } Iptv;
 
 static void play_current(Iptv *v);
 
 #define GROW 66 /* row height in the group column */
-/* left column: 0 = Favorites, 1 = All, 2.. = D.ui (country headings and groups) */
+/* left column: 0 = Favorites, 1 = TV guide (the favorites on a timeline), 2.. = D.ui (country headings and groups) */
 static int n_groups_ui(void) { return D.n_vis + 2; }
 static int ui_entry(int g) { return g >= 2 && g - 2 < D.n_vis ? D.ui[D.vis[g - 2]] : INT_MIN; }
 static int ui_group(int g) { int e = ui_entry(g); return e >= 0 ? e : -1; }
 static int ui_country(int g) { int e = ui_entry(g); return e < 0 && e != INT_MIN ? -e - 1 : -1; }
 static const char *group_name(int g) {
     if (g == 0) return T("Favorites");
-    if (g == 1) return T("All channels");
+    if (g == 1) return T("TV guide");
     int ci = ui_country(g);
     if (ci >= 0) return country_name(D.countries[ci]);
     const char *n = D.groups[ui_group(g)];
@@ -1152,15 +1169,14 @@ static void build_list(Iptv *v) {
     free(v->list);
     v->list = malloc(sizeof(int) * (D.n_ch + n_favs + 1));
     v->n_list = 0;
-    if (v->gsel == 0) { /* favorites in the user's own order */
+    if (v->gsel <= 1) { /* favorites (also the TV guide) in the user's own order */
         for (int k = 0; k < n_favs; k++)
             for (int i = 0; i < D.n_ch; i++)
                 if (!strcmp(D.ch[i].url, favs[k])) { v->list[v->n_list++] = i; break; }
     } else for (int i = 0; i < D.n_ch; i++) {
         Channel *c = &D.ch[i];
         int gi = ui_group(v->gsel), ci = ui_country(v->gsel);
-        bool inc = v->gsel == 1 || (v->gsel == 0 && is_fav(c->url)) ||
-                   (gi >= 0 && !strcmp(c->group, D.groups[gi])) || (ci >= 0 && in_country(c, ci));
+        bool inc = (gi >= 0 && !strcmp(c->group, D.groups[gi])) || (ci >= 0 && in_country(c, ci));
         if (inc) v->list[v->n_list++] = i;
     }
     v->built_gen = D.gen;
@@ -1172,7 +1188,7 @@ static void build_list(Iptv *v) {
 static void iptv_enter(Screen *s) {
     Iptv *v = s->st;
     favs_load();
-    v->gsel = n_favs > 0 ? 0 : 1;
+    v->gsel = n_favs > 0 || n_groups_ui() <= 2 ? 0 : 2; /* no favorites: the first country/group */
     v->col = 1;
     v->cfg_seen = app_cfg_gen();
     if (D.n_ch == 0 || D.status[0]) iptv_load(false);
@@ -1187,7 +1203,15 @@ static void iptv_update(Screen *s, float dt) {
         v->cfg_seen = app_cfg_gen();
         iptv_load(true);
     }
-    if (v->built_gen != D.gen || v->built_g != v->gsel || (v->gsel == 0 && v->fav_count != n_favs)) build_list(v);
+    if (v->built_gen != D.gen || v->built_g != v->gsel || (v->gsel <= 1 && v->fav_count != n_favs)) build_list(v);
+    if (v->gsel == 1) { /* TV guide: the chosen time never lies in the past; the window follows it */
+        time_t now = time(NULL), base = now - now % 1800;
+        if (v->gtime < now) v->gtime = now;
+        if (v->gview < base) v->gview = base;
+        if (v->gtime >= v->gview + 90 * 60) v->gview = v->gtime - v->gtime % 1800 - 1800;
+        if (v->gtime < v->gview) v->gview = v->gtime - v->gtime % 1800;
+        if (v->gview < base) v->gview = base;
+    }
     if (v->digits[0] && app_time() - v->digit_t > 1.4) {
         int num = atoi(v->digits);
         v->digits[0] = 0;
@@ -1221,6 +1245,80 @@ static void draw_setup(void) {
     draw_empty(T("No channels yet"), msg);
     const char *b[] = {T("Sign in with Xtream Codes"), T("Enter M3U link")};
     draw_buttons(UI_W / 2, 800, b, 2, setup_btn);
+}
+
+/* TV guide: the favorites on a 2-hour timeline (program data from get_short_epg, about 8 programs ahead) */
+#define GUIDE_SPAN (120 * 60)
+static void draw_guide(Iptv *v, float cx, float cy, float cw, float rh) {
+    time_t now = time(NULL), v0 = v->gview, v1 = v0 + GUIDE_SPAN;
+    float nw = 250, gx = cx + nw, gw = cw - nw, top = cy + 46;
+    float pps = gw / (float)GUIDE_SPAN; /* pixels per second */
+    if (v->n_list == 0) {
+        text_draw(F_REG, 28, cx + cw / 2, cy + 200, C_TEXT2, AL_CENTER, T("Add favorites to see their programs here (Yellow on a channel)."));
+        return;
+    }
+    /* time labels every half hour */
+    for (time_t t = v0; t < v1; t += 1800) {
+        char hm[8];
+        struct tm tm;
+        localtime_r(&t, &tm);
+        strftime(hm, sizeof hm, "%H:%M", &tm);
+        float x = gx + (float)(t - v0) * pps;
+        text_draw(F_SEMI, 22, x + 4, cy + 4, C_TEXT2, AL_LEFT, hm);
+        fill_rrect(x, cy + 34, 2, 8, 1, C_TEXT3);
+    }
+    /* now: a red line behind the programs (the titles stay readable) */
+    if (now >= v0 && now < v1) {
+        float x = gx + (float)(now - v0) * pps;
+        fill_rrect(x - 1.5f, cy + 30, 3, UI_H - cy - 30 - 74, 1.5f, C_DANGER);
+    }
+    clip_push(cx - 10, top - 6, cw + 20, UI_H - top - 74);
+    for (int i = 0; i < v->n_list; i++) {
+        float y = top + i * rh - v->cscroll;
+        if (y < top - rh || y > UI_H) continue;
+        Channel *c = &D.ch[v->list[i]];
+        epg_want(v->list[i]);
+        bool row = v->col == 1 && v->csel == i;
+        float h = rh - 12;
+        /* channel cell */
+        fill_rrect(cx, y, nw - 12, h, 12, row ? RGB(52, 60, 78) : C_SURFACE);
+        char num[16];
+        snprintf(num, sizeof num, "%d", i + 1);
+        text_draw(F_SEMI, 22, cx + 16, y + h / 2 - 14, row ? C_TEXT : C_TEXT3, AL_LEFT, num);
+        text_draw_clip(F_SEMI, 24, cx + 58, y + h / 2 - 16, nw - 84, row ? C_TEXT : C_TEXT2, AL_LEFT, DNAME(c));
+        /* programs */
+        const Prog *selp = row ? prog_at(c, v->gtime, 0) : NULL;
+        bool any = false;
+        for (int k = 0; k < c->n_progs; k++) {
+            const Prog *p = &c->progs[k];
+            time_t a = p->start > v0 ? p->start : v0, b = p->stop < v1 ? p->stop : v1;
+            if (b <= a) continue;
+            any = true;
+            float x = gx + (float)(a - v0) * pps, w = (float)(b - a) * pps - 6;
+            if (w < 4) continue;
+            bool on = p->start <= now && p->stop > now, me = p == selp;
+            fill_rrect(x, y, w, h, 10, me ? RGB(52, 60, 78) : on ? RGBA(255, 255, 255, 30) : RGBA(255, 255, 255, 14));
+            if (me) stroke_rrect(x - 3, y - 3, w + 6, h + 6, 13, 3, C_FOCUS);
+            if (w > 40) {
+                text_draw_clip(F_SEMI, 24, x + 14, y + 14, w - 24, me || on ? C_TEXT : C_TEXT2, AL_LEFT, p->title);
+                char span[24], t1[8], t2[8];
+                struct tm ta, tb;
+                localtime_r(&p->start, &ta);
+                localtime_r(&p->stop, &tb);
+                strftime(t1, sizeof t1, "%H:%M", &ta);
+                strftime(t2, sizeof t2, "%H:%M", &tb);
+                snprintf(span, sizeof span, "%s-%s", t1, t2);
+                text_draw_clip(F_REG, 20, x + 14, y + 50, w - 24, C_TEXT3, AL_LEFT, span);
+            }
+        }
+        if (!any) {
+            fill_rrect(gx, y, gw - 6, h, 10, RGBA(255, 255, 255, 8));
+            if (row) stroke_rrect(gx - 3, y - 3, gw, h + 6, 13, 3, C_FOCUS);
+            text_draw(F_REG, 22, gx + 14, y + h / 2 - 14, C_TEXT3, AL_LEFT,
+                      c->epg_busy || (D.short_epg && c->epg_t == 0) ? T("Loading…") : T("No program info"));
+        }
+    }
+    clip_pop();
 }
 
 static void iptv_draw(Screen *s) {
@@ -1258,7 +1356,7 @@ static void iptv_draw(Screen *s) {
             if (D.cexp[ci]) fill_tri(ax - 8, my - 5, ax + 8, my - 5, ax, my + 6, tc);
             else fill_tri(ax - 5, my - 8, ax - 5, my + 8, ax + 6, my, tc);
         }
-        int count = g == 0 ? n_favs : g == 1 ? D.n_ch : ci >= 0 ? D.ccount[ci] : (D.gcount ? D.gcount[gi] : 0);
+        int count = g <= 1 ? n_favs : ci >= 0 ? D.ccount[ci] : (D.gcount ? D.gcount[gi] : 0);
         char cnt[16];
         snprintf(cnt, sizeof cnt, "%d", count);
         float cw = text_width(F_REG, 20, cnt);
@@ -1269,6 +1367,8 @@ static void iptv_draw(Screen *s) {
 
     /* channels */
     float cx = 560, cy = 150, cw = UI_W - cx - 80, rh = 100;
+    if (v->gsel == 1) draw_guide(v, cx, cy, cw, rh);
+    else {
     clip_push(cx - 10, cy - 10, cw + 20, UI_H - cy - 70);
     time_t now = time(NULL);
     if (v->n_list == 0) {
@@ -1326,6 +1426,9 @@ static void iptv_draw(Screen *s) {
         }
     }
     clip_pop();
+    }
+    if (v->col == 1 && v->gsel == 1 && v->n_list)
+        text_draw(F_REG, 22, cx + cw, UI_H - 56, C_TEXT3, AL_RIGHT, T("Left/right: earlier and later programs"));
     if (v->col == 1 && v->gsel == 0 && v->n_list > 1)
         text_draw(F_REG, 22, cx + cw, UI_H - 56, v->moving ? C_TEXT : C_TEXT3, AL_RIGHT,
                   v->moving ? T("Move with up/down · OK when you are done") : T("Right: move channel · The Favorite button at the bottom removes it"));
@@ -1335,8 +1438,9 @@ static void iptv_draw(Screen *s) {
     }
     float hy = UI_H - 60;
     draw_keybar(80, hy, T("Watch channel"), T("Channel menu"), T("Favorite"), NULL, "Menu");
-    if (D.loading) text_draw(F_REG, 22, UI_W - 80, hy + 4, C_TEXT3, AL_RIGHT, T("Updating channels…"));
-    else if (D.epg_msg[0]) text_draw(F_REG, 22, UI_W - 80, hy + 4, C_TEXT3, AL_RIGHT, D.epg_msg);
+    /* status at the top, left of the clock (the bottom right holds the favorites hint) */
+    const char *st = D.loading ? T("Updating channels…") : D.epg_msg;
+    if (st[0]) text_draw(F_REG, 22, UI_W - 96 - text_width(F_SEMI, 34, "00:00") - 40, 72, C_TEXT3, AL_RIGHT, st);
 }
 
 /* ---------- playback ---------- */
@@ -1954,16 +2058,29 @@ static bool iptv_input(Screen *s, const InputEvent *ev) {
     case A_CHUP: v->csel = v->csel > 8 ? v->csel - 8 : 0; return true;
     case A_CHDOWN: v->csel = v->csel + 8 < v->n_list ? v->csel + 8 : (v->n_list ? v->n_list - 1 : 0); return true;
     case A_LEFT:
+        if (v->col == 1 && v->gsel == 1 && v->n_list) { /* TV guide: the program before, or out to the left column */
+            const Prog *p = prog_at(&D.ch[v->list[v->csel]], v->gtime, 0);
+            time_t now = time(NULL);
+            if (v->gtime > now) { v->gtime = p ? p->start - 1 : v->gtime - 1800; if (v->gtime < now) v->gtime = now; return true; }
+        }
         if (v->col == 1) v->col = 0;
         return true;
     case A_RIGHT:
-        if (v->col == 0 && v->n_list > 0) v->col = 1;
+        if (v->col == 1 && v->gsel == 1) { /* TV guide: the next program */
+            if (!v->n_list) return true;
+            Channel *c = &D.ch[v->list[v->csel]];
+            const Prog *p = prog_at(c, v->gtime, 0);
+            if (p && prog_at(c, p->stop, 0)) v->gtime = p->stop;
+            else if (!p && v->gtime < time(NULL) + 6 * 3600) v->gtime += 1800;
+            return true;
+        }
+        if (v->col == 0 && v->n_list > 0) { v->col = 1; v->gtime = time(NULL); }
         else if (v->col == 1 && v->gsel == 0 && v->n_list > 1 && !ev->repeat) v->moving = true; /* pick up a favorite */
         return true;
     case A_OK:
         if (v->col == 0 && ui_country(v->gsel) >= 0) { /* country heading: expand/collapse */
             if (!ev->repeat) { D.cexp[ui_country(v->gsel)] ^= 1; rebuild_vis(); }
-        } else if (v->col == 0) { if (!ev->repeat) { if (v->n_list) v->col = 1; v->csel = 0; } }
+        } else if (v->col == 0) { if (!ev->repeat) { if (v->n_list) v->col = 1; v->csel = 0; v->gtime = time(NULL); } }
         else if (v->n_list) {
             if (!ev->repeat) v->ok_pending = app_time();          /* wait: short press or held? */
             else if (v->ok_pending) { v->ok_pending = 0; open_channel_menu(v); }

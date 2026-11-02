@@ -135,24 +135,43 @@ static void search_work(void *arg) {
 }
 
 /* ---------- prefetch: direct stream URLs for the focused video and its neighbors ---------- */
-typedef struct { char id[16]; char *video, *audio; double t; } Prefetch; /* video == NULL: the lookup failed */
+typedef struct { char id[16]; char *video, *audio; double t; int q; } Prefetch; /* video == NULL: the lookup failed; q: the quality it was looked up for */
 static Prefetch pf[24];
 static int pf_next;
 static char pf_busy_id[16]; /* video being looked up right now ("" = none) */
 static char pf_focus[16];
 static double pf_focus_t;
 
-static char *yt_format(void) {
-    int q = cfg_int("yt_quality", 2160);
-    /* the Pi decodes H.264 in hardware up to 1080p; https over HLS; otherwise software fallback */
-    int h = q < 1080 ? q : 1080;
+/* YouTube has 1440p and 4K only as VP9/AV1, which the Pi 4 cannot decode in hardware (H.264 goes up to 1080p):
+   there 1080p is the most, and 1440p/2160p are shown greyed out. Other devices (later ports) get up to 2160p. */
+static int yt_max(void) {
+    static int max;
+    if (!max) {
+        char m[128] = "";
+        FILE *f = fopen("/proc/device-tree/model", "r");
+        if (f) { size_t n = fread(m, 1, sizeof m - 1, f); m[n] = 0; fclose(f); }
+        max = strstr(m, "Raspberry Pi 4") || strstr(m, "Raspberry Pi 400") || strstr(m, "Compute Module 4") ? 1080 : 2160;
+    }
+    return max;
+}
+static int yt_quality(void) {
+    int q = cfg_int("yt_quality", 1080);
+    return q <= 0 ? 1080 : q > yt_max() ? yt_max() : q;
+}
+
+static char *yt_format_for(int h) {
+    if (h > 1080) /* only VP9/AV1 above 1080p: VP9 before AV1 */
+        return str_printf("bv*[height<=%d][vcodec!^=av01]+ba/bv*[height<=%d]+ba/b[height<=%d]/b", h, h, h);
+    /* H.264 first (hardware); https over HLS; otherwise software fallback */
     return str_printf("bv*[height<=%d][vcodec^=avc1][protocol^=https]+ba[protocol^=https]/bv*[height<=%d][vcodec^=avc1]+ba/"
                       "bv*[height<=%d][vcodec!^=av01]+ba/b[height<=%d]/b", h, h, h, h);
 }
 
-static Prefetch *pf_entry(const char *id) { /* also failed (tried again after a minute) */
+static char *yt_format(void) { return yt_format_for(yt_quality()); }
+
+static Prefetch *pf_entry(const char *id) { /* also failed (tried again after a minute); only for the current quality */
     for (int i = 0; i < 24; i++)
-        if (pf[i].id[0] && !strcmp(pf[i].id, id) && app_time() - pf[i].t < (pf[i].video ? 3 * 3600 : 60)) return &pf[i];
+        if (pf[i].id[0] && !strcmp(pf[i].id, id) && pf[i].q == yt_quality() && app_time() - pf[i].t < (pf[i].video ? 3 * 3600 : 60)) return &pf[i];
     return NULL;
 }
 static Prefetch *pf_find(const char *id) {
@@ -160,10 +179,10 @@ static Prefetch *pf_find(const char *id) {
     return p && p->video ? p : NULL;
 }
 
-typedef struct { char id[16]; char *video, *audio; char cookies[512]; } PfJob;
+typedef struct { char id[16]; char *video, *audio; char cookies[512]; int q; } PfJob;
 static void pf_work(void *arg) {
     PfJob *j = arg;
-    char *fmt = yt_format();
+    char *fmt = yt_format_for(j->q);
     char *url = str_printf("https://www.youtube.com/watch?v=%s", j->id);
     const char *argv[12];
     int n = 0;
@@ -181,10 +200,12 @@ static void pf_work(void *arg) {
 static void pf_done(void *arg) {
     PfJob *j = arg;
     pf_busy_id[0] = 0;
-    Prefetch *p = pf_entry(j->id);
+    Prefetch *p = NULL; /* the slot for this video (any quality: the old one is replaced) */
+    for (int i = 0; i < 24 && !p; i++) if (pf[i].id[0] && !strcmp(pf[i].id, j->id)) p = &pf[i];
     if (!p) { p = &pf[pf_next]; pf_next = (pf_next + 1) % 24; }
     free(p->video); free(p->audio);
     snprintf(p->id, sizeof p->id, "%s", j->id);
+    p->q = j->q;
     p->video = j->video;
     p->audio = j->audio;
     p->t = app_time();
@@ -200,6 +221,7 @@ static void pf_consider(const char *const *ids, int n) {
         if (!ids[i] || pf_entry(ids[i])) continue;
         PfJob *j = calloc(1, sizeof *j);
         snprintf(j->id, sizeof j->id, "%s", ids[i]);
+        j->q = yt_quality();
         if (!cookie_file(j->cookies, sizeof j->cookies)) j->cookies[0] = 0;
         snprintf(pf_busy_id, sizeof pf_busy_id, "%s", ids[i]);
         job_submit_q(JQ_SLOW, pf_work, pf_done, j);
@@ -868,7 +890,8 @@ static void yt_draw(Screen *s) {
     }
 }
 
-static const char *const yt_qualities[] = {"2160p", "1440p", "1080p", "720p", "480p", NULL};
+/* the player menu; a leading "-" = shown greyed out, cannot be chosen (notatv-osd.lua): what this box cannot play */
+static const char *yt_qualities[] = {"2160p", "1440p", "1080p", "720p", "480p", NULL};
 
 /* recently watched videos (for the home screen): <data>/yt-watched.txt, id<TAB>title<TAB>channel<TAB>channel id */
 #define N_WATCHED 12
@@ -972,7 +995,7 @@ static bool yt_play_at(Video *v, double start) {
     fmt_views(v->views, vw, sizeof vw);
     snprintf(sub, sizeof sub, "%s%s%s", v->channel ? v->channel : "YouTube", vw[0] ? " · " : "", vw);
     char qnow[16];
-    snprintf(qnow, sizeof qnow, "%dp", cfg_int("yt_quality", 2160));
+    snprintf(qnow, sizeof qnow, "%dp", yt_quality());
     PlayRequest rq = {0};
     rq.url = p ? p->video : url;
     rq.title = v->title;
@@ -1180,8 +1203,8 @@ static void info_done(void *arg) {
             cJSON *lc = cJSON_GetObjectItem(root, "like_count"), *cid = cJSON_GetObjectItem(root, "channel_id");
             cJSON *ch = cJSON_GetObjectItem(root, "channel"), *vc = cJSON_GetObjectItem(root, "view_count");
             cJSON *du = cJSON_GetObjectItem(root, "duration");
-            if (cJSON_IsString(d)) in->desc = str_dup(d->valuestring);
-            if (cJSON_IsString(ud) && strlen(ud->valuestring) == 8)
+            if (cJSON_IsString(d) && !in->desc) in->desc = str_dup(d->valuestring); /* the fast path may have it */
+            if (cJSON_IsString(ud) && strlen(ud->valuestring) == 8 && !in->date)
                 in->date = str_printf("%.2s.%.2s.%.4s", ud->valuestring + 6, ud->valuestring + 4, ud->valuestring);
             if (cJSON_IsNumber(lc)) in->likes = (long)lc->valuedouble;
             if (cJSON_IsString(cid) && !in->v.channel_id) in->v.channel_id = str_dup(cid->valuestring);
@@ -1211,7 +1234,56 @@ static void info_done(void *arg) {
     free(j);
 }
 
+/* fast path: YouTube's own player API answers in a fraction of a second with description, date, views, length
+   and channel, while yt-dlp (below) takes seconds on the Pi and waits behind the stream lookups in JQ_SLOW.
+   yt-dlp still runs afterwards for the likes (and as the fallback if this fails). */
+typedef struct { int token; char id[16]; char *out; } QuickJob;
+static void quick_work(void *arg) {
+    QuickJob *j = arg;
+    char *body = str_printf("{\"context\":{\"client\":{\"clientName\":\"WEB\",\"clientVersion\":\"2.20251030.01.00\"}},"
+                            "\"videoId\":\"%s\"}", j->id);
+    const char *hdr[] = {"Content-Type: application/json", NULL};
+    HttpBuf b = {0};
+    if (http_request("POST", "https://www.youtube.com/youtubei/v1/player?prettyPrint=false", hdr, body, &b, 8) && b.status == 200) {
+        j->out = b.data;
+        b.data = NULL;
+    }
+    http_free(&b);
+    free(body);
+}
+static void quick_done(void *arg) {
+    QuickJob *j = arg;
+    Info *in = live_info;
+    cJSON *root = j->out ? cJSON_Parse(j->out) : NULL;
+    cJSON *vd = cJSON_GetObjectItem(root, "videoDetails");
+    if (in && j->token == in->token && in->details_loading && cJSON_IsObject(vd)) {
+        cJSON *mf = cJSON_GetObjectItem(cJSON_GetObjectItem(root, "microformat"), "playerMicroformatRenderer");
+        cJSON *d = cJSON_GetObjectItem(vd, "shortDescription"), *vc = cJSON_GetObjectItem(vd, "viewCount");
+        cJSON *ls = cJSON_GetObjectItem(vd, "lengthSeconds"), *au = cJSON_GetObjectItem(vd, "author");
+        cJSON *cid = cJSON_GetObjectItem(vd, "channelId"), *pd = cJSON_GetObjectItem(mf, "publishDate");
+        if (cJSON_IsString(d)) {
+            in->details_loading = false;
+            if (!in->desc) in->desc = str_dup(d->valuestring);
+            if (cJSON_IsString(pd) && strlen(pd->valuestring) >= 10 && !in->date) /* 2009-10-24... */
+                in->date = str_printf("%.2s.%.2s.%.4s", pd->valuestring + 8, pd->valuestring + 5, pd->valuestring);
+            if (cJSON_IsString(vc)) in->v.views = atof(vc->valuestring);
+            if (cJSON_IsString(ls) && atof(ls->valuestring) > 0) in->v.duration = atof(ls->valuestring);
+            if (cJSON_IsString(cid) && !in->v.channel_id) in->v.channel_id = str_dup(cid->valuestring);
+            if (cJSON_IsString(au) && !in->v.channel) in->v.channel = str_dup(au->valuestring);
+        }
+    }
+    cJSON_Delete(root);
+    free(j->out);
+    free(j);
+}
+
 static void info_fetch(Info *in, bool comments) {
+    if (!comments) {
+        QuickJob *q = calloc(1, sizeof *q);
+        q->token = in->token;
+        snprintf(q->id, sizeof q->id, "%s", in->v.id);
+        job_submit_q(JQ_FAST, quick_work, quick_done, q);
+    }
     InfoJob *j = calloc(1, sizeof *j);
     j->token = in->token;
     j->comments = comments;
@@ -1397,7 +1469,7 @@ static void login_update(Screen *s, float dt) {
         if (*p && strcmp(p, l->last_prof)) {
             app_toast(T("Signed in as %s"), p);
             if (app_close) app_close(s);
-            else if (app_top() == s) app_pop(); /* NotaTV 1.0.2 and older */
+            else if (app_top() == s) app_pop(); /* NotaTV 1.0.3 and older */
         }
     }
 }
@@ -1545,7 +1617,8 @@ static void act_ytpair(void) {
 }
 
 /* low to high like the other number settings: Right = higher quality, Left = lower */
-static const char *const ytq_o[] = {"720", "1080", "1440", "2160", NULL}, *const ytq_l[] = {"720p", "1080p", "1440p", "4K", NULL};
+/* yt_init cuts the list at what the box can play (Settings cannot grey out a choice; the player menu does) */
+static const char *ytq_o[] = {"480", "720", "1080", "1440", "2160", NULL}, *const ytq_l[] = {"480p", "720p", "1080p", "1440p", "4K", NULL};
 
 static void act_yt_logout(void) { app_ask_signout("YouTube", youtube_forget_all); }
 /* signed in = at least one account (<data>/youtube/<name>.cookies); looked up at most once a second */
@@ -1572,11 +1645,23 @@ static const char *yt_signed_out(void) {
 static const Item yt_items[] = {
     {N_("YouTube cast"), IT_TOGGLE, "ytcast_enabled", "1", set_onoff, .changed = ytcast_apply, .help = N_("The cast button in the YouTube app can play on NotaTV. Control goes through YouTube (Google)")},
     {N_("YouTube: link with TV code"), IT_ACTION, .action = act_ytpair, .help = N_("If NotaTV does not show up under Cast in the YouTube app: link with a code")},
-    {N_("YouTube max quality"), IT_CYCLE, "yt_quality", "2160", ytq_o, ytq_l},
+    {N_("YouTube max quality"), IT_CYCLE, "yt_quality", "1080", ytq_o, ytq_l,
+     .help = N_("Up to 1080p on a Raspberry Pi 4 (YouTube has 1440p and 4K only in formats it cannot decode)")},
     {N_("YouTube subtitles"), IT_TOGGLE, "yt_subs", "0", set_onoff, .help = N_("Downloads English subtitles - makes start about 2 sec. slower")},
     {N_("Sign out of YouTube"), IT_ACTION, .action = act_yt_logout, .help = N_("Deletes the accounts (cookies), subscriptions, search history and what you have watched"),
      .locked = yt_signed_out},
 };
+
+static void yt_init(void) {
+    if (yt_max() < 2160) {
+        static const char *const grey[] = {"-2160p", "-1440p"};
+        yt_qualities[0] = grey[0];
+        yt_qualities[1] = grey[1];
+        if (yt_max() < 1440) ytq_o[3] = NULL;
+        if (cfg_int("yt_quality", 1080) > yt_max()) cfg_set_int("yt_quality", yt_max()); /* Settings shows it right */
+    }
+    ytcast_apply();
+}
 
 static void yt_row_open(const HomeItem *it, int idx) { (void)idx; if (it->key && !strncmp(it->key, "yt:", 3)) youtube_play_recent(atoi(it->key + 3)); }
 /* the phone page sent login cookies for a YouTube account: added only when approved here on the TV */
@@ -1608,7 +1693,7 @@ static bool yt_inbox(const char *name, const char *val) {
 const NotaApp nota_app = {
     NOTA_API, "youtube", "YouTube", N_("Search and watch videos on YouTube"), APP_VERSION, 40, 0,
     ICON_YOUTUBE, {229, 45, 39, 255}, {170, 18, 20, 255}, {255, 255, 255, 255},
-    .open = youtube_screen, .init = ytcast_apply, .tick = ytcast_tick, .apply = ytcast_apply, .forget = youtube_forget_all,
+    .open = youtube_screen, .init = yt_init, .tick = ytcast_tick, .apply = ytcast_apply, .forget = youtube_forget_all,
     .settings = yt_items, .n_settings = sizeof yt_items / sizeof yt_items[0],
     .row_title = N_("Recently watched"), .shelf_label = N_("RECENTLY WATCHED ON YOUTUBE"),
     .row = youtube_recent, .row_open = yt_row_open, .inbox = yt_inbox,

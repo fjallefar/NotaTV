@@ -217,7 +217,7 @@ typedef struct {
     int rt_critic, rt_audience, imdb10; /* -1 = unknown */
     int tmdb;
     char *show; /* series title for episodes */
-    char *grandparent_key; /* episodes: the series' rating key (for "next episode") */
+    char *grandparent_key; /* episodes and seasons: the series' rating key */
     int srv; /* server-indeks i S[] */
     bool hdr; /* the video track is HDR (PQ/HLG) */
     int width; /* video width (0 = unknown) */
@@ -293,6 +293,14 @@ static void pitem_parse(PItem *it, cJSON *m, int si) {
         it->sart = jstr(m, "grandparentArt");
     } else if (it->type && !strcmp(it->type, "season")) {
         it->subtitle = jstr(m, "parentTitle");
+        it->grandparent_key = jstr(m, "parentRatingKey"); /* the series */
+        it->thumb = jstr(m, "thumb");
+        it->art = jstr(m, "art");
+    } else if (it->type && !strcmp(it->type, "show") && jnum(m, "childCount") > 0) { /* "2024 · 2 seasons" */
+        int ns = (int)jnum(m, "childCount");
+        char sn[64];
+        snprintf(sn, sizeof sn, ns == 1 ? T("1 season") : T("%d seasons"), ns);
+        it->subtitle = it->year ? str_printf("%s · %s", it->year, sn) : str_dup(sn);
         it->thumb = jstr(m, "thumb");
         it->art = jstr(m, "art");
     } else {
@@ -995,21 +1003,38 @@ void plex_play_key(const char *key) {
     free(p);
 }
 
-/* Play on a show or a season: resume the episode in progress, otherwise the first unwatched, otherwise
-   the first one (so a series that is not in "Continue watching" starts at E1). */
+/* which episode "Play" on a series means (eps = allLeaves, in season/episode order):
+   - the episode in progress, if it was watched after everything else (an old half-watched episode does not win)
+   - otherwise the first unwatched episode after the one watched most recently
+   - otherwise the first unwatched, otherwise the first one - specials (season 0) only when there is nothing else */
+static int pick_next_ep(const PItem *e, int n) {
+    int prog = -1, last = -1;
+    for (int i = 0; i < n; i++) {
+        if (!e[i].part) continue;
+        if (e[i].offset > 30 && (prog < 0 || e[i].last_viewed > e[prog].last_viewed)) prog = i;
+        if (e[i].view_count && (last < 0 || e[i].last_viewed >= e[last].last_viewed)) last = i;
+    }
+    if (prog >= 0 && (last < 0 || e[prog].last_viewed >= e[last].last_viewed)) return prog;
+    for (int pass = 0; pass < 2; pass++) { /* pass 0 without specials */
+        if (last >= 0)
+            for (int i = last + 1; i < n; i++)
+                if (e[i].part && !e[i].view_count && (pass || e[i].parent_index > 0)) return i;
+        for (int i = 0; i < n; i++)
+            if (e[i].part && !e[i].view_count && (pass || e[i].parent_index > 0)) return i;
+    }
+    for (int i = 0; i < n; i++) if (e[i].part && e[i].parent_index > 0) return i;
+    for (int i = 0; i < n; i++) if (e[i].part) return i;
+    return -1;
+}
+
+/* Play on a show or a season (hero, Play key on a tile): the episode pick_next_ep chooses */
 static void showplay_cb(void *ud, Req *r) {
     (void)ud;
     cJSON *mc = mc_of(r);
     PItem *items;
     int n = mc ? parse_items(mc, &items, r->srv) : 0;
-    int pick = -1;
-    double start = 0;
-    for (int i = 0; i < n && pick < 0; i++)
-        if (items[i].offset > 30) { pick = i; start = items[i].offset; }
-    for (int i = 0; i < n && pick < 0; i++)
-        if (!items[i].view_count && items[i].part) { pick = i; start = 0; }
-    for (int i = 0; i < n && pick < 0; i++)
-        if (items[i].part) { pick = i; start = 0; }
+    int pick = pick_next_ep(items, n);
+    double start = pick >= 0 && items[pick].offset > 30 ? items[pick].offset : 0;
     if (pick >= 0) plex_play_chain(&items[pick], start, NULL);
     else app_toast(T("No playable file"));
     for (int i = 0; i < n; i++) pitem_free(&items[i]);
@@ -1401,7 +1426,7 @@ static void link_update(Screen *s, float dt) {
     }
     if (l->step == 2) { /* replace s itself, also when e.g. the server list is on top */
         if (app_replace) { l->step = 3; app_replace(s, plex_screen()); }
-        else if (app_top() == s) { l->step = 3; app_pop(); app_push(plex_screen()); } /* NotaTV 1.0.2 and older */
+        else if (app_top() == s) { l->step = 3; app_pop(); app_push(plex_screen()); } /* NotaTV 1.0.3 and older */
     }
 }
 
@@ -2365,20 +2390,17 @@ static void browse_draw(Screen *s) {
     if (b->is_home) side_draw(&b->side);
 }
 
+static Screen *show_screen(int srv, const char *show_key, const char *focus_rk, int season);
 static void open_item(PItem *it) {
     if (!it->type) return;
-    if (!strcmp(it->type, "movie") || !strcmp(it->type, "episode") || !strcmp(it->type, "clip")) {
+    if (!strcmp(it->type, "episode") && it->grandparent_key) { /* the series page, with this episode in focus */
+        app_push(show_screen(it->srv, it->grandparent_key, it->rating_key, it->parent_index));
+    } else if (!strcmp(it->type, "movie") || !strcmp(it->type, "episode") || !strcmp(it->type, "clip")) {
         app_push(detail_screen(it));
-    } else if (!strcmp(it->type, "show")) {
-        char *p = str_printf("/library/metadata/%s/children", it->rating_key);
-        app_push(browse_screen(it->title, p, false, it->srv));
-        free(p);
-    } else if (!strcmp(it->type, "season")) {
-        char *p = str_printf("/library/metadata/%s/children", it->rating_key);
-        char *t = str_printf("%s - %s", it->subtitle ? it->subtitle : "", it->title);
-        app_push(browse_screen(t, p, false, it->srv));
-        free(p);
-        free(t);
+    } else if (!strcmp(it->type, "show") && it->rating_key) {
+        app_push(show_screen(it->srv, it->rating_key, NULL, -1));
+    } else if (!strcmp(it->type, "season") && it->grandparent_key) {
+        app_push(show_screen(it->srv, it->grandparent_key, NULL, it->index));
     } else if (!strcmp(it->type, "artist") || !strcmp(it->type, "album")) {
         char *p = str_printf("/library/metadata/%s/children", it->rating_key);
         app_push(browse_screen(it->title, p, true, it->srv));
@@ -2765,6 +2787,328 @@ static Screen *detail_screen(PItem *src) {
     s->draw = detail_draw;
     s->input = detail_input;
     s->destroy = detail_destroy;
+    return s;
+}
+
+/* ---- series page: the series at the top, Play/Continue, the seasons and the episodes of the chosen season ----
+   Opened from a series, a season or an episode (e.g. "Continue watching" or "Recently added"). All episodes are
+   fetched at once (allLeaves) and grouped by season, so switching season needs no new request. */
+#define SHOW_MAX_SEASONS 128
+typedef struct {
+    int srv;
+    char key[32], focus_rk[32];
+    int want_season; /* -1 = the season of the next episode */
+    PItem show;
+    bool have_show, loaded, failed, placed;
+    PItem *eps;
+    int n_eps;
+    int seasons[SHOW_MAX_SEASONS], n_seasons; /* season numbers, specials (0) last */
+    int *sidx, n_sidx;                       /* eps of the chosen season */
+    int row;                                 /* 0 = buttons, 1 = seasons, 2 = episodes */
+    int bsel, ssel, esel, next;              /* next = index in eps that Play/Continue plays (-1 = none) */
+    float sx_s, sx_e;
+    Req *req, *ereq;
+    int gen;
+} Show;
+
+static void show_pick_season(Show *sh, int si) {
+    sh->ssel = si < 0 ? 0 : si >= sh->n_seasons ? sh->n_seasons - 1 : si;
+    sh->n_sidx = 0;
+    if (!sh->n_seasons) return;
+    for (int i = 0; i < sh->n_eps; i++)
+        if (sh->eps[i].parent_index == sh->seasons[sh->ssel]) sh->sidx[sh->n_sidx++] = i;
+}
+static int show_season_of(Show *sh, int season) {
+    for (int i = 0; i < sh->n_seasons; i++) if (sh->seasons[i] == season) return i;
+    return -1;
+}
+static int show_ep_pos(Show *sh, const char *rk) { /* position in the chosen season */
+    for (int i = 0; rk && *rk && i < sh->n_sidx; i++)
+        if (sh->eps[sh->sidx[i]].rating_key && !strcmp(sh->eps[sh->sidx[i]].rating_key, rk)) return i;
+    return -1;
+}
+
+static void show_info_cb(void *ud, Req *r) {
+    Show *sh = ud;
+    sh->req = NULL;
+    cJSON *mc = mc_of(r);
+    PItem *items;
+    int n = mc ? parse_items(mc, &items, r->srv) : 0;
+    if (n > 0) {
+        if (sh->have_show) pitem_free(&sh->show);
+        sh->show = items[0];
+        sh->have_show = true;
+        for (int i = 1; i < n; i++) pitem_free(&items[i]);
+    }
+    if (mc) free(items);
+}
+
+static void show_eps_cb(void *ud, Req *r) {
+    Show *sh = ud;
+    sh->ereq = NULL;
+    cJSON *mc = mc_of(r);
+    if (!mc) { if (!sh->loaded) sh->failed = true; return; }
+    /* keep the place after a reload (after a playback) */
+    int keep_season = sh->n_seasons ? sh->seasons[sh->ssel] : -1;
+    char keep_rk[32] = "";
+    if (sh->esel < sh->n_sidx && sh->eps[sh->sidx[sh->esel]].rating_key)
+        snprintf(keep_rk, sizeof keep_rk, "%s", sh->eps[sh->sidx[sh->esel]].rating_key);
+    for (int i = 0; i < sh->n_eps; i++) pitem_free(&sh->eps[i]);
+    free(sh->eps);
+    free(sh->sidx);
+    sh->n_eps = parse_items(mc, &sh->eps, r->srv);
+    sh->sidx = calloc(sh->n_eps + 1, sizeof(int));
+    sh->n_seasons = 0;
+    for (int pass = 0; pass < 2; pass++) /* the seasons in order, specials last */
+        for (int i = 0; i < sh->n_eps; i++) {
+            int s = sh->eps[i].parent_index;
+            if ((s == 0) != (pass == 1) || show_season_of(sh, s) >= 0 || sh->n_seasons >= SHOW_MAX_SEASONS) continue;
+            sh->seasons[sh->n_seasons++] = s;
+        }
+    sh->next = pick_next_ep(sh->eps, sh->n_eps);
+    sh->loaded = true;
+    if (!sh->placed) { /* first time: the season asked for, else the opened episode's, else the next episode's */
+        sh->placed = true;
+        int season = sh->want_season >= 0 ? sh->want_season : sh->next >= 0 ? sh->eps[sh->next].parent_index : -1;
+        int si = show_season_of(sh, season);
+        show_pick_season(sh, si < 0 ? 0 : si);
+        int pos = show_ep_pos(sh, sh->focus_rk);
+        if (pos < 0 && sh->next >= 0) pos = show_ep_pos(sh, sh->eps[sh->next].rating_key);
+        sh->esel = pos < 0 ? 0 : pos;
+    } else {
+        int si = show_season_of(sh, keep_season);
+        show_pick_season(sh, si < 0 ? 0 : si);
+        int pos = show_ep_pos(sh, keep_rk);
+        sh->esel = pos < 0 ? 0 : pos;
+    }
+    if (sh->esel >= sh->n_sidx) sh->esel = sh->n_sidx ? sh->n_sidx - 1 : 0;
+}
+
+static void show_fetch(Show *sh) {
+    sh->gen = play_gen;
+    char *p = str_printf("/library/metadata/%s?includeImages=1", sh->key);
+    if (!sh->req) sh->req = srv_get(sh->srv, p, show_info_cb, sh);
+    free(p);
+    p = str_printf("/library/metadata/%s/allLeaves", sh->key);
+    if (!sh->ereq) sh->ereq = srv_get(sh->srv, p, show_eps_cb, sh);
+    free(p);
+    if (!sh->ereq && !sh->loaded) sh->failed = true;
+}
+static void show_enter(Screen *s) { show_fetch(s->st); }
+static void show_leave(Screen *s) {
+    Show *sh = s->st;
+    if (sh->req) { sh->req->cancelled = true; sh->req = NULL; }
+    if (sh->ereq) { sh->ereq->cancelled = true; sh->ereq = NULL; }
+}
+static void show_destroy(Screen *s) {
+    Show *sh = s->st;
+    if (sh->have_show) pitem_free(&sh->show);
+    for (int i = 0; i < sh->n_eps; i++) pitem_free(&sh->eps[i]);
+    free(sh->eps);
+    free(sh->sidx);
+    free(sh);
+    free(s);
+}
+
+static void season_label(int season, char *buf, size_t n) {
+    if (season == 0) snprintf(buf, n, "%s", T("Specials"));
+    else snprintf(buf, n, T("Season %d"), season);
+}
+
+/* buttons: [Continue S8 E4 | Play S1 E1] [Start over] */
+static int show_buttons(Show *sh, BtnKind *k) {
+    if (sh->next < 0) return 0;
+    int n = 0;
+    if (sh->eps[sh->next].offset > 30) { k[n++] = B_RESUME; k[n++] = B_START; }
+    else k[n++] = B_PLAY;
+    return n;
+}
+
+#define SHOW_PILL_Y 610.0f
+#define SHOW_EP_Y 712.0f
+#define SHOW_EP_W 384.0f
+#define SHOW_EP_H 216.0f
+#define SHOW_EP_GAP 28.0f
+
+static float show_pill_w(int season) {
+    char l[64];
+    season_label(season, l, sizeof l);
+    return text_width(F_SEMI, 26, l) + 60;
+}
+
+static void show_update(Screen *s, float dt) {
+    Show *sh = s->st;
+    if (sh->gen != play_gen) show_fetch(sh); /* after a playback: watched marks, progress and the next episode */
+    float avail = UI_W - 240;
+    float px = 0, target = 0;
+    for (int i = 0; i < sh->n_seasons; i++) {
+        float w = show_pill_w(sh->seasons[i]);
+        if (i == sh->ssel && px + w > avail) target = px + w - avail;
+        px += w + 16;
+    }
+    sh->sx_s = anim_to(sh->sx_s, target, dt, 12);
+    float sel = sh->esel * (SHOW_EP_W + SHOW_EP_GAP);
+    target = sel > avail - SHOW_EP_W ? sel - (avail - SHOW_EP_W) : 0;
+    sh->sx_e = anim_to(sh->sx_e, target, dt, 12);
+}
+
+static void show_draw(Screen *s) {
+    Show *sh = s->st;
+    PItem *info = sh->have_show ? &sh->show : NULL;
+    PItem *fe = sh->row == 2 && sh->esel < sh->n_sidx ? &sh->eps[sh->sidx[sh->esel]] : NULL;
+    draw_background();
+    const PItem *bgi = info ? info : sh->n_eps ? &sh->eps[0] : NULL;
+    if (bgi) {
+        const char *art = bgi == info ? bgi->art : bgi->sart;
+        char *u = img_url(sh->srv, art, 1920, 1080);
+        if (img_draw_cover(img_get(u), 0, 0, UI_W, UI_H, 0, 0.5f)) {
+            fill_hgrad(0, 0, UI_W * 0.8f, UI_H, RGBA(8, 9, 13, 250), RGBA(8, 9, 13, 0));
+            fill_vgrad(0, UI_H * 0.4f, UI_W, UI_H * 0.6f, RGBA(8, 9, 13, 0), RGBA(8, 9, 13, 245));
+        }
+        free(u);
+    }
+    float x = 120;
+    /* top: the series, or the episode in focus */
+    if (fe) {
+        PItem tmp = *fe;
+        if (info) tmp.clogo = info->clogo;
+        draw_info(&tmp, x, 90, 1, 3, false);
+    } else if (info) {
+        if (sh->n_seasons > 0) { /* "2024 · 3 seasons" in the metadata line */
+            char *y0 = info->year, sn[80];
+            int ns = 0;
+            for (int i = 0; i < sh->n_seasons; i++) if (sh->seasons[i] > 0) ns++;
+            snprintf(sn, sizeof sn, "%s%s%s", y0 ? y0 : "", y0 ? "  ·  " : "", "");
+            snprintf(sn + strlen(sn), sizeof sn - strlen(sn), ns == 1 ? T("1 season") : T("%d seasons"), ns);
+            info->year = sn;
+            int lv = info->leaves;
+            info->leaves = 0;
+            draw_info(info, x, 90, 1, 3, false);
+            info->year = y0;
+            info->leaves = lv;
+        } else draw_info(info, x, 90, 1, 3, false);
+    }
+    if (!sh->loaded) {
+        if (sh->failed) text_draw(F_REG, 30, x, SHOW_PILL_Y, C_TEXT2, AL_LEFT, T("Could not load from Plex"));
+        else draw_spinner(UI_W / 2, SHOW_EP_Y + 60, 30, C_TEXT2);
+        return;
+    }
+    /* buttons */
+    BtnKind k[4];
+    int nb = show_buttons(sh, k);
+    if (sh->bsel >= nb) sh->bsel = nb ? nb - 1 : 0;
+    float bx = x, by = 500;
+    for (int i = 0; i < nb; i++) {
+        const PItem *ne = &sh->eps[sh->next];
+        char lbl[96], dur[32];
+        if (k[i] == B_RESUME) snprintf(lbl, sizeof lbl, T("Continue S%d E%d (%s)"), ne->parent_index, ne->index, fmt_duration(ne->offset, dur, sizeof dur));
+        else if (k[i] == B_PLAY) snprintf(lbl, sizeof lbl, T("Play S%d E%d"), ne->parent_index, ne->index);
+        else snprintf(lbl, sizeof lbl, "%s", T("Start over"));
+        bool f = sh->row == 0 && sh->bsel == i;
+        float w = text_width(F_SEMI, 28, lbl) + 110;
+        fill_rrect(bx, by, w, 76, 38, f ? C_FOCUS : RGBA(255, 255, 255, 40));
+        draw_icon(ICON_PLAY, bx + 42, by + 38, 26, f ? RGB(10, 10, 10) : C_TEXT);
+        text_draw(F_SEMI, 28, bx + 70, by + 20, f ? RGB(10, 10, 10) : C_TEXT, AL_LEFT, lbl);
+        bx += w + 24;
+    }
+    /* seasons */
+    clip_push(0, SHOW_PILL_Y - 10, UI_W, 80);
+    float px = x - sh->sx_s;
+    for (int i = 0; i < sh->n_seasons; i++) {
+        char l[64];
+        season_label(sh->seasons[i], l, sizeof l);
+        float w = show_pill_w(sh->seasons[i]);
+        bool chosen = i == sh->ssel, f = sh->row == 1 && chosen;
+        if (px + w > 0 && px < UI_W) {
+            fill_rrect(px, SHOW_PILL_Y, w, 58, 29, f ? C_FOCUS : chosen ? RGBA(255, 255, 255, 70) : RGBA(255, 255, 255, 22));
+            text_draw(F_SEMI, 26, px + w / 2, SHOW_PILL_Y + 14, f ? RGB(10, 10, 10) : chosen ? C_TEXT : C_TEXT2, AL_CENTER, l);
+        }
+        px += w + 16;
+    }
+    clip_pop();
+    /* episodes of the chosen season */
+    clip_push(0, SHOW_EP_Y - 30, UI_W, UI_H - SHOW_EP_Y + 30);
+    for (int i = 0; i < sh->n_sidx; i++) {
+        PItem *e = &sh->eps[sh->sidx[i]];
+        float ex = x + i * (SHOW_EP_W + SHOW_EP_GAP) - sh->sx_e, ey = SHOW_EP_Y;
+        if (ex > UI_W || ex + SHOW_EP_W < 0) continue;
+        bool f = sh->row == 2 && sh->esel == i;
+        float sc = f ? 1.06f : 1, w = SHOW_EP_W * sc, h = SHOW_EP_H * sc;
+        float xx = ex - (w - SHOW_EP_W) / 2, yy = ey - (h - SHOW_EP_H) / 2;
+        if (f) draw_shadow(xx, yy, w, h, 14, 24, 1);
+        fill_rrect(xx, yy, w, h, 14, C_SURFACE);
+        char *u = img_url(e->srv, e->art, 640, 360);
+        if (!img_draw_cover(img_get(u), xx, yy, w, h, 14, 1)) draw_icon(ICON_TV, xx + w / 2, yy + h / 2, 60, C_TEXT3);
+        free(u);
+        if (e->duration > 0 && e->offset > 0) {
+            fill_rrect(xx + 12, yy + h - 14, w - 24, 6, 3, RGBA(0, 0, 0, 150));
+            fill_rrect(xx + 12, yy + h - 14, (w - 24) * (float)(e->offset / e->duration), 6, 3, RGB(229, 160, 13));
+        } else if (!e->view_count) fill_tri(xx + w - 34, yy, xx + w, yy, xx + w, yy + 34, RGB(229, 160, 13));
+        if (f) stroke_rrect(xx - 4, yy - 4, w + 8, h + 8, 18, 4, C_FOCUS);
+        char t[300];
+        snprintf(t, sizeof t, "%d. %s", e->index, e->title ? e->title : "");
+        text_draw_clip(F_SEMI, 24, ex, ey + SHOW_EP_H + 14, SHOW_EP_W, f ? C_TEXT : C_TEXT2, AL_LEFT, t);
+        if (e->duration > 0) {
+            char d[32];
+            snprintf(d, sizeof d, T("%d min"), (int)(e->duration / 60 + 0.5));
+            text_draw(F_REG, 22, ex, ey + SHOW_EP_H + 46, C_TEXT3, AL_LEFT, d);
+        }
+    }
+    clip_pop();
+}
+
+static bool show_input(Screen *s, const InputEvent *ev) {
+    Show *sh = s->st;
+    if (!sh->loaded) return false;
+    BtnKind k[4];
+    int nb = show_buttons(sh, k);
+    switch (ev->a) {
+    case A_UP:
+        if (sh->row > 0) sh->row--;
+        if (sh->row == 0 && !nb) sh->row = 1;
+        return true;
+    case A_DOWN:
+        if (sh->row < 2 && (sh->row < 1 || sh->n_sidx)) sh->row++;
+        return true;
+    case A_LEFT:
+        if (sh->row == 0 && sh->bsel > 0) sh->bsel--;
+        else if (sh->row == 1 && sh->ssel > 0) { show_pick_season(sh, sh->ssel - 1); sh->esel = 0; sh->sx_e = 0; }
+        else if (sh->row == 2 && sh->esel > 0) sh->esel--;
+        return true;
+    case A_RIGHT:
+        if (sh->row == 0 && sh->bsel < nb - 1) sh->bsel++;
+        else if (sh->row == 1 && sh->ssel < sh->n_seasons - 1) { show_pick_season(sh, sh->ssel + 1); sh->esel = 0; sh->sx_e = 0; }
+        else if (sh->row == 2 && sh->esel < sh->n_sidx - 1) sh->esel++;
+        return true;
+    case A_OK: case A_PLAYPAUSE: case A_PLAY:
+        if (ev->repeat) return true;
+        if (sh->row == 0 && nb) {
+            PItem *ne = &sh->eps[sh->next];
+            plex_play_chain(ne, k[sh->bsel] == B_RESUME ? ne->offset : 0, NULL);
+        } else if (sh->row == 1) {
+            if (sh->n_sidx) sh->row = 2;
+        } else if (sh->row == 2 && sh->esel < sh->n_sidx) play_with_resume(&sh->eps[sh->sidx[sh->esel]], NULL);
+        return true;
+    default: return false;
+    }
+}
+
+static Screen *show_screen(int srv, const char *show_key, const char *focus_rk, int season) {
+    Screen *s = calloc(1, sizeof *s);
+    Show *sh = calloc(1, sizeof *sh);
+    sh->srv = srv;
+    snprintf(sh->key, sizeof sh->key, "%s", show_key ? show_key : "");
+    snprintf(sh->focus_rk, sizeof sh->focus_rk, "%s", focus_rk ? focus_rk : "");
+    sh->want_season = season;
+    sh->next = -1;
+    s->name = "plex-show";
+    s->st = sh;
+    s->enter = show_enter;
+    s->leave = show_leave;
+    s->update = show_update;
+    s->draw = show_draw;
+    s->input = show_input;
+    s->destroy = show_destroy;
     return s;
 }
 

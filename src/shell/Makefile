@@ -18,6 +18,8 @@ SRCS = main.c i18n.c drm_util.c kms_present.c subs.c gfx.c input.c util.c player
        ui_net.c bt.c dlna.c mirror.c moon.c ui_settings.c netdisc.c apps.c ui_appstore.c appcat.c update_notice.c tz.c ui_setup.c stb_impl.c vendor/cJSON.c vendor/qrcodegen.c
 OBJS = $(SRCS:.c=.o)
 
+all: tvshell notasplash
+
 tvshell: $(OBJS)
 	$(CC) $(LDFLAGS) -rdynamic -o $@ $(OBJS) $(LIBS) -ldl
 
@@ -27,7 +29,11 @@ tvshell: $(OBJS)
 stb_impl.o: override CFLAGS += -Wno-unused-function -Wno-sign-compare
 vendor/cJSON.o vendor/qrcodegen.o: override CFLAGS += -Wno-all -Wno-extra
 
-clean:
-	rm -f tvshell $(OBJS)
+# boot animation (only libdrm; see splash.c)
+notasplash: splash.c vendor/stb_truetype.h
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-sign-compare $(LDFLAGS) -o $@ splash.c $(shell $(PKG_CONFIG) --libs libdrm) -lm
 
-.PHONY: clean
+clean:
+	rm -f tvshell notasplash $(OBJS)
+
+.PHONY: all clean

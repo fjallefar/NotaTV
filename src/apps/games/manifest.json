@@ -1,6 +1,6 @@
 {
   "id": "games",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "Games",
   "desc": "Play games from your PC via Sunshine (Moonlight)",
@@ -9,5 +9,13 @@
   "c2": [12, 90, 50],
   "fg": [255, 255, 255],
   "order": 80,
-  "default": true
+  "default": true,
+  "changes": {
+    "summary": "Games finds your PC by itself, also when the PC's firewall blocks the search",
+    "points": [
+      "While Games is open and no PC answers, it searches again by itself - no need to restart the app after starting Sunshine",
+      "If the normal search finds nothing, Games also asks every address on your network on Sunshine's port (needs NotaTV 1.0.4)",
+      "The search stops as soon as a PC answers, or when you leave Games"
+    ]
+  }
 }

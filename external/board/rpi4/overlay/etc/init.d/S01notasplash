@@ -1,0 +1,10 @@
+#!/bin/sh
+# NotaTV Pi: boot animation until the user interface takes the screen (tvshell stops it).
+# The display driver (vc4) is a module that udev (S10) would only load later, so it is loaded here first -
+# in the background, so the other init scripts do not wait for the TV to answer.
+[ "$1" = start ] || exit 0
+[ -x /usr/bin/notasplash ] || exit 0
+( modprobe vc4 2>/dev/null; exec /usr/bin/notasplash ) </dev/null >/dev/null 2>&1 &
+# the pid file now (exec keeps the pid), so tvshell can stop it even if it starts before the driver is loaded
+echo $! > /run/notasplash.pid
+exit 0

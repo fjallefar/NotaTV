@@ -5,10 +5,12 @@
  * deletes everything the app has saved on the box (see app_uninstall). Settings and the App Store are not shown.
  * When apps have updates, a bar at the top updates them all at once. Before an update, a card shows what is new
  * (the manifest's "changes", see scripts/apps-catalog.py). */
+#define _GNU_SOURCE /* nftw */
 #include "tv.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ftw.h>
 
 #define STORE_COLS 3
 #define STORE_PITCH 250.0f
@@ -34,6 +36,40 @@ typedef struct { StoreCell c[STORE_MAX + 1]; int n, rows; float hdr_y[2]; int cn
 static int item_order(const StoreItem *s) { return s->app ? s->app->order : s->cat->order; }
 static const char *item_name(const StoreItem *s) { return s->app ? T(s->app->name) : s->cat->name; }
 static const char *item_desc(const StoreItem *s) { return s->app ? T(s->app->desc) : s->cat->desc; }
+
+/* "48 KB" / "1.3 MB" (an app package is often well under 1 MB) */
+static const char *fmt_size(long b, char *buf, size_t n) {
+    if (b <= 0) buf[0] = 0;
+    else if (b < 1000000) snprintf(buf, n, "%ld KB", (b + 999) / 1000);
+    else snprintf(buf, n, "%.1f MB", b / 1e6);
+    return buf;
+}
+
+/* bytes an installed app takes in <apps-pkg>/<id>; measured again only when apps change */
+static long du_sum;
+static int du_add(const char *p, const struct stat *sb, int type, struct FTW *f) {
+    (void)p; (void)f;
+    if (type == FTW_F) du_sum += sb->st_size;
+    return 0;
+}
+static long app_disk_size(const NotaApp *a) {
+    static struct { char id[40]; long size; int gen; } cache[STORE_MAX];
+    static int nc;
+    int gen = apps_gen(), i = 0;
+    while (i < nc && strcmp(cache[i].id, a->id)) i++;
+    if (i == nc) {
+        if (nc == STORE_MAX) i = 0; else nc++;
+        snprintf(cache[i].id, sizeof cache[i].id, "%s", a->id);
+        cache[i].gen = gen - 1;
+    }
+    if (cache[i].gen != gen) {
+        du_sum = 0;
+        if (*app_pkg_dir(a)) nftw(app_pkg_dir(a), du_add, 8, FTW_PHYS);
+        cache[i].size = du_sum;
+        cache[i].gen = gen;
+    }
+    return cache[i].size;
+}
 
 static int store_items(StoreItem *out) {
     int n = 0;
@@ -212,11 +248,19 @@ static void store_draw(Screen *s) {
         fill_rrect(x + 30, y + ch - 60, pw, 38, 19, pc);
         if (pend == 2) draw_spinner(x + 52, y + ch - 41, 9, C_TEXT);
         text_draw(F_SEMI, 22, x + 30 + pw / 2 + (pend == 2 ? 14 : 0), y + ch - 53, C_TEXT, AL_CENTER, pill);
-        char v[64];
+        /* installed: the version and what it takes on the box; not installed (also one uninstalled since the
+           last restart): the catalog version and how much it will take */
+        char v[96], sz[24];
         if (upd) snprintf(v, sizeof v, "%s → %s", app_version(it->app), it->cat->version);
-        else if (it->app && *app_next_version(it->app)) snprintf(v, sizeof v, T("%s after a restart"), app_next_version(it->app));
-        else if (it->app && *app_version(it->app)) snprintf(v, sizeof v, T("Version %s"), app_version(it->app));
-        else if (it->cat) snprintf(v, sizeof v, "%s  ·  %.1f MB", it->cat->version, it->cat->size / 1048576.0);
+        else if (it->installed && *app_next_version(it->app)) snprintf(v, sizeof v, T("%s after a restart"), app_next_version(it->app));
+        else if (it->installed && *app_version(it->app)) {
+            fmt_size(app_disk_size(it->app), sz, sizeof sz);
+            if (*sz) snprintf(v, sizeof v, "%s  ·  %s", app_version(it->app), sz);
+            else snprintf(v, sizeof v, T("Version %s"), app_version(it->app));
+        } else if (it->cat) {
+            fmt_size(it->cat->isize ? it->cat->isize : it->cat->size, sz, sizeof sz);
+            snprintf(v, sizeof v, *sz ? "%s  ·  %s" : "%s", it->cat->version, sz);
+        } else if (it->app && *app_version(it->app)) snprintf(v, sizeof v, T("Version %s"), app_version(it->app));
         else v[0] = 0;
         text_draw(F_REG, 20, x + cw - 30, y + ch - 50, C_TEXT3, AL_RIGHT, v);
         if (f) stroke_rrect(x - 4, y - 4, cw + 8, ch + 8, 26, 4, C_FOCUS);

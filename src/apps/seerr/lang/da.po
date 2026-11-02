@@ -45,8 +45,8 @@ msgstr "Opdag"
 msgid "Search"
 msgstr "Søg"
 
-msgid "Netflix top 10"
-msgstr "Netflix top 10"
+msgid "Netflix top lists"
+msgstr "Netflix-toplister"
 
 msgid "Server and login"
 msgstr "Server og login"
@@ -95,6 +95,12 @@ msgstr "Netflix top 10 · film (%s, denne uge)"
 
 msgid "Netflix top 10 · shows (%s, this week)"
 msgstr "Netflix top 10 · serier (%s, denne uge)"
+
+msgid "Netflix top 20 · movies (worldwide, this week)"
+msgstr "Netflix top 20 · film (hele verden, denne uge)"
+
+msgid "Netflix top 20 · shows (worldwide, this week)"
+msgstr "Netflix top 20 · serier (hele verden, denne uge)"
 
 msgid "Connecting…"
 msgstr "Forbinder…"
@@ -433,20 +439,25 @@ msgid "Find and request movies and shows for Plex"
 msgstr "Find og anmod om film og serier til Plex"
 
 
-msgid "Signing out removes the whole session"
-msgstr "Log ud fjerner hele sessionen"
 
-msgid "After you sign out, the old login is no longer kept in memory or written back to the box"
-msgstr "Når du logger ud, bliver det gamle login ikke længere i hukommelsen eller skrevet tilbage på boksen"
 
 msgid "netflix.com, once a day"
 msgstr "netflix.com, én gang om dagen"
 
-msgid "Netflix Top 10 row"
-msgstr "Rækken Netflix Top 10"
+msgid "Netflix rows"
+msgstr "Netflix-rækkerne"
 
-msgid "The row is fetched from Netflix's public top 10 list for your country. Nothing about you is sent"
-msgstr "Rækken hentes fra Netflix' offentlige top 10-liste for dit land. Intet om dig sendes med"
+msgid "The rows are fetched from Netflix's public top lists: the top 10 for your country and the worldwide top 20. Nothing about you is sent"
+msgstr "Rækkerne hentes fra Netflix' offentlige toplister: top 10 for dit land og top 20 for hele verden. Intet om dig sendes med"
 
-msgid "Settings say where the Netflix Top 10 row comes from"
-msgstr "Indstillingerne fortæller, hvor rækken Netflix Top 10 kommer fra"
+msgid "Netflix top lists on the Discover page, now also the worldwide top 20"
+msgstr "Netflix-toplister på Opdag, nu også top 20 for hele verden"
+
+msgid "Further down on Discover: Netflix top 10 for your country and the worldwide top 20, movies and shows"
+msgstr "Længere nede på Opdag: Netflix top 10 for dit land og top 20 for hele verden, film og serier"
+
+msgid "The worldwide top 20 puts Netflix's English and other-language lists together by views"
+msgstr "Top 20 for hele verden lægger Netflix' engelske og ikke-engelske lister sammen efter visninger"
+
+msgid "A show with two seasons on the list is shown once"
+msgstr "En serie med to sæsoner på listen vises én gang"

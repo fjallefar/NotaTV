@@ -295,11 +295,20 @@ msgid "YouTube: %s is connected"
 msgstr "YouTube: %s er forbundet"
 
 
-msgid "Safer casting from phones"
-msgstr "Mere sikker cast fra telefoner"
 
-msgid "At most 8 connections from phones at a time, so the box cannot be overloaded from the network"
-msgstr "Højst 8 forbindelser fra telefoner ad gangen, så boksen ikke kan overbelastes fra netværket"
 
-msgid "Signing in from the phone closes the right screen"
-msgstr "Log ind fra telefonen lukker den rigtige skærm"
+
+msgid "The video info page opens faster"
+msgstr "Infosiden for en video åbner hurtigere"
+
+msgid "The description, date and views are shown right away instead of after several seconds"
+msgstr "Beskrivelse, dato og visninger vises med det samme i stedet for efter flere sekunder"
+
+msgid "The quality you choose is used for the next video too (it could play in 1080p after choosing 720p)"
+msgstr "Den valgte kvalitet bruges også til den næste video (den kunne afspille i 1080p efter valg af 720p)"
+
+msgid "1440p and 4K are greyed out on a Raspberry Pi 4, which cannot play them from YouTube"
+msgstr "1440p og 4K er grå på en Raspberry Pi 4, som ikke kan afspille dem fra YouTube"
+
+msgid "Up to 1080p on a Raspberry Pi 4 (YouTube has 1440p and 4K only in formats it cannot decode)"
+msgstr "Op til 1080p på en Raspberry Pi 4 (YouTube har kun 1440p og 4K i formater, den ikke kan afkode)"

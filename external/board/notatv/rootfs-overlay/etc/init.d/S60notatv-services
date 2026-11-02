@@ -12,10 +12,19 @@ start)
 		[ "$(cfg_get ssh_enabled 0)" = 1 ] && $H/ssh on
 		$H/music start
 		$H/automount
-		# clock: sync when the network is up
-		for i in 1 2 3 4 5 6; do ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 && break; sleep 5; done
-		# only with a hardware clock (e.g. an RTC add-on board; the Pi 4 has none). -u: the clock is in UTC, no /etc/adjtime
-		[ -e /dev/rtc0 ] && hwclock -w -u 2>/dev/null
+		# clock: the Pi has no clock of its own and starts in 1970, where every HTTPS connection fails (App Store,
+		# updates, logos). Keep trying until a time server answers - the network can come up late (the link
+		# can go down and up while booting) - then sync again every 6 hours.
+		(
+			n=0
+			until timeout 30 ntpd -n -q -p pool.ntp.org; do
+				n=$((n + 1))
+				if [ $n -lt 30 ]; then sleep 10; else sleep 60; fi
+			done
+			# only with a hardware clock (e.g. an RTC add-on board; the Pi 4 has none). -u: the clock is in UTC, no /etc/adjtime
+			[ -e /dev/rtc0 ] && hwclock -w -u
+			while sleep 21600; do timeout 30 ntpd -n -q -p pool.ntp.org; done
+		) &
 	) >/dev/null 2>&1 &
 	;;
 stop)

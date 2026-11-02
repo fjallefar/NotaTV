@@ -49,11 +49,7 @@ static void os_langs(char *out, size_t n) {
 int subs_search(int tmdb, const char *query, int season, int episode, char ***labels) {
     *labels = NULL;
     n_found = 0;
-    if (!*cfg_get("os_apikey", "")) {
-        *labels = calloc(1, sizeof(char *));
-        (*labels)[0] = str_dup(T("Requires an OpenSubtitles key: Settings → Picture and sound"));
-        return 1;
-    }
+    if (!*cfg_get("os_apikey", "")) return 0; /* the player menu says a key is needed (meta "subnokey") */
     char langs[64];
     os_langs(langs, sizeof langs);
     char *url;

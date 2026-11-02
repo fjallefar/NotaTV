@@ -258,6 +258,7 @@ typedef struct {
     int subpick;           /* -1 = none */
     int zap;               /* live: channel being browsed to (-1 = none) */
     double zap_t;
+    bool zap_dim;          /* the picture is fading out ahead of the switch */
     double scrub;          /* seeking: target time in seconds (-1 = none) */
     double scrub_t;
     int scrub_n, scrub_dir;
@@ -280,15 +281,16 @@ bool player_state(double *pos, double *dur, bool *paused) {
 /* seeking: presses are gathered into one jump. Quick presses in the same direction accelerate, and the target is shown on
    the timeline right away, but mpv only jumps when you stop (LG's CEC sends no "hold") */
 static void scrub(MpvState *st, int dir, bool big) {
-    /* smooth ramp-up: every ~0.25 s (LG hold) the jump gets a little bigger, without big leaps in speed */
-    static const double steps[] = {10, 10, 15, 20, 30, 40, 60, 80, 120, 180, 300, 600};
+    /* smooth ramp-up: every ~0.25 s (LG hold) the jump gets a little bigger, without big leaps in speed
+       (25 between 20 and 30: every speed comes about one step later, so it builds up a little slower) */
+    static const double steps[] = {10, 10, 15, 20, 25, 30, 40, 60, 80, 120, 180, 300, 600};
     enum { N_STEPS = sizeof steps / sizeof steps[0] };
     double now = app_time();
     bool cont = st->scrub >= 0 && now - st->scrub_t < 1.5 && st->scrub_dir == dir;
     if (st->scrub < 0) st->scrub = st->pos;
     st->scrub_n = cont ? st->scrub_n + 1 : 0;
     st->scrub_dir = dir;
-    int i = st->scrub_n + (big ? 6 : 0);
+    int i = st->scrub_n + (big ? 7 : 0); /* FF/REW starts at 60 s as before */
     double step = steps[i < N_STEPS ? i : N_STEPS - 1];
     st->scrub += dir * step;
     if (st->scrub < 0) st->scrub = 0;
@@ -351,6 +353,7 @@ static void zap(const PlayRequest *rq, MpvState *st, int d) {
     int n = rq->playlist_n, base = st->zap >= 0 ? st->zap : st->plpos;
     st->zap = ((base + d) % n + n) % n;
     st->zap_t = app_time();
+    if (st->zap_dim) { CMD("script-message", "notatv-zapcancel"); st->zap_dim = false; } /* still browsing */
     if (rq->channel_preview) rq->channel_preview(rq->ud, st->zap);
 }
 
@@ -571,12 +574,12 @@ static void handle_action(const InputEvent *ev, const PlayRequest *rq, MpvState 
     case A_INFO: CMD("script-message", "notatv-show", "8"); break;
     case A_SUBTITLE:
         CMD("cycle", "sub");
-        CMD("show-text", T("Subtitles: ${current-tracks/sub/lang:${?sid==no:Off}} ${current-tracks/sub/title:}"), "2500");
+        CMD("script-message", "notatv-track-osd", "sub"); /* names as in the menu (notatv-osd.lua) */
         break;
     case A_MENU: CMD("script-message", "notatv-menu-open"); break;
     case A_AUDIO:
         CMD("cycle", "audio");
-        CMD("show-text", T("Audio: ${current-tracks/audio/lang:} ${current-tracks/audio/title:} (${current-tracks/audio/codec:})"), "2500");
+        CMD("script-message", "notatv-track-osd", "audio");
         break;
     case A_YELLOW: /* Yellow = action on what is shown: Twitch chat on/off (remembered). Aspect ratio and technical info are in the menu (Red) */
         if (rq->chat) {
@@ -779,6 +782,8 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
         if (rq->speed) cJSON_AddBoolToObject(m, "speed", true);
         if (rq->channel) cJSON_AddStringToObject(m, "channel", rq->channel);
         if (rq->sub_search) cJSON_AddBoolToObject(m, "subsearch", true);
+        /* without a key the menu explains where to add it instead of searching */
+        if (rq->sub_search && !*cfg_get("os_apikey", "")) cJSON_AddBoolToObject(m, "subnokey", true);
         char *js = cJSON_PrintUnformatted(m);
         write_nowplaying(js);
         /* the poster (for the pause screen) is made in a thread while mpv starts - it may have to be fetched */
@@ -846,7 +851,7 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
             int nf = input_fds(fds, 38);
             for (int i = 0; i < nf; i++) pfd[i] = (struct pollfd){fds[i], POLLIN, 0};
             if (ipc_fd >= 0) pfd[nf++] = (struct pollfd){ipc_fd, POLLIN, 0};
-            poll(pfd, nf, 100);
+            poll(pfd, nf, st.zap >= 0 ? 15 : 100); /* channel change: on time for the fade */
             if (ipc_fd >= 0) ipc_read(&st, rq);
             /* markers and next episode: fetched in a thread (a slow server must not freeze the keys) */
             if (!rq->is_live && rq->skip_info && !skipjob.running && !st.skip_probed && st.have_dur && st.pos > 3) {
@@ -876,21 +881,29 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
                 CMD("script-message", "notatv-scrub", "", "");
                 st.scrub = -1;
             }
-            if (st.zap >= 0 && app_time() - st.zap_t > 0.35) {
+            /* the fade-out starts while the old channel still plays, so the picture is black when mpv
+               closes it (closing removes the picture at once) */
+            if (st.zap >= 0 && !st.zap_dim && st.zap != st.plpos && app_time() - st.zap_t > 0.1) {
+                CMD("script-message", "notatv-zapfade");
+                st.zap_dim = true;
+            }
+            if (st.zap >= 0 && app_time() - st.zap_t > 0.25) {
+                st.zap_dim = false;
                 if (st.zap != st.plpos) {
                     char idx[16];
                     snprintf(idx, sizeof idx, "%d", st.zap);
-                    CMD("playlist-play-index", idx);
+                    CMD("script-message", "notatv-zap", idx); /* the OSD script fades out, then switches */
                 }
                 st.zap = -1;
             }
             if (digits[0] && app_time() - digit_t > 1.6) {
                 int num = atoi(digits);
                 digits[0] = 0;
-                if (num > 0) {
+                if (num > 0 && (rq->playlist_n <= 0 || num <= rq->playlist_n)) {
                     char idx[16];
                     snprintf(idx, sizeof idx, "%d", num - 1);
-                    CMD("playlist-play-index", idx);
+                    if (rq->is_live) CMD("script-message", "notatv-zap", idx);
+                    else CMD("playlist-play-index", idx);
                 }
             }
             if (quit) {

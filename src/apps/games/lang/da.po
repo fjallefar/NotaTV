@@ -30,8 +30,8 @@ msgstr "PC'er med Sunshine på netværket"
 msgid "No PC found"
 msgstr "Ingen PC fundet"
 
-msgid "Start Sunshine on the PC, and check that the firewall allows ports 47984-48010."
-msgstr "Start Sunshine på PC'en, og tjek at firewallen tillader porte 47984-48010."
+msgid "Searching… Start Sunshine on the PC. Its firewall must allow TCP 47984-48010 and UDP 47998-48000 (UDP 5353 makes it found faster)."
+msgstr "Søger… Start Sunshine på PC'en. Dens firewall skal tillade TCP 47984-48010 og UDP 47998-48000 (UDP 5353 gør, at den findes hurtigere)."
 
 msgid "Paired"
 msgstr "Parret"
@@ -111,3 +111,15 @@ msgstr "HEVC 10-bit HDR, hvis PC'ens skærm står i HDR"
 msgid "Play games from your PC via Sunshine (Moonlight)"
 msgstr "Spil fra din PC via Sunshine (Moonlight)"
 
+
+msgid "Games finds your PC by itself, also when the PC's firewall blocks the search"
+msgstr "Spil finder selv din PC, også når PC'ens firewall blokerer søgningen"
+
+msgid "While Games is open and no PC answers, it searches again by itself - no need to restart the app after starting Sunshine"
+msgstr "Mens Spil er åben og ingen PC svarer, søger den selv igen - du skal ikke genstarte appen, når du har startet Sunshine"
+
+msgid "If the normal search finds nothing, Games also asks every address on your network on Sunshine's port (needs NotaTV 1.0.4)"
+msgstr "Finder den almindelige søgning ingenting, spørger Spil også alle adresser på dit netværk på Sunshines port (kræver NotaTV 1.0.4)"
+
+msgid "The search stops as soon as a PC answers, or when you leave Games"
+msgstr "Søgningen stopper, så snart en PC svarer, eller når du forlader Spil"

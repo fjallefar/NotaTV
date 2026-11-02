@@ -379,7 +379,8 @@ typedef struct {
     Color c1, c2, fg;
     int order;
     bool def;  /* was on by default in NotaTV 1.0 (used when moving such boxes to App Store apps) */
-    long size; /* bytes */
+    long size;  /* download size, bytes */
+    long isize; /* size on the box once installed, bytes (older catalogs: 0) */
     /* what is new in this version (manifest "changes", translated): one short line and a few points */
     char news[200], points[4][160];
     int n_points;

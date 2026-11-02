@@ -1,6 +1,6 @@
 {
   "id": "plex",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "Plex",
   "desc": "Movies and shows from your Plex server",
@@ -11,12 +11,11 @@
   "order": 20,
   "default": true,
   "changes": {
-    "summary": "Only your own Plex account can control the box, and no freezes around playback",
+    "summary": "A proper page for every series, with all seasons and episodes",
     "points": [
-      "Casting and the remote in the Plex app only work from your account or your Plex Home",
-      "A slow server no longer freezes the box before and after a video",
-      "Intro and credits markers are fetched without stopping the keys",
-      "A server you cast from is no longer saved in the server list"
+      "Choose season and episode on the series page",
+      "Play starts where you left off, or at the first new episode",
+      "Series show how many seasons they have"
     ]
   }
 }

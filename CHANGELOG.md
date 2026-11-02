@@ -18,6 +18,39 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.4
+
+> **In short:** Series pages in Plex and Jellyfin, a TV guide in Live TV, a start-up animation, and many fixes.
+> - Plex and Jellyfin: seasons and episodes on one page, and *Play* picks the right episode
+> - Live TV: a TV guide with your favourites, and a smooth fade when you change channel
+> - Bluetooth and AirPlay work again on boxes that were updated
+> - YouTube opens video info at once, and Twitch lets you choose the quality
+
+<!-- tldr:da
+Kort: Seriesider i Plex og Jellyfin, TV-guide i Live TV, en opstartsanimation og mange rettelser.
+- Plex og Jellyfin: sæsoner og afsnit på én side, og *Afspil* vælger det rigtige afsnit
+- Live TV: TV-guide med dine favoritter og en blød overgang, når du skifter kanal
+- Bluetooth og AirPlay virker igen på bokse, der er blevet opdateret
+- YouTube åbner info om en video med det samme, og på Twitch kan du vælge kvaliteten
+-->
+
+**System**
+- A start-up animation shows until the menus appear.
+- Bluetooth, AirPlay and the PC search in Games work again on boxes that were updated, and those boxes start about 20 seconds faster.
+- The clock keeps trying until a time server answers. A late network could leave the box in 1970, so the App Store and updates failed.
+- Home screen: move an app with the Green key, the App Store tile shows how many app updates there are, and Jellyfin has a *Continue watching* row.
+- The row below the apps only shows for the app in focus (it followed along all the way to Settings).
+- The App Store shows the real size of each app (it said 0.0 MB).
+- Player: short names for audio tracks (YouTube showed a long address), and seeking speeds up a little more gently.
+
+**Apps** (update in the App Store)
+- Plex 1.0.3 and Jellyfin 1.0.2: a series page with seasons and episodes. Jellyfin can also search for subtitles.
+- Live TV 1.0.3: a TV guide replaces *All channels*, the picture fades on a channel change, and it says when the provider's guide is down.
+- YouTube 1.0.3: video info opens at once, the chosen quality is also used for the next video, and 1440p/4K are greyed out on a Raspberry Pi 4.
+- Twitch 1.0.3: choose the quality in the player menu.
+- Seerr 1.0.3: Netflix top lists on *Discover*.
+- Games 1.0.1: finds your PC even when its firewall blocks the normal search, and keeps searching while the list is open.
+
 ## 1.0.3
 
 > **In short:** Kernel updates finish again, the App Store updates all apps at once, and the box is safer and smoother.

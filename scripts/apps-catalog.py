@@ -64,12 +64,14 @@ def main():
                         ti = t.gettarinfo(p, os.path.relpath(p, pkg))
                         ti.uid = ti.gid = 0; ti.uname = ti.gname = 'root'
                         with open(p, 'rb') as fh: t.addfile(ti, fh)
+            unpacked = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(pkg) for f in fs)
         data = open(out, 'rb').read()
         entry = {k: m[k] for k in ('id', 'version', 'name', 'desc', 'icon', 'c1', 'c2', 'fg', 'order', 'default', 'changes') if k in m}
         ch = m.get('changes') or {}
         assert isinstance(ch, dict) and isinstance(ch.get('summary', ''), str) and isinstance(ch.get('points', []), list), \
             f'{d}: "changes" must be {{"summary": "...", "points": ["...", ...]}}'
-        entry.update(file=name, sha256=hashlib.sha256(data).hexdigest(), size=len(data))
+        entry.update(file=name, sha256=hashlib.sha256(data).hexdigest(), size=len(data),
+                     installed_size=unpacked)  # bytes on the box once unpacked (shown in the App Store)
         tr = {}
         for po in sorted(glob.glob(os.path.join(d, 'lang', '*.po'))):
             t = read_po(po)

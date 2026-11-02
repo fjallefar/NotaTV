@@ -28,6 +28,10 @@ static char conn_dev[8][128];     /* connected devices (phones, keyboards ...) *
 static int n_conn;
 static double hold_until;         /* the radio is kept on until (woken) */
 static bool radio_on;
+static double next_bus_try;       /* reconnect to the system D-Bus (it may start late or restart) */
+static bool pair_shown;           /* the pairing screen is open: check the adapter now and then */
+static int adapter_state;         /* -1 unknown, 0 no adapter (bluetoothd missing / chip did not start), 1 ok */
+static double next_adapter_check;
 
 /* ---------- small helpers ---------- */
 static void track_conn(const char *dev, bool on) {
@@ -370,12 +374,20 @@ static DBusHandlerResult filter(DBusConnection *c, DBusMessage *m, void *ud) {
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
-/* ---------- offentlig API ---------- */
-void bt_init(void) {
+/* ---------- public API ---------- */
+static void bus_connect(void) {
+    static bool logged;
     DBusError e;
     dbus_error_init(&e);
     bus = dbus_bus_get_private(DBUS_BUS_SYSTEM, &e);
-    if (!bus) { SDL_Log("bt: ingen system-D-Bus (%s)", e.message ? e.message : "?"); dbus_error_free(&e); return; }
+    if (!bus) {
+        if (!logged) SDL_Log("bt: no system D-Bus (%s), trying again every 5 s", e.message ? e.message : "?");
+        logged = true;
+        dbus_error_free(&e);
+        return;
+    }
+    if (logged) SDL_Log("bt: system D-Bus connected");
+    logged = false;
     dbus_connection_set_exit_on_disconnect(bus, FALSE);
     dbus_bus_add_match(bus, "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged'", NULL);
     dbus_bus_add_match(bus, "type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.bluez'", NULL);
@@ -383,10 +395,42 @@ void bt_init(void) {
     dbus_connection_add_filter(bus, filter, NULL, NULL);
     static const DBusObjectPathVTable vt = {.message_function = agent_msg};
     dbus_connection_register_object_path(bus, AGENT_PATH, &vt, NULL);
+    agent_ok = agent_pending = false;
+    next_try = 0;
+    adapter_state = -1;
+    next_adapter_check = 0;
+    radio_on = false;
+}
+
+void bt_init(void) { bus_connect(); }
+
+/* is BlueZ's adapter there? (Properties.Get answers at once with an error when bluetoothd or hci0 is missing) */
+static void check_adapter(void) {
+    char addr[32];
+    get_str(ADAPTER, "org.bluez.Adapter1", "Address", addr, sizeof addr);
+    int st = addr[0] ? 1 : 0;
+    if (st != adapter_state) SDL_Log("bt: adapter %s", st ? addr : "missing (bluetoothd not running or hci0 not up)");
+    if (st && adapter_state == 0) bt_apply(); /* came back: name, power, visibility */
+    adapter_state = st;
 }
 
 void bt_tick(void) {
-    if (!bus) return;
+    if (bus && !dbus_connection_get_is_connected(bus)) { /* dbus-daemon went away */
+        SDL_Log("bt: lost the system D-Bus");
+        dbus_connection_close(bus);
+        dbus_connection_unref(bus);
+        bus = NULL;
+    }
+    if (!bus) {
+        if (app_time() < next_bus_try) return;
+        next_bus_try = app_time() + 5;
+        bus_connect();
+        if (!bus) return;
+    }
+    if (pair_shown && app_time() >= next_adapter_check) {
+        next_adapter_check = app_time() + 3;
+        check_adapter();
+    }
     while (dbus_connection_read_write_dispatch(bus, 0) && dbus_connection_get_dispatch_status(bus) == DBUS_DISPATCH_DATA_REMAINS) {}
     if (!agent_ok && !agent_pending && app_time() >= next_try) { /* bluetoothd may start after us */
         next_try = app_time() + 5;
@@ -564,8 +608,12 @@ static void pair_draw(Screen *s) {
     draw_background();
     draw_topbar("Bluetooth");
     float cx = UI_W / 2.0f;
-    if (!bus) {
-        text_draw(F_BOLD, 42, cx, 430, C_TEXT, AL_CENTER, T("Bluetooth is not available"));
+    if (!bus || adapter_state == 0) {
+        text_draw(F_BOLD, 42, cx, 400, C_TEXT, AL_CENTER, T("Bluetooth is not available"));
+        text_draw(F_REG, 28, cx, 470, C_TEXT2, AL_CENTER,
+                  !bus ? T("The box's system service is not running. Restart the box.")
+                       : T("The box's Bluetooth did not start. Restart the box - if it keeps happening, the board's Bluetooth chip may be faulty."));
+        text_draw(F_REG, 24, cx, 530, C_TEXT3, AL_CENTER, T("NotaTV keeps trying by itself while this screen is open."));
         return;
     }
     fill_circle(cx, 280, 90, color_alpha(RGB(40, 120, 255), 0.25f));
@@ -590,7 +638,7 @@ static void pair_draw(Screen *s) {
 }
 
 static void pair_start(void) {
-    if (!bus) return;
+    if (!bus || adapter_state == 0) return;
     if (!cfg_int("bt_enabled", 1)) { cfg_set_int("bt_enabled", 1); bt_apply(); }
     bt_wake(180);
     dbus_uint32_t t = 180;
@@ -605,9 +653,15 @@ static bool pair_input(Screen *s, const InputEvent *ev) {
     if (ev->a == A_OK && !ev->repeat) { pair_start(); return true; }
     return false;
 }
-static void pair_enter(Screen *s) { (void)s; pair_start(); }
+static void pair_enter(Screen *s) {
+    (void)s;
+    pair_shown = true;
+    if (bus) { check_adapter(); next_adapter_check = app_time() + 3; }
+    pair_start();
+}
 static void pair_leave(Screen *s) {
     (void)s;
+    pair_shown = false;
     if (pair_until > 0) {
         pair_until = 0;
         set_bool(ADAPTER, "org.bluez.Adapter1", "Discoverable", false);

@@ -10,10 +10,55 @@
 #define MAX_VIS 64
 static const NotaApp *vis[MAX_VIS];
 static int n_vis;
+/* the user's own order (Green on a tile moves it) is kept in cfg home_order: "plex,iptv,...". Apps that are not
+   in it (installed later) go right after the app before them in the default order, or first */
+static int reg_index(const NotaApp *a) {
+    for (int i = 0; i < app_count(); i++) if (app_at(i) == a) return i;
+    return -1;
+}
 static void build_vis(void) {
     n_vis = 0;
-    for (int i = 0; i < app_count() && n_vis < MAX_VIS; i++)
-        if (app_installed(app_at(i))) vis[n_vis++] = app_at(i);
+    char ord[1024];
+    snprintf(ord, sizeof ord, "%s", cfg_get("home_order", "")); /* copy: cfg_get's pointer can change */
+    bool placed[MAX_VIS] = {0}; /* by register index (MAX_VIS >= the register's size) */
+    for (char *sv = NULL, *id = strtok_r(ord, ",", &sv); id; id = strtok_r(NULL, ",", &sv)) {
+        const NotaApp *a = app_find(id);
+        int ri = a ? reg_index(a) : -1;
+        if (ri < 0 || ri >= MAX_VIS || placed[ri] || !app_installed(a) || n_vis >= MAX_VIS) continue;
+        placed[ri] = true;
+        vis[n_vis++] = a;
+    }
+    for (int i = 0; i < app_count() && i < MAX_VIS && n_vis < MAX_VIS; i++) {
+        const NotaApp *a = app_at(i);
+        if (placed[i] || !app_installed(a)) continue;
+        int at = 0; /* after the nearest app before it in the default order that is already on the home screen */
+        for (int p = i - 1; p >= 0 && !at; p--)
+            for (int k = 0; k < n_vis; k++) if (vis[k] == app_at(p)) { at = k + 1; break; }
+        memmove(&vis[at + 1], &vis[at], (n_vis - at) * sizeof vis[0]);
+        vis[at] = a;
+        n_vis++;
+        placed[i] = true;
+    }
+}
+
+static void save_order(void) {
+    char ord[1024] = "";
+    size_t len = 0;
+    for (int i = 0; i < n_vis; i++) {
+        int w = snprintf(ord + len, sizeof ord - len, "%s%s", i ? "," : "", vis[i]->id);
+        if (w < 0 || (size_t)w >= sizeof ord - len) break;
+        len += w;
+    }
+    cfg_set("home_order", ord);
+}
+
+/* move the tile at from to place to (the others shift one step) */
+static void move_tile(int from, int to) {
+    if (from == to || from < 0 || to < 0 || from >= n_vis || to >= n_vis) return;
+    const NotaApp *a = vis[from];
+    if (from < to) memmove(&vis[from], &vis[from + 1], (to - from) * sizeof vis[0]);
+    else memmove(&vis[to + 1], &vis[to], (from - to) * sizeof vis[0]);
+    vis[to] = a;
 }
 
 /* app grid: one row up to 6 apps, otherwise two rows (the top row gets the extra one for an odd count) */
@@ -33,11 +78,14 @@ typedef struct {
     HomeItem *cont;
     int n_cont;
     const NotaApp *cont_app; /* the row below the apps follows the app in focus */
+    bool keep_row;           /* moved down onto an app without a row: the row of the app above stays (see pick_cont_app) */
     double refreshed, fetched;
     /* "top shelf": a big image from the focused app behind the top (drawn in a layer) */
     char bg_url[512], prev_url[512], bgl_key[600];
     float bg_fade, bgl_fade;
     Layer *bgl;
+    bool moving;       /* move mode (Green on a tile): the arrows move the focused tile, OK/Back ends it */
+    float wiggle;
 } Home;
 
 #define SHELF_H 820
@@ -64,8 +112,9 @@ static void copy_item(HomeItem *d, const HomeItem *s) {
 /* row 2 per app: title (NULL = no row) */
 static const char *cont_title(const NotaApp *a) { return a && a->row ? T(a->row_title ? a->row_title : a->name) : NULL; }
 
-/* the row below the apps: the focused app, if it has a row; otherwise the last one stays
- * (so "Recent channels" can still be reached when moving down through the second app row) */
+/* the row below the apps: the focused app's, if it has one. Moving DOWN onto an app without a row keeps the row of
+ * the app above, so e.g. "Recent channels" can be reached through the second row of apps; moving sideways to an
+ * app without a row shows no row (it used to follow along all the way to Settings) */
 static bool app_visible(const NotaApp *app) {
     for (int i = 0; i < n_vis; i++) if (vis[i] == app) return true;
     return false;
@@ -73,8 +122,7 @@ static bool app_visible(const NotaApp *app) {
 static const NotaApp *pick_cont_app(const Home *h) {
     const NotaApp *a = vis[h->col];
     if (cont_title(a)) return a;
-    if (cont_title(h->cont_app) && app_visible(h->cont_app)) return h->cont_app;
-    for (int i = 0; i < n_vis; i++) if (cont_title(vis[i])) return vis[i];
+    if (h->keep_row && cont_title(h->cont_app) && app_visible(h->cont_app)) return h->cont_app;
     return a;
 }
 
@@ -104,6 +152,8 @@ static void collect_continue(Home *h) {
 
 static void home_enter(Screen *s) {
     Home *h = s->st;
+    if (h->moving) save_order();
+    h->moving = false;
     build_vis();
     if (h->col >= n_vis) h->col = 0;
     for (int i = 0; i < n_vis; i++) if (vis[i]->row_refresh) vis[i]->row_refresh();
@@ -118,10 +168,12 @@ static void home_update(Screen *s, float dt) {
     static int seen_gen = -1;
     if (seen_gen != apps_gen()) { /* apps installed/uninstalled meanwhile (e.g. downloaded in the background) */
         seen_gen = apps_gen();
+        if (h->moving) save_order(); /* keep what has been moved so far */
         build_vis();
         if (h->col >= n_vis) h->col = 0;
         collect_continue(h);
     }
+    if (h->moving) h->wiggle += dt;
     for (int i = 0; i < n_vis; i++)
         h->foc[i] = anim_to(h->foc[i], (h->row == 0 && h->col == i) ? 1 : 0, dt, 16);
     h->row_anim = anim_to(h->row_anim, (float)h->row, dt, 12);
@@ -173,6 +225,12 @@ static void draw_shelf(Home *h, const NotaApp *a) {
         snprintf(info, sizeof info, "NotaTV %s   ·   %s", TV_VERSION, ip[0] ? ip : T("No network connection"));
         text_draw(F_REG, 26, x + 292, y + 220, C_TEXT3, AL_LEFT, info);
     }
+    int nu = !strcmp(a->id, "appstore") ? appcat_updates() : 0;
+    if (nu > 0) {
+        char t[96];
+        snprintf(t, sizeof t, nu == 1 ? T("1 app has an update") : T("%d apps have an update"), nu);
+        text_draw(F_SEMI, 26, x + 292, y + 220, C_ACCENT, AL_LEFT, t);
+    }
 }
 
 static void home_draw(Screen *s) {
@@ -223,6 +281,10 @@ static void home_draw(Screen *s) {
     draw_topbar(NULL);
     const char *ip = app_ip();
     draw_icon(ip[0] ? ICON_WIFI : ICON_WIFI, UI_W - 250, 82, 34, ip[0] ? C_TEXT2 : C_DANGER);
+    if (h->row == 0 && !h->moving && n_vis > 1) { /* how to move a tile: Green (there is no "hold OK" on CEC) */
+        const char *l = T("Move app");
+        draw_hint(UI_W - 310 - 36 - text_width(F_REG, 22, l), 64, "Green", l);
+    }
 
     float shift = h->row_anim * 340; /* scroll up when row 2 is selected */
     clip_push(0, 150, UI_W, APPS_Y - 170);
@@ -254,14 +316,28 @@ static void home_draw(Screen *s) {
         float w = tw * sc, hh = th * sc;
         float cx = x0 + c * (tw + gap) + tw / 2, cy = y0 + th / 2;
         float x = cx - w / 2, y = cy - hh / 2 - 8 * f;
+        bool mv = h->moving && i == h->col;
+        if (mv) y -= 10 + 4 * sinf(h->wiggle * 6); /* picked up: lifted and bobbing */
         if (f > 0.01f) draw_shadow(x, y, w, hh, 24, 30 * f, f);
         fill_rrect_vgrad(x, y, w, hh, 24, a->c1, a->c2);
         draw_icon(a->icon, cx, y + hh / 2, 70 * sc, a->fg);
-        if (f > 0.01f) stroke_rrect(x - 4, y - 4, w + 8, hh + 8, 28, 4, color_alpha(C_FOCUS, f));
+        if (f > 0.01f) stroke_rrect(x - 4, y - 4, w + 8, hh + 8, 28, 4, color_alpha(mv ? C_ACCENT : C_FOCUS, f));
+        if (!strcmp(a->id, "appstore") && appcat_updates() > 0) { /* updates waiting: a small badge with the count */
+            char nb[8];
+            snprintf(nb, sizeof nb, "%d", appcat_updates());
+            float bs = 40 * sc, bx = x + w - bs * 0.7f, by = y - bs * 0.3f;
+            float bw = bs + (strlen(nb) > 1 ? text_width(F_BOLD, 24 * sc, nb) - 14 * sc : 0);
+            fill_rrect(bx - (bw - bs) / 2, by, bw, bs, bs / 2, C_ACCENT);
+            text_draw(F_BOLD, 24 * sc, bx + bs / 2, by + (bs - 24 * sc) / 2 - sc, C_TEXT, AL_CENTER, nb);
+        }
         Color tc = color_mix(C_TEXT3, C_TEXT, f);
         text_draw(F_SEMI, 26, cx, y0 + th + 22, tc, AL_CENTER, T(a->name));
     }
 
+    if (h->moving) {
+        text_draw(F_REG, 26, UI_W / 2, UI_H - 70, C_TEXT, AL_CENTER, T("Move with the arrows · OK when you are done"));
+        return;
+    }
     if (h->n_cont > 0) {
         float ry = APPS_Y + (grid_rows() - 1) * TILE_PITCH + 244 - shift;
         text_draw(F_SEMI, 30, 120, ry - 48, h->row == 1 ? C_TEXT : C_TEXT2, AL_LEFT, cont_title(h->cont_app));
@@ -297,29 +373,53 @@ static void home_draw(Screen *s) {
 
 static bool home_input(Screen *s, const InputEvent *ev) {
     Home *h = s->st;
+    if (h->moving) { /* move mode: the arrows move the tile, OK/Back/Home put it down */
+        int cols = grid_cols(), to = h->col;
+        switch (ev->a) {
+        case A_LEFT: to = h->col - 1; break;
+        case A_RIGHT: to = h->col + 1; break;
+        case A_UP: if (h->col >= cols) to = h->col - cols; break;
+        case A_DOWN: if (grid_rows() > 1 && h->col < cols) to = h->col + cols < n_vis ? h->col + cols : n_vis - 1; break;
+        case A_OK: case A_INFO: case A_BACK: case A_HOME:
+            h->moving = false;
+            save_order();
+            return true;
+        case A_MENU: return true;
+        default: return false;
+        }
+        if (to >= 0 && to < n_vis && to != h->col) {
+            move_tile(h->col, to);
+            float f = h->foc[h->col]; h->foc[h->col] = h->foc[to]; h->foc[to] = f; /* the focus glow moves with it */
+            h->col = to;
+        }
+        return true;
+    }
     switch (ev->a) {
     case A_LEFT:
-        if (h->row == 0) h->col = (h->col + n_vis - 1) % n_vis;
+        if (h->row == 0) { h->col = (h->col + n_vis - 1) % n_vis; h->keep_row = false; }
         else if (h->col2 > 0) h->col2--;
         return true;
     case A_RIGHT:
-        if (h->row == 0) h->col = (h->col + 1) % n_vis;
+        if (h->row == 0) { h->col = (h->col + 1) % n_vis; h->keep_row = false; }
         else if (h->col2 < h->n_cont - 1) h->col2++;
         return true;
     case A_DOWN:
         if (h->row == 0) {
             int cols = grid_cols();
-            if (h->col / cols + 1 < grid_rows()) h->col = h->col + cols < n_vis ? h->col + cols : n_vis - 1;
+            if (h->col / cols + 1 < grid_rows()) { h->col = h->col + cols < n_vis ? h->col + cols : n_vis - 1; h->keep_row = true; }
             else if (h->n_cont > 0) h->row = 1;
         }
         return true;
     case A_UP:
         if (h->row == 1) h->row = 0;
-        else if (h->col >= grid_cols()) h->col -= grid_cols();
+        else if (h->col >= grid_cols()) { h->col -= grid_cols(); h->keep_row = false; }
         return true;
     case A_OK:
         if (h->row == 0) { Screen *sc = vis[h->col]->open ? vis[h->col]->open() : NULL; if (sc) app_push(sc); }
         else if (h->col2 < h->n_cont && h->cont_app && h->cont_app->row_open) h->cont_app->row_open(&h->cont[h->col2], h->col2);
+        return true;
+    case A_INFO: /* green: pick up the tile to move it (LG CEC has no real "held OK", see STATUS) */
+        if (h->row == 0 && n_vis > 1 && !ev->repeat) { h->moving = true; h->wiggle = 0; }
         return true;
     case A_MENU:
         power_menu_open();
@@ -327,6 +427,7 @@ static bool home_input(Screen *s, const InputEvent *ev) {
     case A_BACK: case A_HOME:
         h->row = 0;
         h->col = 0;
+        h->keep_row = false;
         return true;
     default:
         return false;

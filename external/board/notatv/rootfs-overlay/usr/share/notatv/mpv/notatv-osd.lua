@@ -520,11 +520,21 @@ local function chan_label(n)
     elseif n == 8 then return "7.1" else return string.format(T("%d channels"), n) end
 end
 
+-- a track loaded from a network address (YouTube plays its audio as a separate stream, --audio-file=<URL>):
+-- mpv names it after the whole address, hundreds of characters, so neither title nor "external" says anything
+local function from_url(t)
+    local f = t["external-filename"] or ""
+    return f:find("://") ~= nil or (t.title or ""):find("://") ~= nil
+end
+
 local function track_label(t)
     local parts = {}
+    local url = from_url(t)
     local l = t.lang and (LANG[t.lang] and T(LANG[t.lang]) or t.lang:upper())
     if l then table.insert(parts, l) end
-    if t.title and t.title ~= "" and t.title ~= l then table.insert(parts, t.title) end
+    local title = (not url and t.title and t.title ~= "" and t.title ~= l) and t.title or nil
+    if title and #title > 40 then title = title:sub(1, 38):gsub("[\128-\191]+$", ""):gsub("[\192-\255]$", "") .. "…" end
+    if title then table.insert(parts, title) end
     if t.type == "audio" then
         local c = chan_label(t["demux-channel-count"])
         if c then table.insert(parts, c) end
@@ -533,7 +543,7 @@ local function track_label(t)
         table.insert(parts, t.codec:upper())
     end
     if t.forced then table.insert(parts, T("forced")) end
-    if t.external then table.insert(parts, T("external")) end
+    if t.external and not url then table.insert(parts, T("external")) end
     if #parts == 0 then return string.format(T("Track %s"), tostring(t.id)) end
     return table.concat(parts, " · ")
 end
@@ -559,7 +569,7 @@ local function sections()
     table.insert(s, {id = "audio", label = T("Audio"), value = current_label("audio")})
     if meta.qualities then table.insert(s, {id = "quality", label = T("Quality"), value = meta.quality or "Original"}) end
     if meta.speed then table.insert(s, {id = "speed", label = T("Speed"), value = string.format("%.2gx", mp.get_property_number("speed", 1))}) end
-    if meta.subsearch then table.insert(s, {id = "subsearch", label = T("Search subtitles"), value = ""}) end
+    if meta.subsearch then table.insert(s, {id = "subsearch", label = T("Search subtitles"), value = meta.subnokey and T("Needs a key") or ""}) end
     if meta.channel then table.insert(s, {id = "channel", label = T("Go to channel"), value = meta.channel}) end
     table.insert(s, {id = "subdelay", label = T("Subtitle delay"), value = string.format("%+.1f s", mp.get_property_number("sub-delay", 0))})
     -- used to be on Blue/Yellow; now gathered in the menu (Red = menu everywhere in NotaTV)
@@ -581,8 +591,12 @@ local function options(id)
         end
     elseif id == "quality" then
         for _, q in ipairs(meta.qualities) do
-            table.insert(o, {label = q, on = q == (meta.quality or "Original"),
-                act = function() mp.commandv("script-message", "notatv-quality", q) end})
+            if q:sub(1, 1) == "-" then -- the app says this box cannot play it: shown greyed out, cannot be chosen
+                table.insert(o, {label = q:sub(2), off = true})
+            else
+                table.insert(o, {label = q, on = q == (meta.quality or "Original"),
+                    act = function() mp.commandv("script-message", "notatv-quality", q) end})
+            end
         end
     elseif id == "speed" then
         for _, v in ipairs({0.5, 0.75, 1, 1.25, 1.5, 2}) do
@@ -645,7 +659,7 @@ function render_menu(parts)
         local y = top + (i - first) * 76
         local f = i == menu.sel
         if f then table.insert(parts, rect(x + 10, y, w, 64, "FFFFFF", "00")) end
-        local col = f and "101010" or "FFFFFF"
+        local col = it.off and (f and "707070" or "6A6A6A") or (f and "101010" or "FFFFFF")
         local mark = (menu.level == 1 and it.on) and "✓ " or "   "
         table.insert(parts, text(x + 30, y + 14, 30, f, col, mark .. it.label))
         if menu.level == 0 and it.value and it.value ~= "" then
@@ -667,7 +681,13 @@ local function menu_key(k)
         if menu.level == 0 then
             local sec = sections()[menu.sel]
             if not sec then return end
-            if sec.id == "subsearch" then
+            if sec.id == "subsearch" and meta.subnokey then
+                -- no search without a key: say where to add it (two short lines, so it fits on the screen)
+                mp.osd_message(T("Searching for subtitles needs a free OpenSubtitles key.") .. "\n" ..
+                    T("Add it in Settings → Picture and sound."), 6)
+                close_menu()
+                return
+            elseif sec.id == "subsearch" then
                 mp.commandv("script-message", "notatv-subsearch")
                 mp.osd_message(T("Searching for subtitles…"), 3)
                 close_menu()
@@ -687,6 +707,11 @@ local function menu_key(k)
             for i, o in ipairs(options(sec.id)) do if o.on then menu.sel = i end end
         elseif k == "ok" then
             local o = options(menu.section)[menu.sel]
+            if o and o.off then
+                mp.osd_message(T("This box cannot play that quality"), 3)
+                render()
+                return
+            end
             if o then o.act() end
             if menu.section == "quality" or menu.section == "subresults" then close_menu(); return end
             menu.level = 0
@@ -708,6 +733,10 @@ mp.register_script_message("notatv-subresults", function()
 end)
 
 mp.register_script_message("notatv-show", function(sec) show(tonumber(sec) or 4) end)
+-- the Audio/Subtitles keys: tvshell cycles the track, this shows it with the same names as the menu
+mp.register_script_message("notatv-track-osd", function(kind)
+    mp.osd_message((kind == "sub" and T("Subtitles: %s") or T("Audio: %s")):format(current_label(kind)), 2.5)
+end)
 
 -- ---- fade from/to black on start and stop (the UI fades out/in to match) ----
 local ovk = mp.create_osd_overlay("ass-events")
@@ -740,6 +769,60 @@ mp.register_event("playback-restart", function()
     fade_dir, fade_t0 = "in", mp.get_time()
     fade_timer:resume()
     fade_draw()
+end)
+-- ---- live channel change: picture and sound fade to black, the new channel fades in when it plays ----
+-- (below the banner, browse panel and loading spinner, so they stay visible on the black)
+local ovb = mp.create_osd_overlay("ass-events")
+ovb.z = -1
+ovb.res_x, ovb.res_y = W, H
+local ZF_OUT, ZF_IN = 0.15, 0.35
+local zf_a, zf_dir, zf_last, zf_vol, zf_wait = 0, nil, 0, nil, false
+local zf_timer
+local function zf_step()
+    local now = mp.get_time()
+    local dt = now - zf_last
+    zf_last = now
+    if zf_dir == "out" then zf_a = math.min(1, zf_a + dt / ZF_OUT)
+    elseif zf_dir == "in" then zf_a = math.max(0, zf_a - dt / ZF_IN) end
+    ovb.data = zf_a > 0 and rect(0, 0, W, H, "000000", string.format("%02X", math.floor((1 - zf_a) * 255))) or ""
+    ovb:update()
+    if zf_vol then mp.set_property_number("volume", zf_vol * (1 - zf_a)) end
+    if zf_dir == "in" and zf_a <= 0 then
+        if zf_vol then mp.set_property_number("volume", zf_vol); zf_vol = nil end
+        zf_dir = nil
+        zf_timer:kill()
+    elseif zf_dir == "out" and zf_a >= 1 then
+        zf_timer:kill()
+    end
+end
+zf_timer = mp.add_periodic_timer(1 / 30, zf_step)
+zf_timer:kill()
+local function zf_out()
+    if not zf_vol then zf_vol = mp.get_property_number("volume", 100) end
+    if zf_dir ~= "out" then zf_dir, zf_last = "out", mp.get_time() end
+    zf_timer:resume()
+    zf_step()
+end
+-- tvshell: the user stopped browsing - fade out while the old channel still plays
+mp.register_script_message("notatv-zapfade", zf_out)
+-- a new press during the fade-out: back to the picture (unless a channel is already loading)
+mp.register_script_message("notatv-zapcancel", function()
+    if zf_dir == "out" and not zf_wait then
+        zf_dir, zf_last = "in", mp.get_time()
+        zf_timer:resume()
+    end
+end)
+mp.register_script_message("notatv-zap", function(idx)
+    zf_out()
+    zf_wait = true
+    mp.commandv("playlist-play-index", idx)
+end)
+
+mp.register_event("playback-restart", function()
+    if not zf_wait then return end
+    zf_wait = false
+    zf_dir, zf_last = "in", mp.get_time()
+    zf_timer:resume()
 end)
 mp.register_script_message("notatv-scrub", function(t, step)
     local now = mp.get_time()
