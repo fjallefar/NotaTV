@@ -1,0 +1,516 @@
+# NotaTV app "tesla" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "%d min"
+msgstr "%d min"
+
+msgid "%d h %d min"
+msgstr "%d t %d min"
+
+msgid "Charging"
+msgstr "Lader"
+
+msgid "Driving"
+msgstr "Kører"
+
+msgid "Asleep"
+msgstr "Sover"
+
+msgid "Offline"
+msgstr "Offline"
+
+msgid "Falling asleep"
+msgstr "Ved at falde i søvn"
+
+msgid "Installing a software update"
+msgstr "Installerer en softwareopdatering"
+
+msgid "Parked"
+msgstr "Parkeret"
+
+msgid "Starting"
+msgstr "Starter"
+
+msgid "Unknown"
+msgstr "Ukendt"
+
+msgid "BATTERY"
+msgstr "BATTERI"
+
+msgid "range"
+msgstr "rækkevidde"
+
+msgid "Charge limit %s %%"
+msgstr "Ladegrænse %s %%"
+
+msgid "since %s"
+msgstr "siden %s"
+
+msgid "CHARGING"
+msgstr "OPLADNING"
+
+msgid "charging|Power"
+msgstr "Ladeeffekt"
+
+msgid "driving|Power"
+msgstr "Effekt"
+
+msgid "Added"
+msgstr "Tilført"
+
+msgid "Full in"
+msgstr "Fuld om"
+
+msgid "Current"
+msgstr "Strøm"
+
+msgid "Voltage"
+msgstr "Spænding"
+
+msgid "Plugged in, not charging"
+msgstr "Sat til, lader ikke"
+
+msgid "Not plugged in"
+msgstr "Ikke sat til"
+
+msgid "Scheduled start"
+msgstr "Planlagt start"
+
+msgid "Charge port"
+msgstr "Ladeport"
+
+msgid "door|Open"
+msgstr "Åben"
+
+msgid "Closed"
+msgstr "Lukket"
+
+msgid "CLIMATE"
+msgstr "KLIMA"
+
+msgid "Inside"
+msgstr "Inde"
+
+msgid "Outside"
+msgstr "Ude"
+
+msgid "Climate"
+msgstr "Klima"
+
+msgid "Preconditioning"
+msgstr "Forvarmer"
+
+msgid "On"
+msgstr "Til"
+
+msgid "Off"
+msgstr "Fra"
+
+msgid "TYRES (BAR)"
+msgstr "DÆK (BAR)"
+
+msgid "Front left"
+msgstr "Venstre for"
+
+msgid "Front right"
+msgstr "Højre for"
+
+msgid "Rear left"
+msgstr "Venstre bag"
+
+msgid "Rear right"
+msgstr "Højre bag"
+
+msgid "SECURITY"
+msgstr "SIKKERHED"
+
+msgid "Locked"
+msgstr "Låst"
+
+msgid "Yes"
+msgstr "Ja"
+
+msgid "No"
+msgstr "Nej"
+
+msgid "Sentry mode"
+msgstr "Vagttilstand"
+
+msgid "Doors"
+msgstr "Døre"
+
+msgid "Windows"
+msgstr "Ruder"
+
+msgid "Trunk"
+msgstr "Bagagerum"
+
+msgid "Frunk"
+msgstr "Frunk"
+
+msgid "WHERE"
+msgstr "HVOR"
+
+msgid "No saved place"
+msgstr "Intet gemt sted"
+
+
+msgid "Speed"
+msgstr "Fart"
+
+msgid "Someone in the car"
+msgstr "Nogen i bilen"
+
+msgid "THE CAR"
+msgstr "BILEN"
+
+msgid "Model"
+msgstr "Model"
+
+msgid "Odometer"
+msgstr "Kilometertæller"
+
+msgid "Software"
+msgstr "Software"
+
+msgid "Update ready"
+msgstr "Opdatering klar"
+
+msgid "Health"
+msgstr "Tilstand"
+
+msgid "TeslaMate reports a problem"
+msgstr "TeslaMate melder et problem"
+
+
+msgid "Menu"
+msgstr "Menu"
+
+msgid "Live from TeslaMate"
+msgstr "Live fra TeslaMate"
+
+msgid "Connecting to TeslaMate…"
+msgstr "Forbinder til TeslaMate…"
+
+msgid "The server refused the username or password"
+msgstr "Serveren afviste brugernavnet eller adgangskoden"
+
+msgid "Can't reach the server - showing what was last known"
+msgstr "Kan ikke nå serveren - viser det sidst kendte"
+
+msgid "Login refused"
+msgstr "Login afvist"
+
+msgid "The MQTT server did not accept the username or password. Press Red to choose the server again."
+msgstr "MQTT-serveren godtog ikke brugernavnet eller adgangskoden. Tryk Rød for at vælge serveren igen."
+
+msgid "Can't reach the server"
+msgstr "Kan ikke nå serveren"
+
+msgid "Check that the machine running TeslaMate is on and that its MQTT port (1883) can be reached from the network. NotaTV keeps trying."
+msgstr "Tjek at maskinen med TeslaMate er tændt, og at dens MQTT-port (1883) kan nås fra netværket. NotaTV bliver ved med at prøve."
+
+msgid "No data from TeslaMate"
+msgstr "Ingen data fra TeslaMate"
+
+msgid "Connected, but TeslaMate has sent nothing yet. Check that MQTT is turned on in TeslaMate (it is by default)."
+msgstr "Forbundet, men TeslaMate har ikke sendt noget endnu. Tjek at MQTT er slået til i TeslaMate (det er det som standard)."
+
+msgid "Found: %s"
+msgstr "Fundet: %s"
+
+msgid "Connected, but there is no TeslaMate data on %s"
+msgstr "Forbundet, men der er ingen TeslaMate-data på %s"
+
+msgid "Can't reach %s"
+msgstr "Kan ikke nå %s"
+
+msgid "MQTT password"
+msgstr "MQTT-adgangskode"
+
+msgid "MQTT username (from TeslaMate's setup)"
+msgstr "MQTT-brugernavn (fra TeslaMates opsætning)"
+
+msgid "That is not an address"
+msgstr "Det er ikke en adresse"
+
+msgid "IP address of the machine running TeslaMate"
+msgstr "IP-adresse på maskinen med TeslaMate"
+
+msgid "TeslaMate sends the car's data through its MQTT server (mosquitto), and that server must be reachable from the network"
+msgstr "TeslaMate sender bilens data gennem sin MQTT-server (mosquitto), og den server skal kunne nås fra netværket"
+
+msgid "In TeslaMate's docker-compose.yml, add this under mosquitto: ports: - 1883:1883"
+msgstr "Tilføj dette under mosquitto i TeslaMates docker-compose.yml: ports: - 1883:1883"
+
+msgid "Then run docker compose up -d and search again"
+msgstr "Kør derefter docker compose up -d og søg igen"
+
+msgid "TeslaMate's MQTT can't be reached"
+msgstr "TeslaMates MQTT kan ikke nås"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Tesla - choose TeslaMate"
+msgstr "Tesla - vælg TeslaMate"
+
+msgid "TeslaMate servers on the network"
+msgstr "TeslaMate-servere på netværket"
+
+msgid "Enter the address yourself"
+msgstr "Skriv adressen selv"
+
+msgid "TeslaMate - OK to use"
+msgstr "TeslaMate - OK for at bruge"
+
+msgid "Needs a login - OK"
+msgstr "Kræver login - OK"
+
+msgid "MQTT, no TeslaMate data seen - OK to log in"
+msgstr "MQTT, ingen TeslaMate-data set - OK for at logge ind"
+
+msgid "TeslaMate, but its MQTT can't be reached - OK for help"
+msgstr "TeslaMate, men dens MQTT kan ikke nås - OK for hjælp"
+
+msgid "Searching the network…"
+msgstr "Søger på netværket…"
+
+msgid "Connecting…"
+msgstr "Forbinder…"
+
+msgid "No TeslaMate found. If it runs on another network or in Docker without an open MQTT port, enter the machine's IP address yourself."
+msgstr "Ingen TeslaMate fundet. Kører den på et andet netværk eller i Docker uden åben MQTT-port, så skriv maskinens IP-adresse selv."
+
+msgid "Search again"
+msgstr "Søg igen"
+
+
+msgid "Not chosen"
+msgstr "Ikke valgt"
+
+msgid "TeslaMate server"
+msgstr "TeslaMate-server"
+
+msgid "Choose another one with Red inside the Tesla app"
+msgstr "Vælg en anden med Rød inde i Tesla-appen"
+
+msgid "Forget the TeslaMate server"
+msgstr "Glem TeslaMate-serveren"
+
+msgid "Removes the address and login, and everything the app knows about the car"
+msgstr "Fjerner adressen og login og alt, hvad appen ved om bilen"
+
+msgid "Your Tesla on the TV: battery, charging and status from your TeslaMate"
+msgstr "Din Tesla på TV: batteri, opladning og status fra din TeslaMate"
+
+
+
+
+
+
+
+
+
+
+
+
+msgid "The map comes from OpenStreetMap: their servers see roughly where the car is"
+msgstr "Kortet hentes fra OpenStreetMap: deres servere kan se nogenlunde, hvor bilen er"
+
+msgid "At most %d cars at the top of the home screen"
+msgstr "Højst %d biler øverst på forsiden"
+
+msgid "Screen off"
+msgstr "Skærm slukket"
+
+msgid "Screen on"
+msgstr "Skærm tændt"
+
+msgid "Charging screen"
+msgstr "Ladeskærm"
+
+msgid "Ready to unlock"
+msgstr "Klar til at låse op"
+
+msgid "Sentry mode is on"
+msgstr "Vagttilstand er slået til"
+
+msgid "Dog mode is on"
+msgstr "Hundetilstand er slået til"
+
+msgid "Camp mode is on"
+msgstr "Campingtilstand er slået til"
+
+msgid "Usable %s %%"
+msgstr "Brugbart %s %%"
+
+msgid "ideal"
+msgstr "ideel"
+
+msgid "ON THE WAY"
+msgstr "PÅ VEJ"
+
+msgid "Arrives %s"
+msgstr "Ankommer %s"
+
+msgid "in %s"
+msgstr "om %s"
+
+msgid "%s %% at arrival"
+msgstr "%s %% ved ankomst"
+
+msgid "+%s traffic"
+msgstr "+%s pga. trafik"
+
+
+msgid "Tyre pressure warning"
+msgstr "Advarsel om dæktryk"
+
+msgid "Screen"
+msgstr "Skærm"
+
+msgid "THE CAR FROM ABOVE"
+msgstr "BILEN SET OPPEFRA"
+
+msgid "A door"
+msgstr "En dør"
+
+msgid "Driver's door"
+msgstr "Førerdør"
+
+msgid "Rear left door"
+msgstr "Venstre bagdør"
+
+msgid "Passenger door"
+msgstr "Passagerdør"
+
+msgid "Rear right door"
+msgstr "Højre bagdør"
+
+msgid "Open: %s"
+msgstr "Åben: %s"
+
+msgid "Everything is closed"
+msgstr "Alt er lukket"
+
+msgid "compass|N"
+msgstr "N"
+
+msgid "compass|NE"
+msgstr "NØ"
+
+msgid "compass|E"
+msgstr "Ø"
+
+msgid "compass|SE"
+msgstr "SØ"
+
+msgid "compass|S"
+msgstr "S"
+
+msgid "compass|SW"
+msgstr "SV"
+
+msgid "compass|W"
+msgstr "V"
+
+msgid "compass|NW"
+msgstr "NV"
+
+msgid "Gear"
+msgstr "Gear"
+
+msgid "Direction"
+msgstr "Retning"
+
+msgid "Altitude"
+msgstr "Højde"
+
+msgid "Colour"
+msgstr "Farve"
+
+msgid "Wheels"
+msgstr "Fælge"
+
+msgid "Spoiler"
+msgstr "Spoiler"
+
+msgid "What is shown"
+msgstr "Hvad der vises"
+
+msgid "On the home screen"
+msgstr "På forsiden"
+
+msgid "Change server"
+msgstr "Skift server"
+
+msgid "Back"
+msgstr "Tilbage"
+
+msgid "No cars yet"
+msgstr "Ingen biler endnu"
+
+msgid "OK turns it on or off"
+msgstr "OK slår til eller fra"
+
+msgid "Up to 3 cars at the top"
+msgstr "Op til 3 biler øverst"
+
+msgid "Scroll"
+msgstr "Rul"
+
+msgid "Menu: car, what is shown, home screen"
+msgstr "Menu: bil, hvad der vises, forside"
+
+msgid "Move app"
+msgstr "Flyt app"
+
+msgid "feature|Charging"
+msgstr "Opladning"
+
+msgid "feature|Charge current"
+msgstr "Ladestrøm"
+
+msgid "feature|Climate"
+msgstr "Klima"
+
+msgid "feature|Tyres"
+msgstr "Dæk"
+
+msgid "feature|Locks and doors"
+msgstr "Låse og døre"
+
+msgid "feature|Car from above"
+msgstr "Bil set oppefra"
+
+msgid "feature|Where"
+msgstr "Hvor"
+
+msgid "feature|Gear and direction"
+msgstr "Gear og retning"
+
+msgid "feature|Route"
+msgstr "Rute"
+
+msgid "feature|Map"
+msgstr "Kort"
+
+msgid "feature|Model and software"
+msgstr "Model og software"
+
+msgid "feature|Dog mode etc."
+msgstr "Hundetilstand m.m."
+
+msgid "feature|Usable battery"
+msgstr "Brugbart batteri"
+
+msgid "charging|Requested"
+msgstr "Ønsket strøm"
+
+
+
+
+

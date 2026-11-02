@@ -36,7 +36,7 @@ static const char *const *plex_headers(Hdrs *H, const char *token) {
     snprintf(H->h[n++], 400, "X-Plex-Version: %s", TV_VERSION);
     snprintf(H->h[n++], 400, "X-Plex-Client-Identifier: %s", plex_client_id());
     snprintf(H->h[n++], 400, "X-Plex-Platform: Linux");
-    /* the box's own name (as Plex cast, AirPlay and DLNA use) - control characters would break the header */
+    /* the box's own name (as AirPlay and DLNA use) - control characters would break the header */
     char name[128];
     snprintf(name, sizeof name, "%s", cfg_get("device_name", "NotaTV"));
     for (char *c = name; *c; c++) if ((unsigned char)*c < 32) *c = ' ';
@@ -53,7 +53,6 @@ typedef struct {
     char id[96], name[128], uri[300], token[300], owner[128];
     char hidden[256]; /* fravalgte biblioteker: ",1,4," */
     bool owned, enabled;
-    bool cast_only; /* a server only known from Plex cast (shared with the account): used, never saved */
 } PSrv;
 static PSrv S[MAX_SRV];
 static int nS;
@@ -66,7 +65,6 @@ static void srv_save(void) {
     char names[400] = "";
     const char *first_uri = "";
     for (int i = 0; i < nS; i++) {
-        if (S[i].cast_only) continue;
         cJSON *o = cJSON_CreateObject();
         cJSON_AddStringToObject(o, "id", S[i].id);
         cJSON_AddStringToObject(o, "name", S[i].name);
@@ -560,7 +558,7 @@ static void deck_rebuild(void) {
         h->subtitle = deck_strs[n_deck_strs++] = n_enabled() > 1 ? str_printf("%s · %s", ep ? it->title : (it->year ? it->year : ""), S[it->srv].name)
                                                                    : str_dup(ep ? it->title : it->year);
         /* the series'/movie's artwork, not an image from the episode */
-        h->image = deck_strs[n_deck_strs++] = img_url(it->srv, it->sart ? it->sart : it->art ? it->art : it->thumb, 640, 360);
+        h->image = deck_strs[n_deck_strs++] = img_url(it->srv, it->sart ? it->sart : it->art ? it->art : it->thumb, 1280, 720);
         h->key = deck_strs[n_deck_strs++] = str_printf("plex:%d:%s", it->srv, it->rating_key);
         h->progress = it->duration > 0 ? it->offset / it->duration : 0;
         h->logo = it->clogo ? deck_strs[n_deck_strs++] = logo_url(it->srv, it->clogo) : NULL;
@@ -650,32 +648,6 @@ static char *plex_sub_fetch(void *ud, int idx) { (void)ud; return subs_fetch(idx
 
 static const char *const plex_qualities[] = {"Original", "1080p", "720p", "480p", NULL};
 
-/* Plex cast: the app sees what is playing (also when started on the TV) and can control it */
-static PlexCastNow cast_now;
-static void cast_tick(void *ud) { (void)ud; plexcast_play_tick(); }
-
-static void cast_publish(PItem *it, double base) {
-    PSrv *sv = &S[it->srv];
-    PlexCastNow *n = &cast_now;
-    snprintf(n->key, sizeof n->key, "/library/metadata/%s", it->rating_key ? it->rating_key : "");
-    snprintf(n->rating_key, sizeof n->rating_key, "%s", it->rating_key ? it->rating_key : "");
-    snprintf(n->server_id, sizeof n->server_id, "%s", sv->id);
-    char host[300] = "";
-    int port = 32400;
-    const char *h = strstr(sv->uri, "://");
-    snprintf(n->protocol, sizeof n->protocol, "%s", !strncmp(sv->uri, "https", 5) ? "https" : "http");
-    if (h) {
-        snprintf(host, sizeof host, "%s", h + 3);
-        char *c = strrchr(host, ':');
-        if (c) { port = atoi(c + 1); *c = 0; }
-        else port = n->protocol[4] ? 443 : 80;
-    }
-    snprintf(n->address, sizeof n->address, "%s", host);
-    n->port = port;
-    n->duration = it->duration;
-    plexcast_playing(n, base);
-}
-
 static bool plex_next_ep(const PItem *it, PItem *out);
 
 /* intro/credits markers (Plex Pass) and the next episode, fetched once playback is running */
@@ -716,7 +688,7 @@ static void plex_skip_info(void *ud, PlaySkip *sk) {
     }
 }
 
-/* List responses (the episode list behind "next episode", play queues from cast) have no stream info. Fetch the
+/* List responses (the episode list behind "next episode") have no stream info. Fetch the
    full item before playback, so Plex's subtitle and audio choice, the subtitle files and HDR are known. */
 typedef struct { char *url, *token; HttpBuf b; bool ok; SDL_AtomicInt done, refs; } FullJob;
 static void fulljob_unref(FullJob *f) {
@@ -840,9 +812,7 @@ static bool plex_play(PItem *it, double start, bool *watched, PItem *next) {
         rq.start = direct ? start : 0;
         rq.extra = (const char *const *)extra;
         rq.progress = plex_progress;
-        rq.tick = cast_tick;
         rq.skip_info = is_extra ? NULL : plex_skip_info;
-        cast_publish(it, direct ? 0 : start);
         rq.qualities = is_extra ? NULL : plex_qualities;
         rq.quality = quality;
         rq.sub_search = is_extra ? NULL : plex_sub_search;
@@ -872,8 +842,6 @@ static bool plex_play(PItem *it, double start, bool *watched, PItem *next) {
         ended = res.dur > 0 && res.eof; /* a video that never started has not ended (no jump to the next episode) */
         break;
     }
-    plexcast_stopped();
-    cast_now.container[0] = cast_now.pq_id[0] = cast_now.pq_item[0] = 0;
     free(title);
     free(sub);
     free(poster);
@@ -1045,188 +1013,6 @@ static void play_show(PItem *h) {
     char *p = str_printf("/library/metadata/%s/allLeaves", h->rating_key);
     if (!srv_get(h->srv, p, showplay_cb, NULL)) app_toast(T("The server is no longer selected"));
     free(p);
-}
-
-/* ---------- Plex cast: "Play on → NotaTV" from a Plex app ---------- */
-typedef struct { PItem *items; long *pq_item; int n; char container[256], pq_id[24]; double offset; long sel_item; char key[256]; } CastQ;
-
-static int cast_srv(const PlexCastMedia *m) {
-    srv_load();
-    for (int i = 0; i < nS; i++)
-        if (!strcmp(S[i].id, m->server_id) && S[i].uri[0]) return i;
-    if (!m->address[0] || nS >= MAX_SRV) return -1;
-    /* unknown server (e.g. shared from another account): use the address and token from the app, without choosing it */
-    PSrv *s = &S[nS];
-    memset(s, 0, sizeof *s);
-    snprintf(s->id, sizeof s->id, "%s", m->server_id[0] ? m->server_id : "cast");
-    snprintf(s->name, sizeof s->name, "Plex");
-    snprintf(s->uri, sizeof s->uri, "%s://%s:%d", m->protocol, m->address, m->port);
-    snprintf(s->token, sizeof s->token, "%s", m->token);
-    s->cast_only = true;
-    return nS++;
-}
-
-static void cast_run(CastQ *q, int idx) {
-    double off = q->offset;
-    while (idx >= 0 && idx < q->n) {
-        PItem *it = &q->items[idx];
-        snprintf(cast_now.container, sizeof cast_now.container, "%s", q->container);
-        snprintf(cast_now.pq_id, sizeof cast_now.pq_id, "%s", q->pq_id);
-        if (q->pq_item[idx]) snprintf(cast_now.pq_item, sizeof cast_now.pq_item, "%ld", q->pq_item[idx]);
-        else cast_now.pq_item[0] = 0;
-        bool ended = plex_play(it, off, NULL, NULL);
-        off = 0;
-        if (plexcast_play_pending()) break; /* the app sent something new */
-        int skip = plexcast_take_skip();
-        if (skip) idx += skip;
-        else if (ended) idx++;
-        else break;
-    }
-}
-
-static void cast_cb(void *ud, Req *r) {
-    CastQ *q = ud;
-    cJSON *mc = mc_of(r);
-    q->n = mc ? parse_items(mc, &q->items, r->srv) : 0;
-    q->pq_item = calloc(q->n + 1, sizeof(long));
-    int sel = 0;
-    if (mc) {
-        cJSON *arr = cJSON_GetObjectItem(mc, "Metadata"), *m;
-        int i = 0;
-        cJSON_ArrayForEach(m, arr) {
-            if (i >= q->n) break;
-            q->pq_item[i] = (long)jnum(m, "playQueueItemID");
-            i++;
-        }
-        long want = (long)jnum(mc, "playQueueSelectedItemID");
-        snprintf(q->pq_id, sizeof q->pq_id, "%ld", (long)jnum(mc, "playQueueID"));
-        if (!want) q->pq_id[0] = 0;
-        for (i = 0; i < q->n; i++) {
-            char k[300];
-            snprintf(k, sizeof k, "/library/metadata/%s", q->items[i].rating_key ? q->items[i].rating_key : "");
-            if ((want && q->pq_item[i] == want) || (!want && !strcmp(k, q->key))) { sel = i; break; }
-        }
-    }
-    if (q->n > 0) cast_run(q, sel);
-    else app_toast(T("Plex: could not load what the app sent"));
-    for (int i = 0; i < q->n; i++) pitem_free(&q->items[i]);
-    free(q->items);
-    free(q->pq_item);
-    free(q);
-}
-
-void plex_cast_play(const PlexCastMedia *m) {
-    int si = cast_srv(m);
-    if (si < 0) { app_toast(T("Plex: unknown server")); return; }
-    CastQ *q = calloc(1, sizeof *q);
-    q->offset = m->offset;
-    snprintf(q->key, sizeof q->key, "%s", m->key);
-    /* playQueue gives the whole queue (next episode etc.); otherwise only the item */
-    char path[600];
-    if (!strncmp(m->container, "/playQueues/", 12)) {
-        snprintf(q->container, sizeof q->container, "%s", m->container);
-        char base[256];
-        snprintf(base, sizeof base, "%s", m->container);
-        char *qq = strchr(base, '?');
-        if (qq) *qq = 0;
-        snprintf(path, sizeof path, "%s?own=1&window=200&includeChapters=0", base);
-    } else snprintf(path, sizeof path, "%s", m->key);
-    app_toast(T("Plex: playing from your phone…"));
-    if (!srv_get(si, path, cast_cb, q)) free(q);
-}
-
-/* ---------- Plex cast: is a command from this box's own Plex account? ----------
- * Plex apps send their own X-Plex-Token with every command. plex.tv tells whose token it is (/api/v2/user); it is
- * accepted when that is the account the box is signed in with, or a user in its Plex Home. Without that, anyone on
- * the network could use the box's remote control (Plex cast) - also to reach Settings. Answers are kept in memory
- * (yes 12 hours, no 10 minutes), so plex.tv is asked once per phone, not per command. Runs on plexcast's threads. */
-#define TOKC_N 16
-static struct { char tok[300]; bool ok; double until; } tokc[TOKC_N];
-static char own_uuid[16][64], own_for[300];
-static int n_own;
-static double own_until;
-static SDL_Mutex *tok_mu;
-
-static bool plextv_get(const char *path, const char *token, cJSON **out) {
-    char url[200];
-    snprintf(url, sizeof url, "https://plex.tv%s", path);
-    Hdrs H;
-    HttpBuf b;
-    *out = NULL;
-    if (http_request("GET", url, plex_headers(&H, token), NULL, &b, 8) && b.status == 200 && b.data) *out = cJSON_Parse(b.data);
-    http_free(&b);
-    return *out != NULL;
-}
-
-/* the account's own user and its Plex Home users (uuid) */
-static bool own_users(const char *acct) {
-    if (n_own && !strcmp(own_for, acct) && app_time() < own_until) return true;
-    char u[16][64];
-    int n = 0;
-    cJSON *j;
-    if (plextv_get("/api/v2/user", acct, &j)) {
-        char *id = jstr(j, "uuid");
-        if (id && *id) snprintf(u[n++], sizeof u[0], "%s", id);
-        free(id);
-        cJSON_Delete(j);
-    }
-    if (!n) return false;
-    if (plextv_get("/api/v2/home/users", acct, &j)) {
-        cJSON *arr = cJSON_IsArray(j) ? j : cJSON_GetObjectItem(j, "users"), *e;
-        cJSON_ArrayForEach(e, arr) {
-            char *id = jstr(e, "uuid");
-            if (id && *id && n < 16) snprintf(u[n++], sizeof u[0], "%s", id);
-            free(id);
-        }
-        cJSON_Delete(j);
-    }
-    SDL_LockMutex(tok_mu);
-    memcpy(own_uuid, u, sizeof u);
-    n_own = n;
-    snprintf(own_for, sizeof own_for, "%s", acct);
-    own_until = app_time() + 12 * 3600;
-    SDL_UnlockMutex(tok_mu);
-    return true;
-}
-
-bool plex_token_is_ours(const char *tok) {
-    if (!tok_mu || !tok || !*tok || strlen(tok) >= sizeof tokc[0].tok) return false;
-    char acct[300];
-    snprintf(acct, sizeof acct, "%s", cfg_get("plex_token", ""));
-    if (!acct[0]) return false; /* not signed in: nobody controls the box through Plex */
-    double now = app_time();
-    SDL_LockMutex(tok_mu);
-    for (int i = 0; i < TOKC_N; i++)
-        if (tokc[i].until > now && !strcmp(tokc[i].tok, tok)) { bool ok = tokc[i].ok; SDL_UnlockMutex(tok_mu); return ok; }
-    SDL_UnlockMutex(tok_mu);
-    bool ok = !strcmp(tok, acct);
-    if (!ok && own_users(acct)) {
-        cJSON *j;
-        char *id = NULL;
-        if (plextv_get("/api/v2/user", tok, &j)) { id = jstr(j, "uuid"); cJSON_Delete(j); }
-        SDL_LockMutex(tok_mu);
-        for (int i = 0; id && i < n_own; i++) if (!strcmp(own_uuid[i], id)) ok = true;
-        SDL_UnlockMutex(tok_mu);
-        free(id);
-    }
-    SDL_LockMutex(tok_mu);
-    int k = 0;
-    for (int i = 1; i < TOKC_N; i++) if (tokc[i].until < tokc[k].until) k = i; /* the oldest */
-    snprintf(tokc[k].tok, sizeof tokc[k].tok, "%s", tok);
-    tokc[k].ok = ok;
-    tokc[k].until = now + (ok ? 12 * 3600 : 600);
-    SDL_UnlockMutex(tok_mu);
-    return ok;
-}
-
-static void tok_forget(void) {
-    if (!tok_mu) return;
-    SDL_LockMutex(tok_mu);
-    memset(tokc, 0, sizeof tokc);
-    memset(own_uuid, 0, sizeof own_uuid);
-    memset(own_for, 0, sizeof own_for);
-    n_own = 0;
-    SDL_UnlockMutex(tok_mu);
 }
 
 /* ================= serverfund ================= */
@@ -2236,9 +2022,9 @@ static void browse_update(Screen *s, float dt) {
 }
 
 static void draw_item(PItem *it, float x, float y, float w, float h, bool f, bool landscape, bool show_srv, bool cont) {
-    float sc = f ? 1.07f : 1;
+    float fa = ui_focus(it, f), sc = 1 + 0.07f * fa;
     float ww = w * sc, hh = h * sc, xx = x - (ww - w) / 2, yy = y - (hh - h) / 2;
-    if (f) draw_shadow(xx, yy, ww, hh, 14, 26, 1);
+    ui_focus_under(xx, yy, ww, hh, 14, fa);
     fill_rrect(xx, yy, ww, hh, 14, C_SURFACE);
     const char *la = cont && it->sart ? it->sart : it->art ? it->art : it->thumb;
     char *u = img_url(it->srv, landscape ? la : it->thumb, landscape ? 640 : 400, landscape ? 360 : 600);
@@ -2258,7 +2044,7 @@ static void draw_item(PItem *it, float x, float y, float w, float h, bool f, boo
         fill_rrect(xx + ww - bw - 8, yy + 8, bw, 30, 15, RGB(229, 160, 13));
         text_draw(F_BOLD, 20, xx + ww - bw / 2 - 8, yy + 12, RGB(20, 20, 20), AL_CENTER, n);
     }
-    if (f) stroke_rrect(xx - 4, yy - 4, ww + 8, hh + 8, 18, 4, C_FOCUS);
+    ui_focus_over(xx, yy, ww, hh, 14, fa);
     bool ep = it->type && !strcmp(it->type, "episode");
     text_draw_clip(F_SEMI, 24, x, y + h + 14, w, f ? C_TEXT : C_TEXT2, AL_LEFT, ep && it->subtitle ? it->subtitle : it->title);
     char sub[300] = "";
@@ -2427,7 +2213,6 @@ void plex_forget(void) {
     deck_gen++; /* answers on their way are ignored */
     for (int i = 0; i < IMGU_N; i++) { free(imgu[i].path); free(imgu[i].url); }
     memset(imgu, 0, sizeof imgu);
-    tok_forget();
     wipe_session_traces();
 }
 
@@ -3033,9 +2818,9 @@ static void show_draw(Screen *s) {
         float ex = x + i * (SHOW_EP_W + SHOW_EP_GAP) - sh->sx_e, ey = SHOW_EP_Y;
         if (ex > UI_W || ex + SHOW_EP_W < 0) continue;
         bool f = sh->row == 2 && sh->esel == i;
-        float sc = f ? 1.06f : 1, w = SHOW_EP_W * sc, h = SHOW_EP_H * sc;
+        float fa = ui_focus(e, f), sc = 1 + 0.06f * fa, w = SHOW_EP_W * sc, h = SHOW_EP_H * sc;
         float xx = ex - (w - SHOW_EP_W) / 2, yy = ey - (h - SHOW_EP_H) / 2;
-        if (f) draw_shadow(xx, yy, w, h, 14, 24, 1);
+        ui_focus_under(xx, yy, w, h, 14, fa);
         fill_rrect(xx, yy, w, h, 14, C_SURFACE);
         char *u = img_url(e->srv, e->art, 640, 360);
         if (!img_draw_cover(img_get(u), xx, yy, w, h, 14, 1)) draw_icon(ICON_TV, xx + w / 2, yy + h / 2, 60, C_TEXT3);
@@ -3044,7 +2829,7 @@ static void show_draw(Screen *s) {
             fill_rrect(xx + 12, yy + h - 14, w - 24, 6, 3, RGBA(0, 0, 0, 150));
             fill_rrect(xx + 12, yy + h - 14, (w - 24) * (float)(e->offset / e->duration), 6, 3, RGB(229, 160, 13));
         } else if (!e->view_count) fill_tri(xx + w - 34, yy, xx + w, yy, xx + w, yy + 34, RGB(229, 160, 13));
-        if (f) stroke_rrect(xx - 4, yy - 4, w + 8, h + 8, 18, 4, C_FOCUS);
+        ui_focus_over(xx, yy, w, h, 14, fa);
         char t[300];
         snprintf(t, sizeof t, "%d. %s", e->index, e->title ? e->title : "");
         text_draw_clip(F_SEMI, 24, ex, ey + SHOW_EP_H + 14, SHOW_EP_W, f ? C_TEXT : C_TEXT2, AL_LEFT, t);
@@ -3127,7 +2912,6 @@ static const char *const plexsub_o[] = {"plex", "player", "off", NULL}, *const p
 static void act_plex_logout(void) { app_ask_signout("Plex", plex_forget); }
 static const char *plex_signed_out(void) { return *cfg_get("plex_token", "") ? NULL : ITEM_HIDDEN; }
 static const Item plex_items[] = {
-    {N_("Plex cast"), IT_TOGGLE, "plexcast_enabled", "1", set_onoff, .changed = plexcast_apply, .help = N_("The Plex app on your phone can play on NotaTV (cast button) and control playback. Only from your own Plex account, on the local network")},
     {N_("Plex subtitles"), IT_CYCLE, "plex_subs", "plex", plexsub_o, plexsub_l,
      .help = N_("Follow Plex: the subtitle track chosen in Plex, otherwise none. Language setting: the player picks by Subtitle language under Picture and sound. Off: never")},
     {N_("Home screen (Plex and Jellyfin)"), IT_CYCLE, "plex_home_style", "hero", plexst_o, plexst_l, .help = N_("Hero: a featured title at the top. Focus: background and info follow the selected title")},
@@ -3141,13 +2925,11 @@ static const Item plex_items[] = {
 static void plex_row_open(const HomeItem *it, int idx) { (void)idx; if (it->key) plex_play_key(it->key); }
 static void plex_app_apply(void) {
     plex_client_id(); /* made here on the main thread, never first from a worker */
-    if (!tok_mu) tok_mu = SDL_CreateMutex();
-    plexcast_apply();
 }
 const NotaApp nota_app = {
     NOTA_API, "plex", "Plex", N_("Movies and shows from your Plex server"), APP_VERSION, 20, 0,
     ICON_PLEX, {40, 40, 44, 255}, {22, 22, 26, 255}, {229, 160, 13, 255},
-    .open = plex_screen, .init = plex_app_apply, .tick = plexcast_tick, .apply = plex_app_apply, .forget = plex_forget,
+    .open = plex_screen, .init = plex_app_apply, .apply = plex_app_apply, .forget = plex_forget,
     .settings = plex_items, .n_settings = sizeof plex_items / sizeof plex_items[0],
     .row_title = N_("Continue watching"), .shelf_label = N_("CONTINUE IN PLEX"),
     .row = plex_ondeck, .row_refresh = plex_refresh_ondeck, .row_open = plex_row_open,

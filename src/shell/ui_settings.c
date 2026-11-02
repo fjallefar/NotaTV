@@ -1,5 +1,6 @@
 /* NotaTV shell - settings */
 #include "tv.h"
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,7 +21,7 @@ static Screen *busy_screen;
 static void busy_draw(Screen *s) {
     Busy *b = s->st;
     fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(190 * s->anim)));
-    fill_rrect(UI_W / 2 - 420, UI_H / 2 - 150, 840, 300, 28, RGB(24, 28, 37));
+    draw_panel(UI_W / 2 - 420, UI_H / 2 - 150, 840, 300, 32, 1);
     draw_spinner(UI_W / 2, UI_H / 2 - 40, 30, C_TEXT);
     text_draw(F_SEMI, 30, UI_W / 2, UI_H / 2 + 30, C_TEXT, AL_CENTER, b->title);
     FILE *f = fopen("/tmp/notatv-progress", "r");
@@ -410,7 +411,7 @@ static const Item bt_items[] = {
      .help = N_("Phones can only find and connect to the TV while Music or \"Pair a phone\" is open (and for 2 min. after). Paired controllers and keyboards can always connect. Turn off if phones should be able to connect on their own")},
     {N_("Pair a phone"), IT_ACTION, .action = act_bt_pair, .help = N_("Makes the TV visible for 3 minutes. The code is confirmed here on the TV")},
     {N_("Forget paired devices"), IT_ACTION, .action = act_bt_forget},
-    {N_("Cover art for Bluetooth music"), IT_TOGGLE, "music_cover_lookup", "1", onoff, .help = N_("Looks up cover art in MusicBrainz (open music database). Sends artist and album there")},
+    {N_("Cover art for Bluetooth music"), IT_TOGGLE, "music_cover_lookup", "1", onoff, .help = N_("Looks up cover art at Apple (iTunes) and in MusicBrainz (open music database). Sends artist and album there")},
     {N_("AirPlay (music from phone)"), IT_TOGGLE, "airplay_enabled", "1", onoff, .changed = restart_music, .help = N_("iPhone, iPad and Mac can play music on the TV. Local network only")},
 };
 static const Item cec_items[] = {
@@ -572,6 +573,9 @@ typedef struct {
     int info_sec;  /* which list the info values belong to (see sec_id) */
     double info_t;
     bool info_loading;
+    Spring hl_sec, hl_item; /* the focus pills slide between rows */
+    float col_f;            /* 0 = the menu on the left has focus, 1 = the list */
+    int hl_sec_id;          /* the list the item pill belongs to (it jumps, not slides, to a new list) */
 } Settings;
 
 typedef struct { Settings *s; int id; const Section *cs; char *vals[MAX_ITEMS]; int token; } InfoJob;
@@ -694,6 +698,11 @@ static void settings_update(Screen *sc, float dt) {
     float target = item_row(cur_sec(s), s->item) * 88 - 88 * 5;
     if (target < 0) target = 0;
     s->scroll = anim_to(s->scroll, target, dt, 14);
+    spring_to(&s->hl_sec, s->sec * 76.0f, dt, SPRING_SOFT);
+    float it_y = item_row(cur_sec(s), s->item) * 88.0f;
+    if (s->hl_sec_id != sec_id(s)) { s->hl_sec_id = sec_id(s); s->hl_item = (Spring){it_y, 0}; }
+    spring_to(&s->hl_item, it_y, dt, SPRING_SOFT);
+    s->col_f = anim_to(s->col_f, (float)s->col, dt, 14);
 }
 
 static const char *item_def(const Item *it) {
@@ -711,12 +720,18 @@ static void settings_draw(Screen *sc) {
     Settings *s = sc->st;
     draw_background();
     draw_topbar(T("Settings"));
+    { /* the menu's pill: white while the menu has focus, a quiet marker while the list has it */
+        float y = 170 + s->hl_sec.x, k = 1 - s->col_f;
+        if (k > 0.01f) draw_shadow(80, y, 440, 64, 32, 20, 0.6f * k);
+        fill_rrect(80, y, 440, 64, 32, color_mix(color_alpha(C_SURFACE2, 0.8f), C_FOCUS, k));
+    }
     for (int i = 0; i < N_SEC; i++) {
         float y = 170 + i * 76;
-        bool sel = i == s->sec, f = sel && s->col == 0;
-        if (f) fill_rrect(80, y, 440, 64, 14, C_FOCUS);
-        else if (sel) fill_rrect(80, y, 440, 64, 14, C_SURFACE2);
-        Color c = f ? RGB(10, 10, 10) : sel ? C_TEXT : C_TEXT2;
+        bool sel = i == s->sec;
+        /* how much of the white pill is under this row right now: the text turns dark as the pill slides in */
+        float ov = 1 - fabsf(y - (170 + s->hl_sec.x)) / 76.0f;
+        ov = (ov < 0 ? 0 : ov) * (1 - s->col_f);
+        Color c = color_mix(sel ? C_TEXT : C_TEXT2, RGB(10, 10, 10), ov);
         draw_icon(sections[i].icon, 122, y + 32, 30, c);
         text_draw(F_SEMI, 28, 160, y + 15, c, AL_LEFT, T(sections[i].name));
     }
@@ -727,7 +742,12 @@ static void settings_draw(Screen *sc) {
         snprintf(crumb, sizeof crumb, "%s - %s", T(sections[s->sec].name), T(sec->name));
         text_draw(F_SEMI, 26, x + 4, 112, C_TEXT2, AL_LEFT, crumb);
     }
-    clip_push(x - 10, 150, w + 20, UI_H - 240);
+    clip_push(x - 30, 140, w + 60, UI_H - 220);
+    if (s->col_f > 0.01f) { /* the list's pill slides to the focused row */
+        float y = 170 + s->hl_item.x - s->scroll, a = s->col_f;
+        draw_shadow(x, y, w, 76, 38, 24, 0.7f * a);
+        fill_rrect(x, y, w, 76, 38, color_alpha(C_FOCUS, a));
+    }
     int row = 0;
     for (int i = 0; i < sec->n; i++) {
         const Item *it = &sec->items[i];
@@ -736,10 +756,11 @@ static void settings_draw(Screen *sc) {
         if (y < 80 || y > UI_H) continue;
         bool f = s->col == 1 && s->item == i;
         bool info = it->type == IT_INFO;
-        if (f) fill_rrect(x, y, w, 76, 16, C_FOCUS);
-        else if (!info) fill_rrect(x, y, w, 76, 16, C_SURFACE);
-        Color lc = f ? RGB(10, 10, 10) : info ? C_TEXT2 : C_TEXT;
-        Color vc = f ? RGB(50, 50, 55) : C_TEXT2;
+        /* rows without focus have no box of their own - only text. The text turns dark as the pill slides under it */
+        float ov = 1 - fabsf(y - (170 + s->hl_item.x - s->scroll)) / 88.0f;
+        ov = (ov < 0 ? 0 : ov) * s->col_f;
+        Color lc = color_mix(info ? C_TEXT2 : C_TEXT, RGB(10, 10, 10), ov);
+        Color vc = color_mix(C_TEXT2, RGB(50, 50, 55), ov);
         text_draw(F_SEMI, 28, x + 32, y + 21, lc, AL_LEFT, T(it->label));
         float vx = x + w - 32;
         const char *lock = it->locked ? it->locked() : NULL;
@@ -880,6 +901,7 @@ Screen *settings_screen(void) {
     s->name = "settings";
     Settings *st = calloc(1, sizeof(Settings));
     st->sub = -1;
+    st->hl_sec_id = -999; /* the item pill starts on the right row (no slide from the top) */
     s->st = st;
     s->enter = settings_enter;
     s->resume = settings_enter;
@@ -887,5 +909,19 @@ Screen *settings_screen(void) {
     s->draw = settings_draw;
     s->input = settings_input;
     s->destroy = settings_destroy;
+    return s;
+}
+
+/* Settings opened on one section (0 = Network, 1 = Picture and sound, 3 = Bluetooth ...) with the list in focus */
+Screen *settings_screen_at(int sec) {
+    Screen *s = settings_screen();
+    Settings *st = s->st;
+    if (sec >= 0 && sec < N_SEC) {
+        st->sec = sec;
+        st->col = 1;
+        st->col_f = 1;
+        st->hl_sec = (Spring){sec * 76.0f, 0};
+        st->item = first_selectable(cur_sec(st));
+    }
     return s;
 }

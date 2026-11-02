@@ -88,19 +88,33 @@ const char *app_ip(void) {
 /* ---------- transitions ----------
    Opening: the new screen is drawn into a texture and fades in with a slight zoom on top of the old one.
    Closing: a snapshot of the screen is taken before it is torn down and fades out (zooming in slightly). */
-static SDL_Texture *tx_open, *tx_close;
+static SDL_Texture *tx_open, *tx_close, *tx_under;
+static Screen *under_for; /* tx_under holds what was under this screen when it was opened */
 static SDL_Renderer *tx_ren;
 static float close_t;       /* 1 -> 0 while the closed snapshot fades out */
 static bool close_overlay;
 static float ui_dim;        /* black over the whole UI: 1 right after playback, fades to 0 */
+/* a screen opened from a tile/card grows out of it and shrinks back into it (app_set_origin) */
+static struct { float x, y, w, h, r; } org_rect, close_rect;
+static bool org_pending, close_to_rect;
+static Screen *org_screen;
+void app_set_origin(float x, float y, float w, float h, float r) {
+    org_rect.x = x; org_rect.y = y; org_rect.w = w; org_rect.h = h; org_rect.r = r;
+    org_pending = true;
+}
+static float lerpf(float a, float b, float t) { return a + (b - a) * t; }
+/* the full screen at t = 1, the origin rectangle at t = 0 */
+static void blit_from_rect(SDL_Texture *t, float alpha, float k, float x, float y, float w, float h, float r) {
+    gfx_tex_rrect(t, lerpf(x, 0, k), lerpf(y, 0, k), lerpf(w, UI_W, k), lerpf(h, UI_H, k), lerpf(r, 0, k), alpha);
+}
 
 static SDL_Texture *main_target(void) { return kms_present_active() ? kms_present_target() : ui_rt; }
 
 static bool tx_ensure(void) {
     if (!ren) return false;
-    if (tx_ren != ren) { tx_open = tx_close = NULL; tx_ren = ren; } /* old renderer: the textures are gone */
-    for (int i = 0; i < 2; i++) {
-        SDL_Texture **t = i ? &tx_close : &tx_open;
+    if (tx_ren != ren) { tx_open = tx_close = tx_under = NULL; under_for = NULL; tx_ren = ren; } /* old renderer: the textures are gone */
+    for (int i = 0; i < 3; i++) {
+        SDL_Texture **t = i == 2 ? &tx_under : i ? &tx_close : &tx_open;
         if (*t) continue;
         *t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, UI_W, UI_H);
         if (!*t) return false;
@@ -153,6 +167,8 @@ static void snapshot_close(void) {
     draw_screens(base_of(top), top);
     SDL_SetRenderTarget(ren, mt);
     close_overlay = stack[top]->overlay;
+    close_to_rect = stack[top] == org_screen;
+    if (close_to_rect) { close_rect = org_rect; org_screen = NULL; }
     close_t = 1;
 }
 
@@ -165,12 +181,27 @@ void app_push(Screen *s) {
         SDL_Log("skærmstakken er fuld - lukker %s", stack[1]->name ? stack[1]->name : "?");
         app_close(stack[1]);
     }
+    /* what is under the new screen is photographed once: while the new screen opens, the old one is not drawn
+       again every frame (on the Pi's GPU that is what made the animation stutter) */
+    under_for = NULL;
+    if (depth > 0 && tx_ensure()) {
+        SDL_Texture *mt = main_target();
+        SDL_SetRenderTarget(ren, tx_under);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        draw_screens(base_of(depth - 1), depth - 1);
+        SDL_SetRenderTarget(ren, mt);
+        under_for = s;
+    }
     stack[depth++] = s;
     s->anim = 0;
+    if (org_pending && !s->overlay) { org_screen = s; org_pending = false; }
     if (s->enter) s->enter(s);
 }
 
 static void destroy_screen(Screen *s) {
+    if (s == under_for) under_for = NULL;
+    if (s == org_screen) org_screen = NULL;
     if (s->leave) s->leave(s);
     if (s->destroy) s->destroy(s);
     else { free(s->st); free(s); }
@@ -395,6 +426,80 @@ float anim_to(float cur, float target, float dt, float speed) {
     return r;
 }
 
+float spring_to(Spring *s, float target, float dt, float stiffness, float damping) {
+    if (dt > 0.1f) dt = 0.1f; /* a long frame (loading) must not throw it */
+    int n = (int)ceilf(dt / 0.004f); /* small steps: stable at any frame rate */
+    float h = n ? dt / n : 0;
+    for (int i = 0; i < n; i++) {
+        s->v += (stiffness * (target - s->x) - damping * s->v) * h;
+        s->x += s->v * h;
+    }
+    if (fabsf(s->x - target) < 0.0005f && fabsf(s->v) < 0.01f) { s->x = target; s->v = 0; }
+    return s->x;
+}
+
+/* ---------- shared focus animation ----------
+   ui_focus(key, on) gives 0..1 (with a small spring overshoot) for a card that can have focus, so every screen gets
+   the same lift without keeping animation state itself. The key is anything stable per card (the item's pointer).
+   Entries that are not asked for in a while are reused. */
+static float g_dt = 1 / 60.0f;
+static unsigned long g_frame;
+typedef struct { const void *key; Spring s; unsigned long seen, stepped; } FocusEnt;
+static FocusEnt focus_tab[192];
+float focus_amt(const void *key, bool on) {
+    FocusEnt *e = NULL, *old = &focus_tab[0];
+    for (size_t i = 0; i < sizeof focus_tab / sizeof focus_tab[0]; i++) {
+        FocusEnt *t = &focus_tab[i];
+        if (t->key == key && t->seen + 30 >= g_frame) { e = t; break; }
+        if (t->seen < old->seen) old = t;
+    }
+    if (!e) {
+        if (!on) return 0; /* nothing to animate: an item without focus that was not animating */
+        e = old;
+        *e = (FocusEnt){key, {0, 0}, g_frame, g_frame - 1};
+    }
+    e->seen = g_frame;
+    if (e->stepped != g_frame) { e->stepped = g_frame; spring_to(&e->s, on ? 1 : 0, g_dt, SPRING_SNAPPY); }
+    return e->s.x;
+}
+/* a position that glides (spring) to target - for focus pills that slide between rows. The first call jumps */
+typedef struct { const void *key; Spring s; unsigned long seen, stepped; } SlideEnt;
+static SlideEnt slide_tab[48];
+float slide_to(const void *key, float target) {
+    SlideEnt *e = NULL, *old = &slide_tab[0];
+    for (size_t i = 0; i < sizeof slide_tab / sizeof slide_tab[0]; i++) {
+        SlideEnt *t = &slide_tab[i];
+        if (t->key == key && t->seen + 30 >= g_frame) { e = t; break; }
+        if (t->seen < old->seen) old = t;
+    }
+    if (!e) { e = old; *e = (SlideEnt){key, {target, 0}, g_frame, g_frame}; }
+    e->seen = g_frame;
+    if (e->stepped != g_frame) { e->stepped = g_frame; spring_to(&e->s, target, g_dt, SPRING_SOFT); }
+    return e->s.x;
+}
+/* a dialog/panel: frosted dark glass with light from above, a thin edge and a deep shadow */
+void draw_panel(float x, float y, float w, float h, float r, float a) {
+    draw_shadow(x, y, w, h, r, 48, a);
+    fill_rrect(x, y, w, h, r, RGBA(26, 30, 40, (uint8_t)(246 * a)));
+    fill_rrect_vgrad(x, y, w, h * 0.4f, r, RGBA(255, 255, 255, (uint8_t)(12 * a)), RGBA(255, 255, 255, 0));
+    stroke_rrect(x, y, w, h, r, 1.5f, RGBA(255, 255, 255, (uint8_t)(28 * a)));
+}
+
+/* under a lifted card: a soft white glow (seen from across the room) and a shadow */
+void focus_under(float x, float y, float w, float h, float r, float f) {
+    float a = f < 0 ? 0 : f > 1 ? 1 : f;
+    if (a < 0.01f) return;
+    draw_glow(x, y, w, h, r, 34, RGB(255, 255, 255), 0.16f * a);
+    draw_shadow(x, y, w, h, r, 26, 0.95f * a);
+}
+/* over a lifted card: light from above and a thin bright edge */
+void focus_over(float x, float y, float w, float h, float r, float f) {
+    float a = f < 0 ? 0 : f > 1 ? 1 : f;
+    if (a < 0.01f) return;
+    fill_rrect_vgrad(x, y, w, h * 0.5f, r, RGBA(255, 255, 255, (uint8_t)(34 * a)), RGBA(255, 255, 255, 0));
+    stroke_rrect(x, y, w, h, r, 2, RGBA(255, 255, 255, (uint8_t)(120 * a)));
+}
+
 void draw_background(void) {
     fill_vgrad_dither(0, 0, UI_W, UI_H, RGB(16, 19, 27), RGB(7, 8, 12));
 }
@@ -479,10 +584,11 @@ void draw_buttons(float cx, float y, const char *const *labels, int n, int sel) 
     total += gap * (n - 1);
     float x = cx - total / 2;
     for (int i = 0; i < n; i++) {
-        bool f = i == sel;
-        if (f) draw_shadow(x, y, w[i], h, h / 2, 20, 1);
-        fill_rrect(x, y, w[i], h, h / 2, f ? C_FOCUS : RGB(44, 50, 64));
-        text_draw(F_SEMI, 28, x + w[i] / 2, y + (h - 34) / 2, f ? RGB(10, 10, 10) : C_TEXT, AL_CENTER, labels[i]);
+        float f = focus_amt(labels[i], i == sel), fc = f < 0 ? 0 : f > 1 ? 1 : f;
+        float sc = 1 + 0.05f * f, bw = w[i] * sc, bh = h * sc, bx = x + (w[i] - bw) / 2, by = y + (h - bh) / 2;
+        if (fc > 0.01f) draw_shadow(bx, by, bw, bh, bh / 2, 20, fc);
+        fill_rrect(bx, by, bw, bh, bh / 2, color_mix(RGB(44, 50, 64), C_FOCUS, fc));
+        text_draw(F_SEMI, 28, x + w[i] / 2, y + (h - 34) / 2, color_mix(C_TEXT, RGB(10, 10, 10), fc), AL_CENTER, labels[i]);
         x += w[i] + gap;
     }
 }
@@ -603,7 +709,7 @@ void app_background_tick(bool playing) {
     if (playing) return;
     dlna_tick();
     mirror_tick();
-    apps_tick(); /* the installed apps' background services (Plex cast, YouTube cast, Jellyfin "Play on") */
+    apps_tick(); /* the installed apps' background services (YouTube cast, Jellyfin "Play on") */
     update_tick();
 }
 
@@ -678,16 +784,37 @@ static const char *script_shot(void) {
     return path;
 }
 
+/* ---------- app overlays (app_set_overlay) ---------- */
+static struct { char id[32]; void (*draw)(void); } overlays[4];
+void app_set_overlay(const char *app_id, void (*draw)(void)) {
+    int free_i = -1;
+    for (int i = 0; i < 4; i++) {
+        if (overlays[i].draw && !strcmp(overlays[i].id, app_id)) { overlays[i].draw = draw; return; }
+        if (!overlays[i].draw && free_i < 0) free_i = i;
+    }
+    if (draw && free_i >= 0) { snprintf(overlays[free_i].id, sizeof overlays[0].id, "%s", app_id); overlays[free_i].draw = draw; }
+}
+static void draw_overlays(void) {
+    double pos, dur;
+    bool paused;
+    if (player_state(&pos, &dur, &paused)) return; /* video: the player's own OSD */
+    for (int i = 0; i < 4; i++) {
+        if (!overlays[i].draw) continue;
+        const NotaApp *a = app_find(overlays[i].id);
+        if (a && app_installed(a)) overlays[i].draw();
+    }
+}
+
 /* ---------- toast + pause screen ---------- */
 static void draw_toast(void) {
     double age = app_time() - toast_t;
     if (age > 3.5) return;
     float a = age < 0.2 ? (float)(age / 0.2) : (age > 3.0 ? (float)((3.5 - age) / 0.5) : 1.0f);
-    float w = text_width(F_SEMI, 28, toast_msg) + 64;
-    float x = UI_W / 2 - w / 2, y = UI_H - 150 + (1 - a) * 20;
-    draw_shadow(x, y, w, 72, 36, 20, a);
-    fill_rrect(x, y, w, 72, 36, color_alpha(RGB(42, 48, 62), a));
-    text_draw(F_SEMI, 28, UI_W / 2, y + 19, color_alpha(C_TEXT, a), AL_CENTER, toast_msg);
+    /* top center, the same pill as the player's messages (notatv-osd.lua) */
+    float w = text_width(F_BOLD, 28, toast_msg) + 72;
+    float x = UI_W / 2 - w / 2, y = 48 - (1 - a) * 16;
+    draw_panel(x, y, w, 66, 33, a);
+    text_draw(F_BOLD, 28, UI_W / 2, y + 16, color_alpha(C_TEXT, a), AL_CENTER, toast_msg);
 }
 
 static void draw_screensaver(void) {
@@ -752,8 +879,19 @@ static void draw_frame(void) {
     int top = depth - 1;
     Screen *ts = stack[top];
     if (ts->anim < 0.995f && top > 0 && tx_ensure()) {
-        /* opening: what is underneath is drawn as is, the new screen fades in from a texture */
-        draw_screens(base_of(top - 1), top - 1);
+        /* opening: what is underneath (a photo taken when the screen was pushed, darkened by the GPU while it is
+           drawn - no extra full-screen layer), and the new screen grows/fades in from a texture */
+        float e0 = ts->anim;
+        if (ts == under_for && tx_under) {
+            float k = ts->overlay ? 1 : 1 - 0.66f * e0;
+            SDL_SetTextureColorModFloat(tx_under, k, k, k);
+            SDL_SetTextureAlphaModFloat(tx_under, 1);
+            SDL_RenderTexture(ren, tx_under, NULL, NULL);
+            SDL_SetTextureColorModFloat(tx_under, 1, 1, 1);
+        } else {
+            draw_screens(base_of(top - 1), top - 1);
+            if (!ts->overlay) fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(170 * e0)));
+        }
         SDL_Texture *mt = main_target();
         SDL_SetRenderTarget(ren, tx_open);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 0);
@@ -762,12 +900,19 @@ static void draw_frame(void) {
         if (ts->draw) ts->draw(ts);
         drawing = NULL;
         SDL_SetRenderTarget(ren, mt);
-        float e = ts->anim;
-        blit_scaled(tx_open, e, ts->overlay ? 0.97f + 0.03f * e : 0.94f + 0.06f * e);
+        float e = ts->anim, a = e * 2.5f > 1 ? 1 : e * 2.5f; /* opaque early: no ghost of the screen underneath */
+        if (ts == org_screen) blit_from_rect(tx_open, a, e, org_rect.x, org_rect.y, org_rect.w, org_rect.h, org_rect.r);
+        else blit_scaled(tx_open, ts->overlay ? e : a, ts->overlay ? 0.97f + 0.03f * e : 0.94f + 0.06f * e);
     } else {
         draw_screens(base_of(top), top); /* overlays are drawn on top of the screen underneath */
     }
-    if (close_t > 0.01f && tx_close) blit_scaled(tx_close, close_t, close_overlay ? 1.0f : 1.0f + 0.05f * (1 - close_t));
+    if (close_t > 0.01f && tx_close) {
+        float a = close_t * 2.5f > 1 ? 1 : close_t * 2.5f;
+        if (close_to_rect) blit_from_rect(tx_close, a, close_t, close_rect.x, close_rect.y, close_rect.w, close_rect.h, close_rect.r);
+        else if (close_overlay) blit_scaled(tx_close, close_t, 1.0f);
+        else blit_scaled(tx_close, a, 0.96f + 0.04f * close_t); /* back: the screen sinks away */
+    }
+    draw_overlays();
     draw_toast();
     draw_fps();
     if (ui_dim > 0.003f) fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(ui_dim * 255)));
@@ -869,6 +1014,10 @@ int main(int argc, char **argv) {
         float dt = (float)(now - last);
         if (dt > 0.1f) dt = 0.1f;
         last = now;
+        g_dt = dt;
+        g_frame++;
+        org_pending = false; /* an origin is only for a screen opened in the same frame */
+        quick_tick();
 
         InputEvent ev;
         while (input_next(&ev)) {
@@ -913,10 +1062,10 @@ int main(int argc, char **argv) {
 
         for (int i = 0; i < depth; i++) {
             Screen *s = stack[i];
-            if (i == depth - 1) s->anim = anim_to(s->anim, 1, dt, 11);
+            if (i == depth - 1) s->anim = anim_to(s->anim, 1, dt, 13);
             if (s->update && (i == depth - 1 || i == depth - 2)) s->update(s, dt);
         }
-        close_t = anim_to(close_t, 0, dt, 10);
+        close_t = anim_to(close_t, 0, dt, 13);
         ui_dim = anim_to(ui_dim, 0, dt, 7);
         if (!ren) continue;
         double t_draw = app_time();

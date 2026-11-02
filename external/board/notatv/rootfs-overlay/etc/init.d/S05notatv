@@ -16,6 +16,8 @@ start)
 		echo live > $RUN/mode
 	fi
 	mkdir -p /data/notatv
+	# no clock of its own: start from the last known time instead of 1970 (see clock)
+	$H/clock restore
 	# targets for symlinks from the rootfs (see post-build.sh): Bluetooth, bluealsa, shader cache, mpv
 	mkdir -p /data/notatv/bluetooth /data/notatv/bluealsa /data/notatv/cache /data/notatv/config
 	# tokens, passwords and cookies (Plex, IPTV, Seerr, YouTube) for root only
@@ -24,6 +26,7 @@ start)
 	$H/audio setup >/dev/null 2>&1 &
 	;;
 stop)
+	$H/clock save
 	sync
 	umount /data 2>/dev/null
 	;;

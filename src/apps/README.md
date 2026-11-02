@@ -5,7 +5,7 @@ drawing, the player, the on-screen keyboard and dialogs, network calls, settings
 adds its own screens and logic.
 
 Every app is a package, i.e. a folder here in `src/apps/`: Live TV (`iptv`), Plex, Jellyfin, YouTube, Twitch,
-Seerr, Music, Games and Media. Each one is built into its own `app.so`. Only Settings and the App Store are part of
+Seerr, Music, Games, Tesla and Media. Each one is built into its own `app.so`. Only Settings and the App Store are part of
 `tvshell` itself. The image comes without apps: they are downloaded from the App Store (the GitHub release `apps`)
 into `/data/notatv/apps-pkg/<id>/`.
 
@@ -58,7 +58,7 @@ const NotaApp nota_app = {
 
 | Field | Purpose |
 |---|---|
-| `order` | Position on the home screen. Live TV is 10, Plex 20, Jellyfin 30, YouTube 40, Twitch 50, Seerr 60, Music 70, Games 80, Media 90. |
+| `order` | Position on the home screen. Live TV is 10, Plex 20, Jellyfin 30, YouTube 40, Twitch 50, Seerr 60, Music 70, Games 80, Tesla 85, Media 90. |
 | `flags` | `APP_DEFAULT_OFF`: not installed from the start. `APP_ROW_LOGOS`: the home row shows logos. |
 | `init` | Runs once per run of NotaTV: when it starts, or when the app is installed. Not again if the app is uninstalled and installed again before a restart. |
 | `tick` | Runs every frame while the app is installed. Use it for background services. |
@@ -116,6 +116,30 @@ Without `changes`, *Update* installs right away.
 To try the App Store locally: `python3 scripts/apps-catalog.py src/apps/out /tmp/dist`, then run tvshell with
 `TVSHELL_APPS=/nonexistent TVSHELL_APPCAT_URL=file:///tmp/dist`. `tvshell` is linked with `-rdynamic`, so a package can call every function in `tv.h`, and
 cJSON as well.
+
+## Look and feel
+
+Use the system's helpers, so every app looks and moves the same (all are `NOTA_NEW`; the `ui_*` wrappers are
+inline and fall back to the old look on an older NotaTV, so they can be called without checks):
+
+```c
+/* a card (poster, tile, button) that can have focus: it lifts with a spring, a shadow and a soft glow */
+float f = ui_focus(item, focused);               /* 0..1, animated; the key is anything stable per card */
+float sc = 1 + 0.07f * f, w2 = w * sc, h2 = h * sc, x2 = x - (w2 - w) / 2, y2 = y - (h2 - h) / 2;
+ui_focus_under(x2, y2, w2, h2, 14, f);
+/* ... draw the card at x2, y2, w2, h2 ... */
+ui_focus_over(x2, y2, w2, h2, 14, f);
+```
+
+- `slide_to(key, target)`: a position that glides (for a white pill that moves between rows).
+- `draw_panel(x, y, w, h, r, alpha)`: a dialog or panel in dark glass.
+- `img_get_logo(url)`: a channel logo cleaned to stand on the dark background without a box.
+- `app_set_origin(x, y, w, h, r)` right before `app_push()`: the new screen grows out of that card and shrinks back
+  into it on Back.
+- The side menu (`side_*`) and dialogs (`confirm_open`, `choice_open` ...) already have the look.
+- The app's icon on the home screen and in the App Store is `src/shell/assets/icons/<id>.png`, made by
+  `scripts/gen-icons.py` (add a drawing there for a new app; without one the tile uses `icon`, `c1`, `c2`, `fg`).
+- Keep 96 px from the left screen edge, like the rest of the system.
 
 ## Rules
 

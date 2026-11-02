@@ -1,6 +1,6 @@
 {
   "id": "plex",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "api": 2,
   "name": "Plex",
   "desc": "Movies and shows from your Plex server",
@@ -11,11 +11,12 @@
   "order": 20,
   "default": true,
   "changes": {
-    "summary": "A proper page for every series, with all seasons and episodes",
+    "summary": "A calmer, smoother look",
     "points": [
-      "Choose season and episode on the series page",
-      "Play starts where you left off, or at the first new episode",
-      "Series show how many seasons they have"
+      "What you choose lifts gently toward you with a soft glow instead of a white frame",
+      "Sharper pictures in the row on the home screen",
+      "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before",
+      "Plex cast is removed for now: the new Plex app only casts to Chromecast. It will come back in a form that works"
     ]
   }
 }

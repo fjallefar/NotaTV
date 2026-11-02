@@ -316,12 +316,6 @@ msgstr "Programguiden hentes kun igen, når den er ændret"
 msgid "A program guide from an XMLTV address loads much faster"
 msgstr "En programguide fra en XMLTV-adresse indlæses meget hurtigere"
 
-msgid "Large XMLTV guides are read in seconds instead of minutes"
-msgstr "Store XMLTV-guider læses på sekunder i stedet for minutter"
-
-msgid "Says so when the provider's program guide is not responding"
-msgstr "Siger til, når udbyderens programguide ikke svarer"
-
 msgid "The provider's program guide is not responding"
 msgstr "Udbyderens programguide svarer ikke"
 
@@ -340,11 +334,14 @@ msgstr "Ingen programinfo"
 msgid "Loading…"
 msgstr "Indlæser…"
 
-msgid "A TV guide with your favorites on a timeline"
-msgstr "En TV-guide med dine favoritter på en tidslinje"
+msgid "A calmer, smoother look"
+msgstr "Et roligere og blødere udseende"
 
-msgid "New TV guide in the list on the left: your favorites on a timeline, browse programs with left/right"
-msgstr "Ny TV-guide i listen til venstre: dine favoritter på en tidslinje, bladr i programmerne med venstre/højre"
+msgid "What you choose lifts gently toward you with a soft glow instead of a white frame"
+msgstr "Det, du vælger, løfter sig blødt frem med en svag glød i stedet for en hvid ramme"
 
-msgid "All channels is gone from the list; find channels under their country"
-msgstr "Alle kanaler er fjernet fra listen; find kanalerne under deres land"
+msgid "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
+msgstr "Det nye udseende kræver NotaTV 1.0.5 - på ældre versioner ser det ud som før"
+
+msgid "Channel logos without the white box, and they fill their place"
+msgstr "Kanallogoer uden den hvide boks, og de fylder deres plads"

@@ -1,6 +1,6 @@
 {
   "id": "twitch",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "api": 2,
   "name": "Twitch",
   "desc": "Live streams from the channels you follow and all of Twitch",
@@ -11,9 +11,10 @@
   "order": 50,
   "default": true,
   "changes": {
-    "summary": "Choose the quality",
+    "summary": "A calmer, smoother look",
     "points": [
-      "The player menu has Quality: 1080p, 720p, 480p or 360p, and the choice is remembered"
+      "What you choose lifts gently toward you with a soft glow instead of a white frame",
+      "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
     ]
   }
 }

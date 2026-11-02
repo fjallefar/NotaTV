@@ -153,8 +153,11 @@ msgstr "Live-streams fra dine fulgte kanaler og hele Twitch"
 msgid "Quality: %s"
 msgstr "Kvalitet: %s"
 
-msgid "Choose the quality"
-msgstr "Vælg kvaliteten"
+msgid "A calmer, smoother look"
+msgstr "Et roligere og blødere udseende"
 
-msgid "The player menu has Quality: 1080p, 720p, 480p or 360p, and the choice is remembered"
-msgstr "Afspillermenuen har Kvalitet: 1080p, 720p, 480p eller 360p, og valget huskes"
+msgid "What you choose lifts gently toward you with a soft glow instead of a white frame"
+msgstr "Det, du vælger, løfter sig blødt frem med en svag glød i stedet for en hvid ramme"
+
+msgid "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
+msgstr "Det nye udseende kræver NotaTV 1.0.5 - på ældre versioner ser det ud som før"

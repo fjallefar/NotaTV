@@ -1,6 +1,6 @@
 {
   "id": "iptv",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "api": 2,
   "name": "Live TV",
   "desc": "Watch live TV and channels from your IPTV provider",
@@ -11,12 +11,11 @@
   "order": 10,
   "default": true,
   "changes": {
-    "summary": "A TV guide with your favorites on a timeline",
+    "summary": "A calmer, smoother look",
     "points": [
-      "New TV guide in the list on the left: your favorites on a timeline, browse programs with left/right",
-      "All channels is gone from the list; find channels under their country",
-      "Large XMLTV guides are read in seconds instead of minutes",
-      "Says so when the provider's program guide is not responding"
+      "What you choose lifts gently toward you with a soft glow instead of a white frame",
+      "Channel logos without the white box, and they fill their place",
+      "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
     ]
   }
 }

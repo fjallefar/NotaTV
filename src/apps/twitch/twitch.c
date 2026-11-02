@@ -683,8 +683,8 @@ static void tw_update(Screen *s, float dt) {
 static void draw_tile(const TItem *t, float x, float y, bool f) {
     bool cat = t->kind == K_GAME, chan = t->kind == K_CHANNEL;
     float w = cat ? CAT_W : TILE_W, h = cat ? CAT_H : TILE_H;
-    float sc = f ? 1.06f : 1, ww = w * sc, hh = h * sc, xx = x - (ww - w) / 2, yy = y - (hh - h) / 2;
-    if (f) draw_shadow(xx, yy, ww, hh, 12, 24, 1);
+    float fa = ui_focus(t, f), sc = 1 + 0.06f * fa, ww = w * sc, hh = h * sc, xx = x - (ww - w) / 2, yy = y - (hh - h) / 2;
+    ui_focus_under(xx, yy, ww, hh, 12, fa);
     fill_rrect(xx, yy, ww, hh, 12, C_SURFACE);
     if (chan) { /* search result: profile picture in the middle */
         fill_rrect(xx, yy, ww, hh, 12, color_mix(C_SURFACE, TW_ACCENT, 0.25f));
@@ -706,7 +706,7 @@ static void draw_tile(const TItem *t, float x, float y, bool f) {
             text_draw(F_SEMI, 18, xx + 12 + vwid / 2, yy + hh - 37, C_TEXT, AL_CENTER, vw);
         }
     }
-    if (f) stroke_rrect(xx - 4, yy - 4, ww + 8, hh + 8, 16, 4, C_FOCUS);
+    ui_focus_over(xx, yy, ww, hh, 12, fa);
     if (cat) {
         text_draw_clip(F_SEMI, 20, x, y + h + 14, w, f ? C_TEXT : C_TEXT2, AL_LEFT, t->name ? t->name : "");
         return;

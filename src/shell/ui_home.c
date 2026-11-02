@@ -61,18 +61,23 @@ static void move_tile(int from, int to) {
     vis[to] = a;
 }
 
-/* app grid: one row up to 6 apps, otherwise two rows (the top row gets the extra one for an odd count) */
-#define TILE_W 230.0f
-#define TILE_H 120.0f
-#define TILE_GAP 36.0f
-#define TILE_PITCH 186.0f /* tile + name */
-#define APPS_Y 510.0f
-static int grid_cols(void) { return n_vis <= 6 ? n_vis : (n_vis + 1) / 2; }
-static int grid_rows(void) { return n_vis <= 6 ? 1 : 2; }
+/* app grid: up to 6 per row, left-aligned on the screen margin (the same edge as the header and the rows) */
+#define MARGIN 96.0f
+#define TILE_W 248.0f
+#define TILE_H 140.0f
+#define TILE_GAP 40.0f
+#define TILE_PITCH 214.0f /* tile + room for the name of the focused one */
+#define TILE_R 26.0f
+#define APPS_Y 500.0f
+static int grid_cols(void) { return n_vis < 6 ? (n_vis ? n_vis : 1) : 6; }
+static int grid_rows(void) { return (n_vis + grid_cols() - 1) / grid_cols(); }
 
 typedef struct {
     int row, col, col2;
-    float foc[MAX_VIS];
+    Spring foc[MAX_VIS];  /* focus per tile (0..1 with a small overshoot) */
+    Spring foc2[64];      /* focus per item in the row below the apps */
+    const NotaApp *tint_app, *tint_prev; /* the background glow follows the focused app (cross-faded) */
+    float tint_fade;
     float sx2; /* scroll in row 2 */
     float row_anim;
     HomeItem *cont;
@@ -85,6 +90,7 @@ typedef struct {
     float bg_fade, bgl_fade;
     Layer *bgl;
     bool moving;       /* move mode (Green on a tile): the arrows move the focused tile, OK/Back ends it */
+    float rest, hint_a; /* time on the same tile; the "Move app" hint fades in after a while there */
     float wiggle;
 } Home;
 
@@ -174,8 +180,14 @@ static void home_update(Screen *s, float dt) {
         collect_continue(h);
     }
     if (h->moving) h->wiggle += dt;
+    h->rest += dt;
+    h->hint_a = anim_to(h->hint_a, h->rest > 3 && h->row == 0 && !h->moving ? 1 : 0, dt, h->rest > 3 ? 4 : 18);
     for (int i = 0; i < n_vis; i++)
-        h->foc[i] = anim_to(h->foc[i], (h->row == 0 && h->col == i) ? 1 : 0, dt, 16);
+        spring_to(&h->foc[i], (h->row == 0 && h->col == i && !h->moving) || (h->moving && h->col == i) ? 1 : 0, dt, SPRING_SNAPPY);
+    for (int i = 0; i < 64; i++)
+        spring_to(&h->foc2[i], h->row == 1 && h->col2 == i ? 1 : 0, dt, SPRING_SNAPPY);
+    if (n_vis && vis[h->col] != h->tint_app) { h->tint_prev = h->tint_app; h->tint_app = vis[h->col]; h->tint_fade = 0; }
+    h->tint_fade = anim_to(h->tint_fade, 1, dt, 9); /* short: two glow layers are drawn only while it fades */
     h->row_anim = anim_to(h->row_anim, (float)h->row, dt, 12);
     if (h->row == 0 && h->cont_app != pick_cont_app(h)) { h->col2 = 0; h->sx2 = 0; collect_continue(h); }
     h->bg_fade = anim_to(h->bg_fade, 1, dt, 6);
@@ -192,7 +204,7 @@ static void home_update(Screen *s, float dt) {
     float target = 0;
     float iw = 420, gap = 32; /* the row below the apps */
     float sel_x = h->col2 * (iw + gap);
-    if (sel_x - target > UI_W - 240 - iw) target = sel_x - (UI_W - 240 - iw);
+    if (sel_x - target > UI_W - 2 * MARGIN - iw) target = sel_x - (UI_W - 2 * MARGIN - iw);
     h->sx2 = anim_to(h->sx2, target, dt, 12);
 }
 
@@ -212,24 +224,23 @@ static void greeting(char *buf, size_t n) {
 }
 
 static void draw_shelf(Home *h, const NotaApp *a) {
-    float x = 120, y = 210;
-    if (a->draw_shelf && a->draw_shelf(x, y)) return; /* the app's own (e.g. what is playing in Music) */
-    /* default: big icon + description */
-    fill_rrect_vgrad(x, y + 20, 240, 240, 48, a->c1, a->c2);
-    draw_icon(a->icon, x + 120, y + 140, 120, a->fg);
-    text_draw(F_BOLD, 72, x + 290, y + 70, C_TEXT, AL_LEFT, T(a->name));
-    text_draw(F_REG, 32, x + 292, y + 168, C_TEXT2, AL_LEFT, T(a->desc));
+    float x = MARGIN, y = 210;
+    if (a->draw_shelf && a->draw_shelf(MARGIN, y)) return; /* the app's own (e.g. what is playing in Music) */
+    /* default: the app's name and what it does - the tile below already shows its icon */
+    text_draw(F_BOLD, 84, x - 4, y + 50, C_TEXT, AL_LEFT, T(a->name));
+    text_draw_wrap(F_REG, 32, x, y + 160, 1100, 2, 42, C_TEXT2, T(a->desc));
+    x -= 292; /* the lines below are placed relative to the old text column */
     if (!strcmp(a->id, "settings")) {
         char info[160];
         const char *ip = app_ip();
         snprintf(info, sizeof info, "NotaTV %s   ·   %s", TV_VERSION, ip[0] ? ip : T("No network connection"));
-        text_draw(F_REG, 26, x + 292, y + 220, C_TEXT3, AL_LEFT, info);
+        text_draw(F_REG, 26, x + 292, y + 222, C_TEXT3, AL_LEFT, info);
     }
     int nu = !strcmp(a->id, "appstore") ? appcat_updates() : 0;
     if (nu > 0) {
         char t[96];
         snprintf(t, sizeof t, nu == 1 ? T("1 app has an update") : T("%d apps have an update"), nu);
-        text_draw(F_SEMI, 26, x + 292, y + 220, C_ACCENT, AL_LEFT, t);
+        text_draw(F_SEMI, 26, x + 292, y + 222, C_ACCENT, AL_LEFT, t);
     }
 }
 
@@ -258,7 +269,6 @@ static void home_draw(Screen *s) {
     bool settled = fa_ > 0.995f && h->bgl_fade > 0.995f;
     if ((!layer_valid(h->bgl) || strcmp(key, h->bgl_key) || !settled) && layer_begin(h->bgl)) {
         draw_background();
-        fill_vgrad(0, 0, UI_W, 700, color_alpha(fa->c1, 0.18f), RGBA(0, 0, 0, 0)); /* color tint from the app */
         if (pi && fa_ < 1) img_draw_cover(pi, 0, 0, UI_W, SHELF_H, 0, 0.75f * (1 - fa_));
         if (ni) img_draw_cover(ni, 0, 0, UI_W, SHELF_H, 0, 0.75f * fa_);
         if (ni || pi) {
@@ -271,26 +281,34 @@ static void home_draw(Screen *s) {
     }
     if (layer_valid(h->bgl)) layer_draw(h->bgl, 0, 0, 1);
     else draw_background();
+    /* a soft glow in the focused app's color from the top, cross-faded when the focus moves */
+    if (h->tint_prev && h->tint_fade < 1)
+        fill_vgrad(0, 0, UI_W, 760, color_alpha(h->tint_prev->c1, 0.28f * (1 - h->tint_fade)), RGBA(0, 0, 0, 0));
+    if (h->tint_app) fill_vgrad(0, 0, UI_W, 760, color_alpha(h->tint_app->c1, 0.28f * h->tint_fade), RGBA(0, 0, 0, 0));
 
     char g[128];
     greeting(g, sizeof g);
     char *bar = strchr(g, '|');
     *bar = 0;
-    text_draw(F_BOLD, 40, 120, 58, C_TEXT, AL_LEFT, g);
-    text_draw(F_REG, 26, 120 + text_width(F_BOLD, 40, g) + 24, 70, C_TEXT2, AL_LEFT, bar + 1);
+    text_draw(F_BOLD, 40, MARGIN, 58, C_TEXT, AL_LEFT, g);
+    text_draw(F_REG, 26, MARGIN + text_width(F_BOLD, 40, g) + 24, 70, C_TEXT2, AL_LEFT, bar + 1);
     draw_topbar(NULL);
     const char *ip = app_ip();
     draw_icon(ip[0] ? ICON_WIFI : ICON_WIFI, UI_W - 250, 82, 34, ip[0] ? C_TEXT2 : C_DANGER);
-    if (h->row == 0 && !h->moving && n_vis > 1) { /* how to move a tile: Green (there is no "hold OK" on CEC) */
+    if (h->hint_a > 0.01f && n_vis > 1) { /* how to move a tile: Green (there is no "hold OK" on CEC) - only after
+                                               resting on a tile for a while, so it is not mistaken for a status */
         const char *l = T("Move app");
-        draw_hint(UI_W - 310 - 36 - text_width(F_REG, 22, l), 64, "Green", l);
+        float hx = UI_W - 310 - 36 - text_width(F_REG, 22, l);
+        fill_rrect(hx - 14, 58, text_width(F_REG, 22, l) + 64, 46, 23, RGBA(255, 255, 255, (uint8_t)(16 * h->hint_a)));
+        fill_circle(hx + 15, 81, 12, RGBA(64, 186, 92, (uint8_t)(255 * h->hint_a)));
+        text_draw(F_REG, 22, hx + 36, 68, color_alpha(C_TEXT2, h->hint_a), AL_LEFT, l);
     }
 
     float shift = h->row_anim * 340; /* scroll up when row 2 is selected */
     clip_push(0, 150, UI_W, APPS_Y - 170);
     bool shelf_vis = h->row_anim < 0.2f; /* the row below the apps scrolls up over the top */
     if (shelf_vis && shelf_it && h->bg_url[0]) { /* big image behind: the title of what you can continue */
-        float x = 120, y = 230;
+        float x = MARGIN, y = 230;
         text_draw(F_BOLD, 24, x, y, color_mix(fa->c1, C_TEXT, 0.45f), AL_LEFT,
                   T(fa->shelf_label ? fa->shelf_label : fa->name));
         int tl = text_draw_wrap(F_BOLD, 60, x, y + 40, 1100, 2, 70, C_TEXT, shelf_it->title ? shelf_it->title : "");
@@ -304,24 +322,40 @@ static void home_draw(Screen *s) {
     clip_pop();
 
     int cols = grid_cols();
-    float gap = TILE_GAP, tw = TILE_W, th = TILE_H;
+    int focus_i = -1; /* the focused tile is drawn last, on top of its neighbours */
+    for (int pass = 0; pass < 2; pass++)
     for (int i = 0; i < n_vis; i++) {
         const NotaApp *a = vis[i];
+        float f = h->foc[i].x, fc = f < 0 ? 0 : f > 1 ? 1 : f;
+        bool top = fc > 0.02f && (focus_i < 0 || focus_i == i);
+        if (pass == 0 && top) { focus_i = i; continue; }
+        if (pass == 1 && i != focus_i) continue;
         int r = i / cols, c = i % cols;
-        int in_row = r == 0 ? (n_vis < cols ? n_vis : cols) : n_vis - cols;
-        float total = in_row * tw + (in_row - 1) * gap;
-        float x0 = UI_W / 2 - total / 2, y0 = APPS_Y + r * TILE_PITCH - shift;
-        float f = h->foc[i];
-        float sc = 1 + 0.1f * f;
-        float w = tw * sc, hh = th * sc;
-        float cx = x0 + c * (tw + gap) + tw / 2, cy = y0 + th / 2;
-        float x = cx - w / 2, y = cy - hh / 2 - 8 * f;
+        float x0 = MARGIN + c * (TILE_W + TILE_GAP), y0 = APPS_Y + r * TILE_PITCH - shift;
+        if (y0 > UI_H || y0 + TILE_PITCH < 0) continue;
+        float sc = 1 + 0.09f * f; /* lifts toward you, with the spring's small overshoot */
+        float w = TILE_W * sc, hh = TILE_H * sc;
+        float cx = x0 + TILE_W / 2, cy = y0 + TILE_H / 2;
+        float x = cx - w / 2, y = cy - hh / 2 - 6 * f;
         bool mv = h->moving && i == h->col;
         if (mv) y -= 10 + 4 * sinf(h->wiggle * 6); /* picked up: lifted and bobbing */
-        if (f > 0.01f) draw_shadow(x, y, w, hh, 24, 30 * f, f);
-        fill_rrect_vgrad(x, y, w, hh, 24, a->c1, a->c2);
-        draw_icon(a->icon, cx, y + hh / 2, 70 * sc, a->fg);
-        if (f > 0.01f) stroke_rrect(x - 4, y - 4, w + 8, hh + 8, 28, 4, color_alpha(mv ? C_ACCENT : C_FOCUS, f));
+        if (fc > 0.01f) {
+            draw_glow(x, y, w, hh, TILE_R, 46, color_mix(a->c1, RGB(255, 255, 255), 0.15f), 0.55f * fc);
+            draw_shadow(x, y, w, hh, TILE_R, 28, 0.9f * fc);
+        }
+        /* not focused: dark glass with a hint of the app's color; focused: the app's full color */
+        if (draw_app_art(a->id, x, y, w, hh, TILE_R * sc, 1)) {
+            /* the app's own icon; without focus it rests a little darker */
+            if (fc < 0.99f) fill_rrect(x, y, w, hh, TILE_R * sc, RGBA(8, 10, 14, (uint8_t)(60 * (1 - fc))));
+        } else {
+            Color t1 = color_mix(color_mix(RGB(34, 38, 50), a->c1, 0.30f), a->c1, fc);
+            Color t2 = color_mix(color_mix(RGB(24, 27, 36), a->c2, 0.22f), a->c2, fc);
+            fill_rrect_vgrad(x, y, w, hh, TILE_R * sc, t1, t2);
+            draw_icon(a->icon, cx, y + hh / 2, 66 * sc, color_alpha(a->fg, 0.82f + 0.18f * fc));
+        }
+        fill_rrect_vgrad(x, y, w, hh * 0.55f, TILE_R * sc, RGBA(255, 255, 255, (uint8_t)(6 + 26 * fc)), RGBA(255, 255, 255, 0)); /* light from above */
+        stroke_rrect(x, y, w, hh, TILE_R * sc, 1.5f, RGBA(255, 255, 255, (uint8_t)(22 + 40 * fc)));
+        if (mv) stroke_rrect(x - 5, y - 5, w + 10, hh + 10, TILE_R * sc + 5, 3, C_ACCENT);
         if (!strcmp(a->id, "appstore") && appcat_updates() > 0) { /* updates waiting: a small badge with the count */
             char nb[8];
             snprintf(nb, sizeof nb, "%d", appcat_updates());
@@ -330,8 +364,8 @@ static void home_draw(Screen *s) {
             fill_rrect(bx - (bw - bs) / 2, by, bw, bs, bs / 2, C_ACCENT);
             text_draw(F_BOLD, 24 * sc, bx + bs / 2, by + (bs - 24 * sc) / 2 - sc, C_TEXT, AL_CENTER, nb);
         }
-        Color tc = color_mix(C_TEXT3, C_TEXT, f);
-        text_draw(F_SEMI, 26, cx, y0 + th + 22, tc, AL_CENTER, T(a->name));
+        /* every tile has its name (not every app is well known); the focused one is bright and moves down with the lift */
+        text_draw(F_SEMI, 26, cx, y0 + TILE_H + 18 + 5 * fc, color_mix(C_TEXT3, C_TEXT, fc), AL_CENTER, T(a->name));
     }
 
     if (h->moving) {
@@ -340,29 +374,31 @@ static void home_draw(Screen *s) {
     }
     if (h->n_cont > 0) {
         float ry = APPS_Y + (grid_rows() - 1) * TILE_PITCH + 244 - shift;
-        text_draw(F_SEMI, 30, 120, ry - 48, h->row == 1 ? C_TEXT : C_TEXT2, AL_LEFT, cont_title(h->cont_app));
+        text_draw(F_SEMI, 30, MARGIN, ry - 48, h->row == 1 ? C_TEXT : C_TEXT2, AL_LEFT, cont_title(h->cont_app));
         clip_push(0, ry - 20, UI_W, 420);
         float iw = 420, ih = 236, gap2 = 32;
         for (int i = 0; i < h->n_cont; i++) {
             HomeItem *it = &h->cont[i];
-            float x = 120 + i * (iw + gap2) - h->sx2, y = ry;
+            float x = MARGIN + i * (iw + gap2) - h->sx2, y = ry;
             if (x > UI_W || x + iw < 0) continue;
             bool f = h->row == 1 && h->col2 == i;
-            float sc = f ? 1.06f : 1;
+            float fs = i < 64 ? h->foc2[i].x : (f ? 1 : 0), fc = fs < 0 ? 0 : fs > 1 ? 1 : fs;
+            float sc = 1 + 0.07f * fs;
             float w = iw * sc, hh = ih * sc;
-            float xx = x - (w - iw) / 2, yy = y - (hh - ih) / 2;
-            if (f) draw_shadow(xx, yy, w, hh, 18, 24, 1);
-            bool logo = h->cont_app && (h->cont_app->flags & APP_ROW_LOGOS); /* channel logos: light surface, the whole logo */
-            fill_rrect(xx, yy, w, hh, 18, logo ? RGB(235, 238, 244) : C_SURFACE);
-            Image *im = img_get(it->image);
-            if (logo ? !img_draw(im, xx + w * 0.2f, yy + hh * 0.12f, w * 0.6f, hh * 0.42f, 0, 1) : !img_draw_cover(im, xx, yy, w, hh, 18, 1)) {
+            float xx = x - (w - iw) / 2, yy = y - (hh - ih) / 2 - 4 * fs;
+            if (fc > 0.01f) draw_shadow(xx, yy, w, hh, 18, 26, fc);
+            bool logo = h->cont_app && (h->cont_app->flags & APP_ROW_LOGOS); /* channel logos: cleaned, on the dark card */
+            fill_rrect(xx, yy, w, hh, 18, logo ? color_mix(C_SURFACE, C_SURFACE2, fc) : C_SURFACE);
+            Image *im = logo ? img_get_logo(it->image) : img_get(it->image);
+            if (logo ? !img_draw(im, xx + w * 0.2f, yy + hh * 0.16f, w * 0.6f, hh * 0.42f, 12, 1) : !img_draw_cover(im, xx, yy, w, hh, 18, 1)) {
                 draw_icon(ICON_TV, xx + w / 2, yy + hh / 2 - 20, 70, C_TEXT3);
             }
             if (it->progress > 0) {
                 fill_rrect(xx + 14, yy + hh - 16, w - 28, 6, 3, RGBA(0, 0, 0, 150));
                 fill_rrect(xx + 14, yy + hh - 16, (w - 28) * (float)it->progress, 6, 3, C_TEXT);
             }
-            if (f) stroke_rrect(xx - 4, yy - 4, w + 8, hh + 8, 22, 4, C_FOCUS);
+            if (!logo && fc < 0.99f) fill_rrect(xx, yy, w, hh, 18, RGBA(0, 0, 0, (uint8_t)(70 * (1 - fc)))); /* only the focused one is bright */
+            stroke_rrect(xx, yy, w, hh, 18, 1.5f, RGBA(255, 255, 255, (uint8_t)(18 + 40 * fc)));
             /* title under the tile (like in Plex) - no text on the image */
             text_draw_clip(F_SEMI, 25, x, y + ih + 16, iw, f ? C_TEXT : C_TEXT2, AL_LEFT, it->title ? it->title : "");
             if (it->subtitle) text_draw_clip(F_REG, 22, x, y + ih + 48, iw, C_TEXT3, AL_LEFT, it->subtitle);
@@ -373,13 +409,14 @@ static void home_draw(Screen *s) {
 
 static bool home_input(Screen *s, const InputEvent *ev) {
     Home *h = s->st;
+    h->rest = 0;
     if (h->moving) { /* move mode: the arrows move the tile, OK/Back/Home put it down */
         int cols = grid_cols(), to = h->col;
         switch (ev->a) {
         case A_LEFT: to = h->col - 1; break;
         case A_RIGHT: to = h->col + 1; break;
         case A_UP: if (h->col >= cols) to = h->col - cols; break;
-        case A_DOWN: if (grid_rows() > 1 && h->col < cols) to = h->col + cols < n_vis ? h->col + cols : n_vis - 1; break;
+        case A_DOWN: if (h->col / cols + 1 < grid_rows()) to = h->col + cols < n_vis ? h->col + cols : n_vis - 1; break;
         case A_OK: case A_INFO: case A_BACK: case A_HOME:
             h->moving = false;
             save_order();
@@ -389,7 +426,7 @@ static bool home_input(Screen *s, const InputEvent *ev) {
         }
         if (to >= 0 && to < n_vis && to != h->col) {
             move_tile(h->col, to);
-            float f = h->foc[h->col]; h->foc[h->col] = h->foc[to]; h->foc[to] = f; /* the focus glow moves with it */
+            Spring f = h->foc[h->col]; h->foc[h->col] = h->foc[to]; h->foc[to] = f; /* the focus glow moves with it */
             h->col = to;
         }
         return true;
@@ -415,8 +452,20 @@ static bool home_input(Screen *s, const InputEvent *ev) {
         else if (h->col >= grid_cols()) { h->col -= grid_cols(); h->keep_row = false; }
         return true;
     case A_OK:
-        if (h->row == 0) { Screen *sc = vis[h->col]->open ? vis[h->col]->open() : NULL; if (sc) app_push(sc); }
-        else if (h->col2 < h->n_cont && h->cont_app && h->cont_app->row_open) h->cont_app->row_open(&h->cont[h->col2], h->col2);
+        if (h->row == 0) {
+            /* the app grows out of its tile (and shrinks back into it on Back) */
+            int cols = grid_cols(), r = h->col / cols, c = h->col % cols;
+            float sc = 1.09f, w = TILE_W * sc, hh = TILE_H * sc;
+            float cx = MARGIN + c * (TILE_W + TILE_GAP) + TILE_W / 2, cy = APPS_Y + r * TILE_PITCH - h->row_anim * 340 + TILE_H / 2;
+            app_set_origin(cx - w / 2, cy - hh / 2 - 6, w, hh, TILE_R * sc);
+            Screen *sc2 = vis[h->col]->open ? vis[h->col]->open() : NULL;
+            if (sc2) app_push(sc2);
+        } else if (h->col2 < h->n_cont && h->cont_app && h->cont_app->row_open) {
+            float iw = 420, ih = 236, sc = 1.07f;
+            float x = MARGIN + h->col2 * (iw + 32) - h->sx2, y = APPS_Y + (grid_rows() - 1) * TILE_PITCH + 244 - h->row_anim * 340;
+            app_set_origin(x - iw * (sc - 1) / 2, y - ih * (sc - 1) / 2 - 4, iw * sc, ih * sc, 18);
+            h->cont_app->row_open(&h->cont[h->col2], h->col2);
+        }
         return true;
     case A_INFO: /* green: pick up the tile to move it (LG CEC has no real "held OK", see STATUS) */
         if (h->row == 0 && n_vis > 1 && !ev->repeat) { h->moving = true; h->wiggle = 0; }

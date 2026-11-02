@@ -311,11 +311,13 @@ void fill_tri(float x1, float y1, float x2, float y2, float x3, float y3, Color 
 
 /* a soft shadow as one texture per (radius, spread), drawn as a 9-grid: one draw call instead of 6 overlapping
    rounded rectangles over the whole tile. The falloff matches the old 6 layers (about 75 % black at the edge). */
-typedef struct { int r, sp, gen; SDL_Texture *t; } ShadowTex;
+typedef struct { int r, sp, gen; bool white; SDL_Texture *t; } ShadowTex;
 static ShadowTex shadow_cache[8];
-static SDL_Texture *shadow_tex(int r, int sp) {
+/* white = a white glow (tinted with a color mod) instead of a black shadow */
+static SDL_Texture *shadow_tex_ex(int r, int sp, bool white) {
     for (int i = 0; i < 8; i++)
-        if (shadow_cache[i].t && shadow_cache[i].r == r && shadow_cache[i].sp == sp && shadow_cache[i].gen == g_generation)
+        if (shadow_cache[i].t && shadow_cache[i].r == r && shadow_cache[i].sp == sp && shadow_cache[i].white == white &&
+            shadow_cache[i].gen == g_generation)
             return shadow_cache[i].t;
     int c = r + sp, n = 2 * c + 2;
     uint32_t *px = malloc((size_t)n * n * 4);
@@ -327,7 +329,7 @@ static SDL_Texture *shadow_tex(int r, int sp) {
             float qx = fabsf(cx - n / 2.0f) - (n / 2.0f - sp - r), qy = fabsf(cy - n / 2.0f) - (n / 2.0f - sp - r);
             float d = hypotf(fmaxf(qx, 0), fmaxf(qy, 0)) + fminf(fmaxf(qx, qy), 0) - r;
             float t = d <= 0 ? 0 : d >= sp ? 1 : d / sp, a = 0.75f * (1 - t) * (1 - t);
-            px[y * n + x] = (uint32_t)(a * 255 + 0.5f) << 24; /* black, alpha */
+            px[y * n + x] = (uint32_t)(a * 255 + 0.5f) << 24 | (white ? 0xffffffu : 0); /* black/white, alpha */
         }
     SDL_Texture *t = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, n, n);
     if (t) {
@@ -339,8 +341,23 @@ static SDL_Texture *shadow_tex(int r, int sp) {
     int k = 0;
     for (int i = 0; i < 8; i++) if (!shadow_cache[i].t || shadow_cache[i].gen != g_generation) { k = i; break; }
     if (shadow_cache[k].t && shadow_cache[k].gen == g_generation) SDL_DestroyTexture(shadow_cache[k].t);
-    shadow_cache[k] = (ShadowTex){r, sp, g_generation, t};
+    shadow_cache[k] = (ShadowTex){r, sp, g_generation, white, t};
     return t;
+}
+static SDL_Texture *shadow_tex(int r, int sp) { return shadow_tex_ex(r, sp, false); }
+
+/* a soft colored glow around a rounded rectangle (centered, not dropped like the shadow) */
+void draw_glow(float x, float y, float w, float h, float r, float spread, Color c, float alpha) {
+    int ri = (int)roundf(r), si = (int)roundf(spread);
+    SDL_Texture *t = si > 0 && w >= 2 * r && h >= 2 * r && alpha > 0.004f ? shadow_tex_ex(ri, si, true) : NULL;
+    if (!t) return;
+    float cc = (float)(ri + si);
+    SDL_FRect d = {x - si, y - si + spread * 0.2f, w + 2 * si, h + 2 * si};
+    Color o = out_col(c);
+    SDL_SetTextureColorMod(t, o.r, o.g, o.b);
+    SDL_SetTextureAlphaModFloat(t, alpha > 1 ? 1 : alpha);
+    st_geom++;
+    SDL_RenderTexture9Grid(R, t, NULL, cc, cc, cc, cc, 1.0f, &d);
 }
 
 void draw_shadow(float x, float y, float w, float h, float r, float spread, float alpha) {
@@ -728,6 +745,7 @@ struct Image {
     bool skipped;              /* skipped in the queue (was not on screen) - requested again */
     int pending;               /* jobs on their way for this image (it is never freed before they are done) */
     SDL_Texture *tex;
+    SDL_Texture *mip[4]; /* half, quarter ... size copies (made on the GPU when the image is drawn much smaller) */
     int gen;
     double last_used;
     struct Image *next;
@@ -792,8 +810,163 @@ static unsigned long hash_str(const char *s) {
     return h;
 }
 
+/* ---------- channel logos ----------
+   Logos from IPTV providers come in every shape: dark text on a transparent background (invisible on our dark
+   menus), a white background baked in, or a small logo in a big empty frame. An image asked for as "logo:<url>"
+   (img_get_logo) is cleaned once when it is loaded: a white background becomes transparent, dark grey/black parts
+   become light (coloured parts keep their colour), and the empty frame is cut away - so it can stand on its own
+   without a white box. Logos with their own coloured background are kept as they are (only cropped). */
+#define LOGO_PREFIX "logo:"
+static const char *logo_strip(const char *url, bool *is_logo) {
+    bool l = url && !strncmp(url, LOGO_PREFIX, sizeof LOGO_PREFIX - 1);
+    if (is_logo) *is_logo = l;
+    return l ? url + sizeof LOGO_PREFIX - 1 : url;
+}
+static float px_lum(const unsigned char *p) { return (0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2]) / 255.0f; }
+static float px_sat(const unsigned char *p) {
+    int mx = p[0] > p[1] ? (p[0] > p[2] ? p[0] : p[2]) : (p[1] > p[2] ? p[1] : p[2]);
+    int mn = p[0] < p[1] ? (p[0] < p[2] ? p[0] : p[2]) : (p[1] < p[2] ? p[1] : p[2]);
+    return mx ? (float)(mx - mn) / mx : 0;
+}
+/* Providers often send logos only 100 px wide (TV 2 NEWS: 100x18) that we show 2-3x bigger: the GPU's simple
+   blend makes them blocky. A small logo is made bigger once here with a smooth cubic filter (Catmull-Rom, on
+   premultiplied colour so the edges against transparency stay clean); the GPU then only makes it a little smaller. */
+static float cubic_w(float t) {
+    t = fabsf(t);
+    return t < 1 ? 1.5f * t * t * t - 2.5f * t * t + 1 : t < 2 ? -0.5f * t * t * t + 2.5f * t * t - 4 * t + 2 : 0;
+}
+static void resample_1d(const float *src, int sw, int sstride, float *dst, int dw, int dstride) {
+    float k = (float)sw / dw;
+    for (int x = 0; x < dw; x++) {
+        float c = (x + 0.5f) * k - 0.5f;
+        int i0 = (int)floorf(c) - 1;
+        float acc[4] = {0}, ws = 0;
+        for (int i = i0; i < i0 + 4; i++) {
+            float wt = cubic_w(c - i);
+            int ii = i < 0 ? 0 : i >= sw ? sw - 1 : i;
+            for (int ch = 0; ch < 4; ch++) acc[ch] += src[(size_t)ii * sstride + ch] * wt;
+            ws += wt;
+        }
+        for (int ch = 0; ch < 4; ch++) dst[(size_t)x * dstride + ch] = acc[ch] / ws;
+    }
+}
+static unsigned char *logo_upscale(unsigned char *px, int *pw, int *ph) {
+    int w = *pw, h = *ph;
+    float s = fminf(480.0f / w, 270.0f / h); /* up to about the biggest place a logo is shown, at most 4x */
+    if (s > 4) s = 4;
+    if (s < 1.3f) return px;
+    int nw = (int)(w * s + 0.5f), nh = (int)(h * s + 0.5f);
+    float *src = malloc((size_t)w * h * 4 * sizeof(float)), *mid = malloc((size_t)nw * h * 4 * sizeof(float)),
+          *dst = malloc((size_t)nw * nh * 4 * sizeof(float));
+    unsigned char *out = malloc((size_t)nw * nh * 4);
+    if (!src || !mid || !dst || !out) { free(src); free(mid); free(dst); free(out); return px; }
+    for (size_t i = 0; i < (size_t)w * h; i++) { /* premultiply */
+        float a = px[i * 4 + 3] / 255.0f;
+        src[i * 4] = px[i * 4] * a; src[i * 4 + 1] = px[i * 4 + 1] * a; src[i * 4 + 2] = px[i * 4 + 2] * a; src[i * 4 + 3] = a * 255;
+    }
+    for (int y = 0; y < h; y++) resample_1d(src + (size_t)y * w * 4, w, 4, mid + (size_t)y * nw * 4, nw, 4);
+    for (int x = 0; x < nw; x++) resample_1d(mid + (size_t)x * 4, h, nw * 4, dst + (size_t)x * 4, nh, nw * 4);
+    for (size_t i = 0; i < (size_t)nw * nh; i++) {
+        float a = dst[i * 4 + 3];
+        a = a < 0 ? 0 : a > 255 ? 255 : a;
+        for (int c = 0; c < 3; c++) {
+            float v = a > 0.5f ? dst[i * 4 + c] * 255 / a : 0;
+            out[i * 4 + c] = (unsigned char)(v < 0 ? 0 : v > 255 ? 255 : v + 0.5f);
+        }
+        out[i * 4 + 3] = (unsigned char)(a + 0.5f);
+    }
+    free(src); free(mid); free(dst);
+    stbi_image_free(px);
+    *pw = nw;
+    *ph = nh;
+    return out;
+}
+
+static unsigned char *logo_clean(unsigned char *px, int *pw, int *ph) {
+    int w = *pw, h = *ph;
+    if (w < 4 || h < 4) return px;
+    /* the frame: transparent, white or another solid colour? */
+    int n = 0, n_clear = 0, n_white = 0;
+    long sr = 0, sg = 0, sb = 0;
+    for (int i = 0; i < 2 * (w + h); i++) {
+        int x = i < w ? i : i < 2 * w ? i - w : i < 2 * w + h ? 0 : w - 1;
+        int y = i < w ? 0 : i < 2 * w ? h - 1 : i < 2 * w + h ? i - 2 * w : i - 2 * w - h;
+        const unsigned char *p = px + ((size_t)y * w + x) * 4;
+        n++;
+        if (p[3] < 40) { n_clear++; continue; }
+        if (px_lum(p) > 0.9f && px_sat(p) < 0.12f) n_white++;
+        sr += p[0]; sg += p[1]; sb += p[2];
+    }
+    bool clear = n_clear * 10 >= n * 6, white = !clear && n_white * 10 >= n * 6;
+    if (white) { /* the white background becomes transparent (the colour is "un-mixed" from the white) */
+        for (size_t i = 0; i < (size_t)w * h; i++) {
+            unsigned char *p = px + i * 4;
+            int mn = p[0] < p[1] ? (p[0] < p[2] ? p[0] : p[2]) : (p[1] < p[2] ? p[1] : p[2]);
+            float a = (1.0f - mn / 255.0f) * 1.6f; /* how far from white: colours and dark parts are opaque */
+            if (a > 1) a = 1;
+            a *= p[3] / 255.0f;
+            if (a < 0.02f) { p[0] = p[1] = p[2] = 255; p[3] = 0; continue; }
+            for (int c = 0; c < 3; c++) {
+                float v = (p[c] - (1 - a) * 255) / a;
+                p[c] = (unsigned char)(v < 0 ? 0 : v > 255 ? 255 : v);
+            }
+            p[3] = (unsigned char)(a * 255);
+        }
+    }
+    if (clear || white) {
+        /* dark neutral parts (black/grey text) become light: they would disappear on the dark menus */
+        double lum = 0, wsum = 0;
+        for (size_t i = 0; i < (size_t)w * h; i++) {
+            const unsigned char *p = px + i * 4;
+            if (p[3] < 40) continue;
+            lum += px_lum(p) * p[3];
+            wsum += p[3];
+        }
+        if (wsum > 0 && lum / wsum < 0.5) {
+            for (size_t i = 0; i < (size_t)w * h; i++) {
+                unsigned char *p = px + i * 4;
+                if (p[3] < 8 || px_sat(p) > 0.25f) continue;
+                float l = px_lum(p);
+                if (l >= 0.55f) continue;
+                unsigned char v = (unsigned char)(255 * (1 - l * 0.6f)); /* black -> white, dark grey -> light grey */
+                p[0] = p[1] = p[2] = v;
+            }
+        }
+    }
+    /* cut away the empty frame (what is the same as the background), with a small margin */
+    int x0 = w, y0 = h, x1 = -1, y1 = -1;
+    int br = n - n_clear ? (int)(sr / (n - n_clear)) : 0, bg = n - n_clear ? (int)(sg / (n - n_clear)) : 0, bb = n - n_clear ? (int)(sb / (n - n_clear)) : 0;
+    bool solid = !clear && !white;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            const unsigned char *p = px + ((size_t)y * w + x) * 4;
+            bool content = solid ? abs(p[0] - br) + abs(p[1] - bg) + abs(p[2] - bb) > 60 : p[3] > 24;
+            if (!content) continue;
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+            if (y < y0) y0 = y;
+            if (y > y1) y1 = y;
+        }
+    if (solid) return logo_upscale(px, pw, ph); /* its own coloured box: keep it whole (cropping would cut its corners) */
+    if (x1 < x0 || y1 < y0) return logo_upscale(px, pw, ph);
+    int m = ((x1 - x0) > (y1 - y0) ? (x1 - x0) : (y1 - y0)) / 25 + 1;
+    x0 = x0 - m < 0 ? 0 : x0 - m; y0 = y0 - m < 0 ? 0 : y0 - m;
+    x1 = x1 + m >= w ? w - 1 : x1 + m; y1 = y1 + m >= h ? h - 1 : y1 + m;
+    int nw = x1 - x0 + 1, nh = y1 - y0 + 1;
+    if (nw == w && nh == h) return logo_upscale(px, pw, ph);
+    unsigned char *out = malloc((size_t)nw * nh * 4); /* freed with stbi_image_free (= free) like the decoded image */
+    if (!out) return logo_upscale(px, pw, ph);
+    for (int y = 0; y < nh; y++) memcpy(out + (size_t)y * nw * 4, px + ((size_t)(y + y0) * w + x0) * 4, (size_t)nw * 4);
+    stbi_image_free(px);
+    *pw = nw;
+    *ph = nh;
+    return logo_upscale(out, pw, ph);
+}
+
 /* fetch (cache in /tmp/tvimg) and decode an image; any thread. *hdr gets an HDR copy when the menus are in HDR */
 static unsigned char *img_fetch(const char *url, int *ow, int *oh, unsigned char **hdr) {
+    bool is_logo;
+    url = logo_strip(url, &is_logo);
     unsigned char *data = NULL, *out = NULL;
     size_t len = 0;
     if (hdr) *hdr = NULL;
@@ -824,6 +997,7 @@ static unsigned char *img_fetch(const char *url, int *ow, int *oh, unsigned char
         unsigned char *px = NULL;
         if (stbi_info_from_memory(data, (int)len, &w, &h, &n) && (long)w * h <= IMG_MAX_PIXELS)
             px = stbi_load_from_memory(data, (int)len, &w, &h, &n, 4);
+        if (px && is_logo) px = logo_clean(px, &w, &h);
         if (px) {
             out = px; *ow = w; *oh = h;
             /* HDR conversion here in the background thread - on the main thread scrolling stutters */
@@ -871,6 +1045,13 @@ static void img_submit(Image *im) {
     job_submit_q(JQ_IMAGE, img_work, img_done, j);
 }
 
+Image *img_get_logo(const char *url) {
+    if (!url || !*url) return NULL;
+    char key[1024];
+    snprintf(key, sizeof key, LOGO_PREFIX "%s", url);
+    return img_get(key);
+}
+
 Image *img_get(const char *url) {
     if (!url || !*url) return NULL;
     for (Image *im = img_list; im; im = im->next)
@@ -902,6 +1083,7 @@ static SDL_Texture *img_tex(Image *im) {
         return NULL;
     }
     st_tex_new++;
+    memset(im->mip, 0, sizeof im->mip); /* the old ones went with the old renderer */
     im->tex = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, im->w, im->h);
     if (!im->tex) return NULL;
     /* im->pixels stays SDR (also used for mpv's pause screen); the HDR copy is normally made when
@@ -935,6 +1117,68 @@ static void draw_tex_rrect(SDL_Texture *t, float x, float y, float w, float h, f
     st_geom++, SDL_RenderGeometry(R, t, vbuf, nv, ibuf, ni);
 }
 
+bool draw_app_art(const char *id, float x, float y, float w, float h, float r, float alpha) {
+    if (!id || !*id || strchr(id, '/') || strchr(id, '.')) return false;
+    char path[512];
+    snprintf(path, sizeof path, "%s/icons/%s.png", asset_dir(), id);
+    static char missing[32][48]; /* ids without art: not looked for again every frame */
+    static int n_missing;
+    for (int i = 0; i < n_missing; i++) if (!strcmp(missing[i], id)) return false;
+    if (access(path, R_OK) != 0) {
+        if (n_missing < 32) snprintf(missing[n_missing++], sizeof missing[0], "%s", id);
+        return false;
+    }
+    Image *im = img_get(path);
+    if (!im || img_state(im) != IMG_READY) return false;
+    return img_draw_cover(im, x, y, w, h, r, alpha);
+}
+
+void gfx_tex_rrect(SDL_Texture *t, float x, float y, float w, float h, float r, float alpha) {
+    if (t) draw_tex_rrect(t, x, y, w, h, r, 0, 0, 1, 1, alpha);
+}
+
+/* the texture to draw an image with when it is shown dw x dh (UI units) big: a big image drawn small is sampled
+   from a half/quarter-size copy, made once on the GPU (2x2 average) - without it a 1280 px picture or a big channel
+   logo shown at 400 px looks grainy and jagged (the GPU only blends the 4 nearest pixels) */
+static SDL_Texture *img_tex_sized(Image *im, float dw, float dh) {
+    SDL_Texture *t = img_tex(im);
+    if (!t) return NULL;
+    float need_w = dw * g_scale, need_h = dh * g_scale;
+    int w = im->w, h = im->h;
+    for (int k = 0; k < 4; k++) {
+        int nw = w / 2, nh = h / 2;
+        if (nw < need_w || nh < need_h || nw < 8 || nh < 8) break; /* the next level would be too small */
+        if (!im->mip[k]) {
+            SDL_Texture *m = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, nw, nh);
+            if (!m) break;
+            SDL_SetTextureBlendMode(m, SDL_BLENDMODE_BLEND);
+            SDL_SetTextureScaleMode(m, SDL_SCALEMODE_LINEAR);
+            SDL_Texture *prev = SDL_GetRenderTarget(R);
+            SDL_Rect clip;
+            bool clipped = SDL_RenderClipEnabled(R);
+            if (clipped) SDL_GetRenderClipRect(R, &clip);
+            SDL_SetRenderTarget(R, m);
+            SDL_SetRenderClipRect(R, NULL);
+            SDL_SetRenderDrawColor(R, 0, 0, 0, 0);
+            SDL_RenderClear(R);
+            SDL_BlendMode bm;
+            SDL_GetTextureBlendMode(t, &bm);
+            SDL_SetTextureBlendMode(t, SDL_BLENDMODE_NONE); /* a copy, alpha included */
+            SDL_SetTextureAlphaModFloat(t, 1);
+            SDL_SetTextureColorModFloat(t, 1, 1, 1);
+            SDL_RenderTexture(R, t, NULL, NULL);
+            SDL_SetTextureBlendMode(t, bm);
+            SDL_SetRenderTarget(R, prev);
+            if (clipped) SDL_SetRenderClipRect(R, &clip);
+            im->mip[k] = m;
+            st_tex_new++;
+        }
+        t = im->mip[k];
+        w = nw; h = nh;
+    }
+    return t;
+}
+
 bool img_draw(Image *im, float x, float y, float w, float h, float radius, float alpha) {
     SDL_Texture *t = img_tex(im);
     if (!t) return false;
@@ -942,6 +1186,7 @@ bool img_draw(Image *im, float x, float y, float w, float h, float radius, float
     float ar = (float)im->w / im->h, br = w / h;
     float dw = w, dh = h;
     if (ar > br) dh = w / ar; else dw = h * ar;
+    t = img_tex_sized(im, dw, dh);
     draw_tex_rrect(t, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh, radius, 0, 0, 1, 1, alpha);
     return true;
 }
@@ -953,6 +1198,7 @@ bool img_draw_cover(Image *im, float x, float y, float w, float h, float radius,
     float u0 = 0, v0 = 0, u1 = 1, v1 = 1;
     if (ar > br) { float k = br / ar; u0 = (1 - k) / 2; u1 = 1 - u0; }
     else { float k = ar / br; v0 = (1 - k) / 2; v1 = 1 - v0; }
+    t = img_tex_sized(im, w / (u1 - u0), h / (v1 - v0)); /* the size the whole image is drawn at */
     draw_tex_rrect(t, x, y, w, h, radius, u0, v0, u1, v1, alpha);
     return true;
 }
@@ -975,6 +1221,7 @@ bool img_cached(const char *url) {
     if (!url || !*url) return false;
     for (Image *im = img_list; im; im = im->next)
         if (!strcmp(im->url, url) && im->state == IMG_READY && im->pixels) return true; /* else: on disk? */
+    url = logo_strip(url, NULL);
     if (strncmp(url, "http", 4)) return access(url, R_OK) == 0;
     char path[256];
     snprintf(path, sizeof path, "/tmp/tvimg/%016lx", hash_str(url));
@@ -991,6 +1238,8 @@ bool img_export_bgra_ex(const char *url, const char *path, int maxw, int maxh, i
     if (!url || !*url) return false;
     /* any thread: never looks at the image list (main thread only); fetched from /tmp/tvimg when it was shown before */
     int w = 0, h = 0;
+    bool keep_alpha = false;
+    logo_strip(url, &keep_alpha); /* a cleaned logo keeps its transparency (no white box behind it) */
     unsigned char *px = img_fetch(url, &w, &h, NULL);
     if (!px) return false;
     bool owned = true;
@@ -1000,13 +1249,32 @@ bool img_export_bgra_ex(const char *url, const char *path, int maxw, int maxh, i
     if (dw < 1 || dh < 1) { if (owned) stbi_image_free(px); return false; }
     unsigned char *out = malloc((size_t)dw * dh * 4);
     for (int y = 0; y < dh; y++) {
-        int sy = (int)(y / sc);
+        int sy0 = (int)(y / sc), sy1 = (int)((y + 1) / sc);
+        if (sy1 <= sy0) sy1 = sy0 + 1;
+        if (sy1 > h) sy1 = h;
         for (int x = 0; x < dw; x++) {
-            const unsigned char *s = px + ((size_t)sy * w + (int)(x / sc)) * 4;
+            /* the average of the source pixels this one covers (smooth when made smaller), alpha-weighted */
+            int sx0 = (int)(x / sc), sx1 = (int)((x + 1) / sc);
+            if (sx1 <= sx0) sx1 = sx0 + 1;
+            if (sx1 > w) sx1 = w;
+            unsigned long ar = 0, ag = 0, ab = 0, aa = 0, cnt = 0;
+            for (int yy = sy0; yy < sy1; yy++)
+                for (int xx = sx0; xx < sx1; xx++) {
+                    const unsigned char *q = px + ((size_t)yy * w + xx) * 4;
+                    ar += q[0] * q[3]; ag += q[1] * q[3]; ab += q[2] * q[3]; aa += q[3]; cnt++;
+                }
+            unsigned char avg[4] = {aa ? (unsigned char)(ar / aa) : 0, aa ? (unsigned char)(ag / aa) : 0,
+                                    aa ? (unsigned char)(ab / aa) : 0, (unsigned char)(aa / cnt)};
+            const unsigned char *s = avg;
             unsigned char *d = out + ((size_t)y * dw + x) * 4;
             uint8_t r = s[0], g = s[1], b = s[2];
             if (hdr) hdr_rgb(&r, &g, &b);
-            d[0] = b; d[1] = g; d[2] = r; d[3] = 255; /* RGBA -> BGRA (opaque) */
+            if (keep_alpha) { /* premultiplied BGRA, as mpv's overlay-add wants it */
+                unsigned a = s[3];
+                d[0] = (uint8_t)(b * a / 255); d[1] = (uint8_t)(g * a / 255); d[2] = (uint8_t)(r * a / 255); d[3] = (uint8_t)a;
+            } else {
+                d[0] = b; d[1] = g; d[2] = r; d[3] = 255; /* RGBA -> BGRA (opaque) */
+            }
         }
     }
     FILE *f = fopen(path, "wb");
@@ -1029,7 +1297,10 @@ void img_cache_trim(void) {
         Image *im = *pp;
         if (!im->pending && (im->state != IMG_LOADING || im->skipped) && now - im->last_used > 60) {
             *pp = im->next;
-            if (im->tex && im->gen == g_generation) SDL_DestroyTexture(im->tex);
+            if (im->tex && im->gen == g_generation) {
+                SDL_DestroyTexture(im->tex);
+                for (int k = 0; k < 4; k++) if (im->mip[k]) SDL_DestroyTexture(im->mip[k]);
+            }
             stbi_image_free(im->pixels);
             free(im->hdr_pixels);
             free(im->url);
@@ -1167,6 +1438,16 @@ void draw_icon(IconId id, float cx, float cy, float s, Color c) {
         clip_push(cx - s, cy - s, 2 * s, s * 0.95f);
         ring(cx, cy - h * 0.15f, h * 0.38f, s * 0.08f, c);
         clip_pop();
+        break;
+    case ICON_RESTART: /* a circle arrow, open at the top right */
+        clip_push(cx - s, cy - s, s, 2 * s);
+        ring(cx, cy, h * 0.75f, s * 0.1f, c);
+        clip_pop();
+        clip_push(cx, cy, s, s);
+        ring(cx, cy, h * 0.75f, s * 0.1f, c);
+        clip_pop();
+        fill_tri(cx + h * 0.2f, cy - h * 1.05f, cx + h * 0.2f, cy - h * 0.45f, cx + h * 0.75f, cy - h * 0.75f, c);
+        fill_rrect(cx - s * 0.02f, cy - h * 0.8f, h * 0.3f, s * 0.1f, s * 0.04f, c);
         break;
     case ICON_CLOCK: /* clock face with hands (10:10 is too busy - the hands point at 12 and 3) */
         ring(cx, cy, h * 0.85f, s * 0.08f, c);

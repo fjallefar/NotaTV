@@ -136,6 +136,10 @@ static bool toggle_fav(const char *url) {
     return true;
 }
 
+/* channel logos: cleaned (no white box needed) on a NotaTV that can, otherwise as they come on a light card */
+static Image *chan_logo(const char *url) { return img_get_logo ? img_get_logo(url) : img_get(url); }
+static bool logo_card(void) { return !img_get_logo; }
+
 typedef struct { char *name, *url, *logo; } Recent;
 static Recent recents[12];
 static int n_recent;
@@ -1297,8 +1301,10 @@ static void draw_guide(Iptv *v, float cx, float cy, float cw, float rh) {
             float x = gx + (float)(a - v0) * pps, w = (float)(b - a) * pps - 6;
             if (w < 4) continue;
             bool on = p->start <= now && p->stop > now, me = p == selp;
-            fill_rrect(x, y, w, h, 10, me ? RGB(52, 60, 78) : on ? RGBA(255, 255, 255, 30) : RGBA(255, 255, 255, 14));
-            if (me) stroke_rrect(x - 3, y - 3, w + 6, h + 6, 13, 3, C_FOCUS);
+            float fp = ui_focus(p, me), fc = fp < 0 ? 0 : fp > 1 ? 1 : fp; /* the program in focus lights up (no lift in the grid) */
+            if (fc > 0.01f) ui_focus_under(x, y, w, h, 10, fc);
+            fill_rrect(x, y, w, h, 10, color_mix(on ? RGBA(255, 255, 255, 30) : RGBA(255, 255, 255, 14), RGB(66, 76, 98), fc));
+            if (fc > 0.01f) ui_focus_over(x, y, w, h, 10, fc);
             if (w > 40) {
                 text_draw_clip(F_SEMI, 24, x + 14, y + 14, w - 24, me || on ? C_TEXT : C_TEXT2, AL_LEFT, p->title);
                 char span[24], t1[8], t2[8];
@@ -1313,7 +1319,7 @@ static void draw_guide(Iptv *v, float cx, float cy, float cw, float rh) {
         }
         if (!any) {
             fill_rrect(gx, y, gw - 6, h, 10, RGBA(255, 255, 255, 8));
-            if (row) stroke_rrect(gx - 3, y - 3, gw, h + 6, 13, 3, C_FOCUS);
+            if (row) { ui_focus_under(gx, y, gw - 6, h, 10, 1); fill_rrect(gx, y, gw - 6, h, 10, RGB(52, 60, 78)); ui_focus_over(gx, y, gw - 6, h, 10, 1); }
             text_draw(F_REG, 22, gx + 14, y + h / 2 - 14, C_TEXT3, AL_LEFT,
                       c->epg_busy || (D.short_epg && c->epg_t == 0) ? T("Loading…") : T("No program info"));
         }
@@ -1388,10 +1394,10 @@ static void iptv_draw(Screen *s) {
         char num[16];
         snprintf(num, sizeof num, "%d", i + 1); /* number = position in the list (the provider's numbers are random) */
         text_draw(F_SEMI, 26, cx + 60, y + 30, f ? C_TEXT : C_TEXT3, AL_RIGHT, num);
-        fill_rrect(cx + 80, y + 10, 124, 70, 10, RGB(235, 238, 244));
-        Image *im = img_get(c->logo);
-        if (!img_draw(im, cx + 86, y + 14, 112, 62, 0, 1))
-            text_draw_clip(F_BOLD, 22, cx + 142, y + 32, 110, RGB(60, 60, 70), AL_CENTER, DNAME(c));
+        if (logo_card()) fill_rrect(cx + 80, y + 10, 124, 70, 10, RGB(235, 238, 244));
+        Image *im = chan_logo(c->logo);
+        if (!img_draw(im, cx + 86, y + 14, 112, 62, 8, 1))
+            text_draw_clip(F_BOLD, 22, cx + 142, y + 32, 110, logo_card() ? RGB(60, 60, 70) : C_TEXT2, AL_CENTER, DNAME(c));
         float tx = cx + 230;
         if (is_fav(c->url)) draw_icon(ICON_STAR, tx + 10, y + 32, 20, RGB(255, 200, 60)), tx += 30;
         text_draw_clip(F_SEMI, 30, tx, y + 12, 520, C_TEXT, AL_LEFT, DNAME(c));
@@ -1493,12 +1499,17 @@ static void osd_channel(PlayCtx *pc, int idx, const char *mode) {
     int lw, lh;
     char lp[64];
     snprintf(lp, sizeof lp, "/tmp/notatv-logo-%d.bgra", idx % 2);
-    if (!zapping && img_cached(c->logo) && img_export_bgra(c->logo, lp, 200, 112, &lw, &lh)) {
+    char lu[1024]; /* the cleaned logo with transparency (no light card in the banner) where NotaTV can */
+    snprintf(lu, sizeof lu, "%s%s", logo_card() ? "" : "logo:", c->logo ? c->logo : "");
+    /* also while zapping: only from the cache (img_cached), so no network is waited for; a small logo is quick */
+    if (!logo_card()) cJSON_AddTrueToObject(o, "logo_clean"); /* no light card in the banner, logo or not */
+    (void)zapping;
+    if (c->logo && img_cached(lu) && img_export_bgra(lu, lp, 220, 120, &lw, &lh)) {
         cJSON_AddStringToObject(o, "logo", lp);
         if (hdr_cfg("hdr_always", 0)) { /* the TV in HDR: the OSD script uses this one */
             char hp[64];
             snprintf(hp, sizeof hp, "/tmp/notatv-logo-%d-hdr.bgra", idx % 2);
-            if (img_export_bgra_ex(c->logo, hp, 200, 112, &lw, &lh, true)) cJSON_AddStringToObject(o, "logo_hdr", hp);
+            if (img_export_bgra_ex(lu, hp, 220, 120, &lw, &lh, true)) cJSON_AddStringToObject(o, "logo_hdr", hp);
         }
         cJSON_AddNumberToObject(o, "logo_w", lw);
         cJSON_AddNumberToObject(o, "logo_h", lh);
@@ -2156,10 +2167,12 @@ static bool iptv_draw_shelf(float x, float y) {
     HomeItem *it = &items[0];
     Color accent = color_mix(RGB(43, 95, 217), C_TEXT, 0.45f);
     y += 10;
-    draw_shadow(x, y, 360, 200, 28, 30, 1);
-    fill_rrect(x, y, 360, 200, 28, RGB(235, 238, 244));
-    if (!img_draw(img_get(it->image), x + 50, y + 30, 260, 140, 0, 1))
-        text_draw_clip(F_BOLD, 34, x + 180, y + 78, 320, RGB(60, 60, 70), AL_CENTER, it->title ? it->title : "");
+    if (logo_card()) {
+        draw_shadow(x, y, 360, 200, 28, 30, 1);
+        fill_rrect(x, y, 360, 200, 28, RGB(235, 238, 244));
+    }
+    if (!img_draw(chan_logo(it->image), x + 30, y + 30, 300, 140, 14, 1))
+        text_draw_clip(F_BOLD, 34, x + 180, y + 78, 320, logo_card() ? RGB(60, 60, 70) : C_TEXT, AL_CENTER, it->title ? it->title : "");
     text_draw(F_BOLD, 24, x + 410, y + 34, accent, AL_LEFT, T("RECENTLY WATCHED"));
     text_draw_clip(F_BOLD, 60, x + 410, y + 70, 1100, C_TEXT, AL_LEFT, it->title ? it->title : "");
     text_draw(F_REG, 28, x + 410, y + 150, C_TEXT2, AL_LEFT, T("Live TV  ·  press down for your recent channels"));

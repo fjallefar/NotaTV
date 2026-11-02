@@ -15,7 +15,7 @@ override CFLAGS += -DTV_VERSION=\"$(if $(TV_VER),$(TV_VER),dev)\"
 LIBS = $(shell $(PKG_CONFIG) --libs sdl3 libcurl libdrm egl glesv2 gbm dbus-1 libupnp) -lz -lm -lpthread
 
 SRCS = main.c i18n.c drm_util.c kms_present.c subs.c gfx.c input.c util.c player.c widgets.c ui_home.c  \
-       ui_net.c bt.c dlna.c mirror.c moon.c ui_settings.c netdisc.c apps.c ui_appstore.c appcat.c update_notice.c tz.c ui_setup.c stb_impl.c vendor/cJSON.c vendor/qrcodegen.c
+       ui_net.c bt.c dlna.c mirror.c moon.c ui_settings.c netdisc.c apps.c ui_appstore.c appcat.c update_notice.c tz.c ui_setup.c quick.c stb_impl.c vendor/cJSON.c vendor/qrcodegen.c
 OBJS = $(SRCS:.c=.o)
 
 all: tvshell notasplash

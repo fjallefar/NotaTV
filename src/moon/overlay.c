@@ -3,6 +3,7 @@
  * the video's atomic commits, so it never delays a frame. */
 #define _GNU_SOURCE
 #include "tvmoon.h"
+#include <math.h>
 #include <drm_fourcc.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -163,12 +164,20 @@ void overlay_set_text(const char *const *lines, int n, int highlight, bool hdr) 
     pthread_mutex_lock(&O.mu);
     DumbBuf *b = &O.buf[!O.front];
     pthread_mutex_unlock(&O.mu);
-    /* semi-transparent black background (premultiplied: color 0) */
+    /* the same dark glass as NotaTV's panels: a dark blue-grey with rounded corners (premultiplied alpha) */
+    float px = O.h / 9.4f;
+    int rad = (int)(px * 0.7f);
     for (int y = 0; y < O.h; y++) {
         uint32_t *row = (uint32_t *)(b->map + (size_t)y * b->pitch);
-        for (int x = 0; x < O.w; x++) row[x] = 0xC0u << 24;
+        for (int x = 0; x < O.w; x++) {
+            int dx = x < rad ? rad - x : x >= O.w - rad ? x - (O.w - rad - 1) : 0;
+            int dy = y < rad ? rad - y : y >= O.h - rad ? y - (O.h - rad - 1) : 0;
+            float d = dx && dy ? sqrtf((float)(dx * dx + dy * dy)) - rad : 0; /* > 0: outside the corner */
+            float cov = d <= -0.5f ? 1 : d >= 0.5f ? 0 : 0.5f - d;
+            uint32_t a = (uint32_t)(0xD8 * cov);
+            row[x] = a << 24 | (26 * a / 255) << 16 | (30 * a / 255) << 8 | (40 * a / 255); /* RGB(26,30,40) */
+        }
     }
-    float px = O.h / 9.4f;
     /* in HDR (PQ) full white is far too bright: ~200 nits */
     uint8_t lum = hdr ? 150 : 255;
     if (highlight >= 0 && highlight < n) { /* highlighted line: a lighter bar behind the text */
@@ -176,9 +185,21 @@ void overlay_set_text(const char *const *lines, int n, int highlight, bool hdr) 
         if (y0 < 0) y0 = 0;
         if (y1 > O.h) y1 = O.h;
         uint32_t g = hdr ? 0x38 : 0x50; /* premultiplied gray */
+        int x0 = (int)(px * 0.3f), x1 = O.w - (int)(px * 0.3f), pr = (y1 - y0) / 2; /* a pill, like the menus */
         for (int y = y0; y < y1; y++) {
             uint32_t *row = (uint32_t *)(b->map + (size_t)y * b->pitch);
-            for (int x = (int)(px * 0.3f); x < O.w - (int)(px * 0.3f); x++) row[x] = 0xF0u << 24 | g << 16 | g << 8 | g;
+            float cy = y + 0.5f - (y0 + y1) / 2.0f;
+            for (int x = x0; x < x1; x++) {
+                float cx = x < x0 + pr ? x + 0.5f - (x0 + pr) : x >= x1 - pr ? x + 0.5f - (x1 - pr) : 0;
+                float d = sqrtf(cx * cx + cy * cy) - pr, cov = d <= -0.5f ? 1 : d >= 0.5f ? 0 : 0.5f - d;
+                if (cov <= 0) continue;
+                uint32_t a = (uint32_t)(0xF0 * cov), gg = g * a / 0xF0, da = row[x] >> 24;
+                /* over the background: premultiplied "over" */
+                uint32_t oa = a + da * (255 - a) / 255;
+                uint32_t r = gg + ((row[x] >> 16) & 0xff) * (255 - a) / 255, gr = gg + ((row[x] >> 8) & 0xff) * (255 - a) / 255,
+                         bl = gg + (row[x] & 0xff) * (255 - a) / 255;
+                row[x] = oa << 24 | r << 16 | gr << 8 | bl;
+            }
         }
     }
     for (int i = 0; i < n; i++) draw_text(b, (int)(px * 0.6f), (int)(px * (1.25f + i * 1.22f)), px, i == 0 ? lum : (uint8_t)(lum * 0.92f), lines[i]);

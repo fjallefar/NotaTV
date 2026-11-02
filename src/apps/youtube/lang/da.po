@@ -294,21 +294,14 @@ msgstr "En telefon"
 msgid "YouTube: %s is connected"
 msgstr "YouTube: %s er forbundet"
 
-
-
-
-
-msgid "The video info page opens faster"
-msgstr "Infosiden for en video åbner hurtigere"
-
-msgid "The description, date and views are shown right away instead of after several seconds"
-msgstr "Beskrivelse, dato og visninger vises med det samme i stedet for efter flere sekunder"
-
-msgid "The quality you choose is used for the next video too (it could play in 1080p after choosing 720p)"
-msgstr "Den valgte kvalitet bruges også til den næste video (den kunne afspille i 1080p efter valg af 720p)"
-
-msgid "1440p and 4K are greyed out on a Raspberry Pi 4, which cannot play them from YouTube"
-msgstr "1440p og 4K er grå på en Raspberry Pi 4, som ikke kan afspille dem fra YouTube"
-
 msgid "Up to 1080p on a Raspberry Pi 4 (YouTube has 1440p and 4K only in formats it cannot decode)"
 msgstr "Op til 1080p på en Raspberry Pi 4 (YouTube har kun 1440p og 4K i formater, den ikke kan afkode)"
+
+msgid "A calmer, smoother look"
+msgstr "Et roligere og blødere udseende"
+
+msgid "What you choose lifts gently toward you with a soft glow instead of a white frame"
+msgstr "Det, du vælger, løfter sig blødt frem med en svag glød i stedet for en hvid ramme"
+
+msgid "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
+msgstr "Det nye udseende kræver NotaTV 1.0.5 - på ældre versioner ser det ud som før"

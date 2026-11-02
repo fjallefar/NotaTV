@@ -770,8 +770,8 @@ static void fmt_views(double v, char *b, size_t n) {
 }
 
 static void draw_video(Video *v, float x, float iy, bool f) {
-    float sc = f ? 1.06f : 1, w = 420 * sc, h = 236 * sc, xx = x - (w - 420) / 2, yy = iy - (h - 236) / 2;
-    if (f) draw_shadow(xx, yy, w, h, 14, 24, 1);
+    float fa = ui_focus(v, f), sc = 1 + 0.06f * fa, w = 420 * sc, h = 236 * sc, xx = x - (w - 420) / 2, yy = iy - (h - 236) / 2;
+    ui_focus_under(xx, yy, w, h, 14, fa);
     fill_rrect(xx, yy, w, h, 14, C_SURFACE);
     char url[160];
     snprintf(url, sizeof url, "https://i.ytimg.com/vi/%s/mqdefault.jpg", v->id);
@@ -786,7 +786,7 @@ static void draw_video(Video *v, float x, float iy, bool f) {
         fill_rrect(xx + w - dw - 12, yy + h - 42, dw, 30, 6, RGBA(0, 0, 0, 200));
         text_draw(F_SEMI, 20, xx + w - dw / 2 - 12, yy + h - 38, C_TEXT, AL_CENTER, d);
     }
-    if (f) stroke_rrect(xx - 4, yy - 4, w + 8, h + 8, 18, 4, C_FOCUS);
+    ui_focus_over(xx, yy, w, h, 14, fa);
     text_draw_wrap(F_SEMI, 22, x, iy + 252, 420, 2, 28, f ? C_TEXT : C_TEXT2, v->title);
     char meta[160], vw[64];
     fmt_views(v->views, vw, sizeof vw);
@@ -795,14 +795,14 @@ static void draw_video(Video *v, float x, float iy, bool f) {
 }
 
 static void draw_channel_tile(Video *c, float x, float y, bool f) {
-    float r = f ? 92 : 84, cx = x + 100, cy = y + 90;
-    if (f) draw_shadow(cx - r, cy - r, r * 2, r * 2, r, 20, 1);
+    float fa = ui_focus(c, f), r = 84 + 8 * fa, cx = x + 100, cy = y + 90;
+    ui_focus_under(cx - r, cy - r, r * 2, r * 2, r, fa);
     fill_circle(cx, cy, r, C_SURFACE2);
     if (!img_draw_cover(img_get(c->thumb), cx - r, cy - r, r * 2, r * 2, r, 1)) {
         char ini[8] = {c->title && c->title[0] ? (char)c->title[0] : '?', 0};
         text_draw(F_BOLD, 64, cx, cy - 38, C_TEXT, AL_CENTER, ini);
     }
-    if (f) stroke_rrect(cx - r - 5, cy - r - 5, r * 2 + 10, r * 2 + 10, r + 5, 4, C_FOCUS);
+    ui_focus_over(cx - r, cy - r, r * 2, r * 2, r, fa);
     text_draw_clip(F_SEMI, 22, cx, y + 196, 210, f ? C_TEXT : C_TEXT2, AL_CENTER, c->title);
     if (c->views > 0) {
         char subs_s[48];

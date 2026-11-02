@@ -78,6 +78,13 @@ void stroke_rrect(float x, float y, float w, float h, float r, float t, Color c)
 void fill_vgrad(float x, float y, float w, float h, Color top, Color bot);
 void fill_hgrad(float x, float y, float w, float h, Color l, Color r);
 void fill_circle(float cx, float cy, float rad, Color c);
+NOTA_NEW void gfx_tex_rrect(SDL_Texture *t, float x, float y, float w, float h, float r, float alpha); /* a whole texture with round corners */
+/* the next screen opened (app_push) grows out of this rectangle, and shrinks back into it when it closes */
+NOTA_NEW void app_set_origin(float x, float y, float w, float h, float r);
+/* the app's own icon art (assets/icons/<id>.png, made by scripts/gen-icons.py), cropped to fill the rectangle.
+   false = there is none (or it is still loading): draw the colored tile with the glyph instead */
+NOTA_NEW bool draw_app_art(const char *id, float x, float y, float w, float h, float r, float alpha);
+NOTA_NEW void draw_glow(float x, float y, float w, float h, float r, float spread, Color c, float alpha);
 void draw_shadow(float x, float y, float w, float h, float r, float spread, float alpha);
 void fill_tri(float x1, float y1, float x2, float y2, float x3, float y3, Color c);
 
@@ -92,6 +99,9 @@ void clip_pop(void);
 typedef enum { IMG_LOADING, IMG_READY, IMG_FAILED } ImgState;
 typedef struct Image Image;
 Image *img_get(const char *url);
+/* a channel logo, cleaned so it can stand on a dark background without a box: white background removed, dark
+   text made light, empty frame cut away. img_export_bgra with "logo:<url>" gives the same logo with transparency */
+NOTA_NEW Image *img_get_logo(const char *url);
 ImgState img_state(Image *im);
 bool img_draw(Image *im, float x, float y, float w, float h, float radius, float alpha);
 /* draw with "cover" cropping (fills the whole rectangle) */
@@ -117,6 +127,7 @@ typedef enum {
     ICON_TV, ICON_PLEX, ICON_YOUTUBE, ICON_FOLDER, ICON_GEAR,
     ICON_PLAY, ICON_WIFI, ICON_ETH, ICON_STAR, ICON_SEARCH, ICON_POWER,
     ICON_MOON, ICON_BACK, ICON_USB, ICON_MUSIC, ICON_FILM, ICON_CHECK, ICON_LOCK, ICON_CLOCK,
+    ICON_RESTART, /* NotaTV after 1.0.4 (an app using it on an older box gets no icon) */
 } IconId;
 void draw_icon(IconId id, float cx, float cy, float size, Color c);
 
@@ -260,6 +271,9 @@ void app_home(void);
 Screen *app_top(void);
 void app_close(Screen *s) NOTA_NEW;      /* close s even when it is not on top (e.g. from its own update()) */
 void app_replace(Screen *s, Screen *with) NOTA_NEW; /* with takes s's place in the stack (freed if s is gone) */
+/* a small layer an app draws on top of every screen (Music: the "Now playing" box). One per app id; NULL removes it.
+   Not drawn while the app is uninstalled, during video, or with the screensaver on */
+void app_set_overlay(const char *app_id, void (*draw)(void)) NOTA_NEW;
 void app_toast(const char *fmt, ...);
 void app_request_redraw(void);
 double app_time(void);
@@ -413,6 +427,22 @@ bool update_news(const char *ver, UpdateNews *n); /* false = the release says no
 
 /* shared UI helpers */
 float anim_to(float cur, float target, float dt, float speed);
+/* a spring (position + speed): moves to target with a small overshoot, like a physical object.
+   SPRING_SNAPPY is for focus (lift/scale), SPRING_SOFT for things that slide (highlights, panels) */
+typedef struct { float x, v; } Spring;
+#define SPRING_SNAPPY 420.0f, 30.0f
+#define SPRING_SOFT 260.0f, 30.0f
+NOTA_NEW float spring_to(Spring *s, float target, float dt, float stiffness, float damping);
+/* Focus on cards (posters, tiles, buttons): the same lift everywhere.
+     float f = ui_focus(item, focused);              0..1, animated (spring)
+     float sc = 1 + 0.07f * f;                       lift: draw the card this much bigger, centered
+     ui_focus_under(x, y, w, h, r, f);  draw the card;  ui_focus_over(x, y, w, h, r, f);
+   On an older NotaTV the wrappers fall back to the white focus ring. */
+NOTA_NEW float focus_amt(const void *key, bool on);
+NOTA_NEW float slide_to(const void *key, float target); /* a position gliding to target (first call: jumps) */
+NOTA_NEW void draw_panel(float x, float y, float w, float h, float r, float alpha); /* dialog: dark glass */
+NOTA_NEW void focus_under(float x, float y, float w, float h, float r, float f);
+NOTA_NEW void focus_over(float x, float y, float w, float h, float r, float f);
 void draw_background(void);
 void draw_topbar(const char *title);
 void draw_hint(float x, float y, const char *keys, const char *label);
@@ -528,6 +558,8 @@ void bt_connect(const char *path);      /* the box calls the phone: the music mo
 void bt_disconnect(void);               /* disconnect the phone that is playing */
 void bt_forget_all(void);
 void power_menu_open(void);
+NOTA_NEW void quick_open(void); /* the quick panel from the right (sleep timer, settings shortcuts, power) */
+void quick_tick(void);
 
 /* Shared data for the home screen */
 struct HomeItem { char *title, *subtitle, *image, *key; double progress; char *logo; /* title logo (PNG) */ };
@@ -535,5 +567,16 @@ void wipe_file(const char *path);        /* overwrite (small files) and delete *
 void wipe_dir(const char *dir);          /* everything in a folder */
 void wipe_session_traces(void);          /* /tmp leftovers: mpv log, image cache */
 void subs_forget(void);
+
+/* the focus wrappers (see focus_amt above) - inline, so an app works on a NotaTV without them */
+static inline float ui_focus(const void *key, bool on) { return focus_amt ? focus_amt(key, on) : (on ? 1.0f : 0.0f); }
+static inline void ui_focus_under(float x, float y, float w, float h, float r, float f) {
+    if (focus_under) focus_under(x, y, w, h, r, f);
+    else if (f > 0.5f) draw_shadow(x, y, w, h, r, 26, 1);
+}
+static inline void ui_focus_over(float x, float y, float w, float h, float r, float f) {
+    if (focus_over) focus_over(x, y, w, h, r, f);
+    else if (f > 0.5f) stroke_rrect(x - 4, y - 4, w + 8, h + 8, r + 4, 4, C_FOCUS);
+}
 
 #endif

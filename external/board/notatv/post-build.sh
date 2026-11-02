@@ -19,6 +19,7 @@ cat > $TARGET/etc/notatv-release <<EOR
 NAME=NotaTV
 VERSION=$VER ($(date +%Y-%m-%d))
 BUILD=$(date -u +%Y%m%d%H%M)
+BUILD_EPOCH=$(date -u +%s)
 EOR
 # run S05/S60 early/late; no login prompt on tty1
 sed -i '/tty1/d' $TARGET/etc/inittab

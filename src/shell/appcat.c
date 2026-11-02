@@ -32,7 +32,7 @@ IconId icon_by_name(const char *n) {
     static const struct { const char *n; IconId id; } map[] = {
         {"tv", ICON_TV}, {"plex", ICON_PLEX}, {"youtube", ICON_YOUTUBE}, {"folder", ICON_FOLDER}, {"gear", ICON_GEAR},
         {"play", ICON_PLAY}, {"wifi", ICON_WIFI}, {"star", ICON_STAR}, {"search", ICON_SEARCH}, {"music", ICON_MUSIC},
-        {"film", ICON_FILM}, {"check", ICON_CHECK}, {"lock", ICON_LOCK}, {"clock", ICON_CLOCK}, {"moon", ICON_MOON}};
+        {"film", ICON_FILM}, {"check", ICON_CHECK}, {"lock", ICON_LOCK}, {"clock", ICON_CLOCK}, {"moon", ICON_MOON}, {"power", ICON_POWER}};
     for (size_t i = 0; n && i < sizeof map / sizeof map[0]; i++) if (!strcmp(map[i].n, n)) return map[i].id;
     return ICON_PLAY;
 }

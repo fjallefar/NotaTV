@@ -123,8 +123,7 @@ static void notice_draw(Screen *s) {
     fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(170 * a)));
     float w = n->has_news ? 1100 : 980, h = n->has_news ? 220 + (n->body_h > 0 ? n->body_h : 150) + 30 + 72 + 60 : 420;
     float x = UI_W / 2 - w / 2, y = UI_H / 2 - h / 2 + 30 * (1 - a);
-    draw_shadow(x, y, w, h, 32, 40, a);
-    fill_rrect(x, y, w, h, 32, RGB(24, 28, 37));
+    draw_panel(x, y, w, h, 32, 1);
     fill_rrect_vgrad(x + 60, y + 60, 120, 120, 30, RGB(16, 150, 140), RGB(8, 92, 96));
     draw_icon(ICON_TV, x + 120, y + 120, 60, C_TEXT);
     text_draw(F_SEMI, 24, x + 220, y + 66, C_ACCENT, AL_LEFT, T("UPDATE AVAILABLE"));
@@ -259,8 +258,7 @@ static void ins_draw(Screen *s) {
     float a = s->anim;
     fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(200 * a)));
     float w = 1100, h = 470, x = UI_W / 2 - w / 2, y = UI_H / 2 - h / 2 + 30 * (1 - a);
-    draw_shadow(x, y, w, h, 32, 40, a);
-    fill_rrect(x, y, w, h, 32, RGB(24, 28, 37));
+    draw_panel(x, y, w, h, 32, 1);
     char t[128];
     if (v->phase == INS_RUNNING) {
         fill_rrect_vgrad(x + 60, y + 60, 120, 120, 30, RGB(16, 150, 140), RGB(8, 92, 96));

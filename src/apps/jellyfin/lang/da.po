@@ -224,20 +224,17 @@ msgstr "Afspil S%d A%d"
 msgid "%d min"
 msgstr "%d min"
 
-msgid "A series page with all seasons and episodes"
-msgstr "En serieside med alle sæsoner og afsnit"
-
-msgid "Play starts where you left off, or at the first new episode"
-msgstr "Afspil starter, hvor du slap, eller ved det første nye afsnit"
-
-msgid "Episodes from Continue and Latest open the series page"
-msgstr "Afsnit fra Fortsæt og Seneste åbner seriens side"
-
-msgid "Search subtitles in the player menu (with an OpenSubtitles key)"
-msgstr "Søg efter undertekster i afspillerens menu (med en OpenSubtitles-nøgle)"
-
 msgid "CONTINUE IN JELLYFIN"
 msgstr "FORTSÆT I JELLYFIN"
 
-msgid "Continue watching on the home screen, like Plex"
-msgstr "Fortsæt med at se på forsiden, ligesom Plex"
+msgid "A calmer, smoother look"
+msgstr "Et roligere og blødere udseende"
+
+msgid "What you choose lifts gently toward you with a soft glow instead of a white frame"
+msgstr "Det, du vælger, løfter sig blødt frem med en svag glød i stedet for en hvid ramme"
+
+msgid "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
+msgstr "Det nye udseende kræver NotaTV 1.0.5 - på ældre versioner ser det ud som før"
+
+msgid "Sharper pictures in the row on the home screen"
+msgstr "Skarpere billeder i rækken på forsiden"

@@ -169,8 +169,12 @@ static void store_update(Screen *s, float dt) {
 /* the bar at the top: "Update all (3)" and which apps */
 static void draw_update_bar(float x, float y, float w, bool f) {
     if (y > UI_H || y + STORE_BAR < 190) return;
-    if (f) draw_shadow(x, y, w, STORE_BAR, 22, 26, 1);
-    fill_rrect(x, y, w, STORE_BAR, 22, f ? C_SURFACE2 : C_SURFACE);
+    static const char bar_key[] = "updbar";
+    float fa = focus_amt(bar_key, f), sc = 1 + 0.02f * fa;
+    float ow = w;
+    w *= sc; x -= (w - ow) / 2; y -= STORE_BAR * (sc - 1) / 2;
+    focus_under(x, y, w, STORE_BAR, 26, fa);
+    fill_rrect(x, y, w, STORE_BAR, 26, color_mix(C_SURFACE, C_SURFACE2, fa < 0 ? 0 : fa > 1 ? 1 : fa));
     fill_rrect_vgrad(x + 24, y + 20, 80, 80, 20, RGB(16, 150, 140), RGB(8, 92, 96));
     draw_icon(ICON_CHECK, x + 64, y + 60, 40, C_TEXT);
     int n = appcat_updates();
@@ -189,7 +193,7 @@ static void draw_update_bar(float x, float y, float w, bool f) {
     float pw = text_width(F_SEMI, 26, pill) + 60;
     fill_rrect(x + w - pw - 30, y + 34, pw, 52, 26, f ? C_FOCUS : C_ACCENT);
     text_draw(F_SEMI, 26, x + w - 30 - pw / 2, y + 44, f ? RGB(10, 10, 10) : C_TEXT, AL_CENTER, pill);
-    if (f) stroke_rrect(x - 4, y - 4, w + 8, STORE_BAR + 8, 26, 4, C_FOCUS);
+    focus_over(x, y, w, STORE_BAR, 26, fa);
 }
 
 static void store_draw(Screen *s) {
@@ -202,11 +206,11 @@ static void store_draw(Screen *s) {
     case CAT_ERROR: status = T("Could not reach the App Store - check the network. Installed apps are shown."); break;
     default: status = T("Install the apps you want on the home screen. Uninstalling an app deletes everything it has saved on this box."); break;
     }
-    text_draw(F_REG, 26, 120, 130, appcat_state() == CAT_ERROR ? C_DANGER : C_TEXT2, AL_LEFT, status);
+    text_draw(F_REG, 26, 96, 130, appcat_state() == CAT_ERROR ? C_DANGER : C_TEXT2, AL_LEFT, status);
     StoreLayout L;
     store_layout(&L);
     int sel = store_find(&L, st->sel);
-    float cw = (UI_W - 240 - (STORE_COLS - 1) * 30) / STORE_COLS, ch = 220, top = 200 - st->sy;
+    float cw = (UI_W - 192 - (STORE_COLS - 1) * 30) / STORE_COLS, ch = 220, top = 200 - st->sy;
     clip_push(0, 190, UI_W, UI_H - 190);
     static const char *hdr[2] = {N_("Installed"), N_("Not installed")};
     static const char *empty[2] = {N_("No apps are installed"), N_("All apps are installed")};
@@ -214,25 +218,32 @@ static void store_draw(Screen *s) {
         float hy = top + L.hdr_y[sec];
         char t[48];
         snprintf(t, sizeof t, "%s (%d)", T(hdr[sec]), L.cnt[sec]);
-        text_draw(F_BOLD, 34, 120, hy + 8, C_TEXT, AL_LEFT, t);
+        text_draw(F_BOLD, 34, 96, hy + 8, C_TEXT, AL_LEFT, t);
         if (!L.cnt[sec]) {
             const char *e = sec == 1 && appcat_state() == CAT_LOADING ? T("Looking for apps…")
                           : sec == 1 && appcat_state() == CAT_ERROR ? T("The App Store cannot be reached right now") : T(empty[sec]);
-            text_draw(F_REG, 24, 120, hy + STORE_HDR + 10, C_TEXT2, AL_LEFT, e);
+            text_draw(F_REG, 24, 96, hy + STORE_HDR + 10, C_TEXT2, AL_LEFT, e);
         }
     }
     for (int k = 0; k < L.n; k++) {
         const StoreItem *it = &L.c[k].it;
-        float x = 120 + L.c[k].col * (cw + 30), y = top + L.c[k].y;
+        float x = 96 + L.c[k].col * (cw + 30), y = top + L.c[k].y;
         bool f = k == sel;
-        if (!strcmp(it->id, ALL_ID)) { draw_update_bar(120, y, UI_W - 240, f); continue; }
+        if (!strcmp(it->id, ALL_ID)) { draw_update_bar(96, y, UI_W - 192, f); continue; }
         if (y > UI_H || y + ch < 190) continue;
+        /* the card lifts like everywhere else (the key: the app, which outlives this frame's layout) */
+        float fa = focus_amt(it->app ? (const void *)it->app : (const void *)it->cat, f), fc = fa < 0 ? 0 : fa > 1 ? 1 : fa;
+        float cs = 1 + 0.035f * fa, cw0 = cw, ch0 = ch;
+        x -= cw0 * (cs - 1) / 2; y -= ch0 * (cs - 1) / 2;
+        float cw = cw0 * cs, ch = ch0 * cs;
         IconId icon = it->app ? it->app->icon : it->cat->icon;
         Color c1 = it->app ? it->app->c1 : it->cat->c1, c2 = it->app ? it->app->c2 : it->cat->c2, fg = it->app ? it->app->fg : it->cat->fg;
-        if (f) draw_shadow(x, y, cw, ch, 22, 26, 1);
-        fill_rrect(x, y, cw, ch, 22, f ? C_SURFACE2 : C_SURFACE);
-        fill_rrect_vgrad(x + 30, y + 30, 110, 110, 26, c1, c2);
-        draw_icon(icon, x + 85, y + 85, 56, fg);
+        focus_under(x, y, cw, ch, 26, fa);
+        fill_rrect(x, y, cw, ch, 26, color_mix(C_SURFACE, C_SURFACE2, fc));
+        if (!draw_app_art(it->id, x + 30, y + 30, 110, 110, 26, 1)) {
+            fill_rrect_vgrad(x + 30, y + 30, 110, 110, 26, c1, c2);
+            draw_icon(icon, x + 85, y + 85, 56, fg);
+        }
         text_draw_clip(F_BOLD, 32, x + 165, y + 34, cw - 195, C_TEXT, AL_LEFT, item_name(it));
         int pend = appcat_pending(it->id);
         bool upd = appcat_has_update(it->id);
@@ -241,13 +252,16 @@ static void store_draw(Screen *s) {
             snprintf(t, sizeof t, T("New: %s"), it->cat->news);
             text_draw_wrap(F_REG, 22, x + 165, y + 80, cw - 195, 2, 30, C_ACCENT, t);
         } else text_draw_wrap(F_REG, 22, x + 165, y + 80, cw - 195, 2, 30, C_TEXT2, item_desc(it));
+        /* a status only when it says something: installed apps without an update have none */
         const char *pill = pend == 2 ? T("Installing…") : pend == 1 ? T("Waiting…")
-                         : upd ? T("Update") : it->installed ? T("Installed") : T("Install");
-        Color pc = pend ? RGBA(255, 255, 255, 40) : upd ? C_ACCENT : it->installed ? C_OK : (f ? C_ACCENT : RGBA(255, 255, 255, 40));
-        float pw = text_width(F_SEMI, 22, pill) + 36 + (pend == 2 ? 30 : 0);
-        fill_rrect(x + 30, y + ch - 60, pw, 38, 19, pc);
-        if (pend == 2) draw_spinner(x + 52, y + ch - 41, 9, C_TEXT);
-        text_draw(F_SEMI, 22, x + 30 + pw / 2 + (pend == 2 ? 14 : 0), y + ch - 53, C_TEXT, AL_CENTER, pill);
+                         : upd ? T("Update") : it->installed ? NULL : T("Install");
+        if (pill) {
+            Color pc = pend ? RGBA(255, 255, 255, 40) : upd ? C_ACCENT : color_mix(RGBA(255, 255, 255, 40), C_ACCENT, fc);
+            float pw = text_width(F_SEMI, 22, pill) + 36 + (pend == 2 ? 30 : 0);
+            fill_rrect(x + 30, y + ch - 60, pw, 38, 19, pc);
+            if (pend == 2) draw_spinner(x + 52, y + ch - 41, 9, C_TEXT);
+            text_draw(F_SEMI, 22, x + 30 + pw / 2 + (pend == 2 ? 14 : 0), y + ch - 53, C_TEXT, AL_CENTER, pill);
+        }
         /* installed: the version and what it takes on the box; not installed (also one uninstalled since the
            last restart): the catalog version and how much it will take */
         char v[96], sz[24];
@@ -262,8 +276,8 @@ static void store_draw(Screen *s) {
             snprintf(v, sizeof v, *sz ? "%s  ·  %s" : "%s", it->cat->version, sz);
         } else if (it->app && *app_version(it->app)) snprintf(v, sizeof v, T("Version %s"), app_version(it->app));
         else v[0] = 0;
-        text_draw(F_REG, 20, x + cw - 30, y + ch - 50, C_TEXT3, AL_RIGHT, v);
-        if (f) stroke_rrect(x - 4, y - 4, cw + 8, ch + 8, 26, 4, C_FOCUS);
+        text_draw(F_REG, 20, pill ? x + cw - 30 : x + 30, y + ch - 50, C_TEXT3, pill ? AL_RIGHT : AL_LEFT, v);
+        focus_over(x, y, cw, ch, 26, fa);
     }
     clip_pop();
 }

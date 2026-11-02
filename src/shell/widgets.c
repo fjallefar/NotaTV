@@ -1,5 +1,6 @@
 /* NotaTV shell - dialogs: on-screen keyboard, confirm, choice list, power menu */
 #include "tv.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,8 +79,7 @@ static void kb_draw(Screen *s) {
     Kb *k = s->st;
     overlay_dim(s->anim);
     float pw = 1240, ph = 770, px = UI_W / 2 - pw / 2, py = UI_H / 2 - ph / 2 + 20;
-    draw_shadow(px, py, pw, ph, 28, 40, s->anim);
-    fill_rrect(px, py, pw, ph, 28, RGB(24, 28, 37));
+    draw_panel(px, py, pw, ph, 32, 1);
     text_draw(F_BOLD, 34, px + 50, py + 38, C_TEXT, AL_LEFT, k->title);
     /* tekstfelt */
     fill_rrect(px + 50, py + 100, pw - 100, 78, 14, RGB(12, 14, 19));
@@ -242,18 +242,11 @@ static void confirm_draw(Screen *s) {
     Confirm *c = s->st;
     overlay_dim(s->anim);
     float pw = 900, ph = 380, px = UI_W / 2 - pw / 2, py = UI_H / 2 - ph / 2;
-    draw_shadow(px, py, pw, ph, 28, 40, s->anim);
-    fill_rrect(px, py, pw, ph, 28, RGB(24, 28, 37));
+    draw_panel(px, py, pw, ph, 32, 1);
     text_draw(F_BOLD, 36, UI_W / 2, py + 44, C_TEXT, AL_CENTER, c->title);
     text_draw_wrap(F_REG, 26, px + 60, py + 110, pw - 120, 4, 36, C_TEXT2, c->msg);
     const char *lbl[2] = {c->yes, c->no};
-    int nb = c->no[0] ? 2 : 1; /* no = "": one button (a message) */
-    for (int i = 0; i < nb; i++) {
-        float bw = 300, bx = nb == 1 ? UI_W / 2 - bw / 2 : UI_W / 2 + (i == 0 ? -bw - 15 : 15), by = py + ph - 110;
-        bool f = c->sel == i;
-        fill_rrect(bx, by, bw, 68, 34, f ? C_FOCUS : RGB(44, 50, 64));
-        text_draw(F_SEMI, 28, bx + bw / 2, by + 18, f ? RGB(10, 10, 10) : C_TEXT, AL_CENTER, lbl[i]);
-    }
+    draw_buttons(UI_W / 2, py + ph - 112, lbl, c->no[0] ? 2 : 1, c->sel); /* no = "": one button (a message) */
 }
 
 static bool confirm_input(Screen *s, const InputEvent *ev) {
@@ -304,8 +297,7 @@ static void notes_draw(Screen *s) {
     overlay_dim(s->anim);
     float pw = 1080, body = c->body_h > 0 ? c->body_h : 120;
     float ph = 60 + 34 + 60 + 30 + body + 40 + 72 + 60, px = UI_W / 2 - pw / 2, py = UI_H / 2 - ph / 2 + 30 * (1 - s->anim);
-    draw_shadow(px, py, pw, ph, 30, 40, s->anim);
-    fill_rrect(px, py, pw, ph, 30, RGB(24, 28, 37));
+    draw_panel(px, py, pw, ph, 32, 1);
     float x = px + 70, w = pw - 140, y = py + 60;
     text_draw(F_SEMI, 24, x, y, C_ACCENT, AL_LEFT, c->kicker);
     text_draw_clip(F_BOLD, 44, x, y + 34, w, C_TEXT, AL_LEFT, c->title);
@@ -385,9 +377,8 @@ static void nextup_draw(Screen *s) {
     double left = n->deadline - app_time();
     int secs = left > 0 ? (int)left + (left > (int)left ? 1 : 0) : 0;
     float w = 760, h = 250, x = UI_W - w - 60, y = UI_H - h - 60;
-    draw_shadow(x, y, w, h, 18, 30, s->anim);
-    fill_rrect(x, y, w, h, 18, RGBA(18, 20, 28, 246));
-    stroke_rrect(x, y, w, h, 18, 3, C_ACCENT);
+    y += 40 * (1 - s->anim); /* rises in from below */
+    draw_panel(x, y, w, h, 28, 1);
     if (n->poster) img_draw_cover(img_get(n->poster), x + 24, y + 24, 136, 202, 10, 1);
     float tx = x + 190, ty = y + 30;
     text_draw(F_SEMI, 26, tx, ty, C_TEXT2, AL_LEFT, T("Next episode"));
@@ -447,17 +438,17 @@ static void choice_draw(Screen *s) {
     overlay_dim(s->anim);
     int vis = c->n < 9 ? c->n : 9;
     float pw = 760, ph = 150 + vis * 72, px = UI_W / 2 - pw / 2, py = UI_H / 2 - ph / 2;
-    draw_shadow(px, py, pw, ph, 28, 40, s->anim);
-    fill_rrect(px, py, pw, ph, 28, RGB(24, 28, 37));
+    draw_panel(px, py, pw, ph, 32, 1);
     text_draw(F_BOLD, 34, px + 50, py + 40, C_TEXT, AL_LEFT, c->title);
     if (c->sel < c->scroll) c->scroll = c->sel;
     if (c->sel >= c->scroll + vis) c->scroll = c->sel - vis + 1;
+    float hy = slide_to(c, py + 110 + (c->sel - c->scroll) * 72); /* the pill glides to the chosen row */
+    fill_rrect(px + 30, hy, pw - 60, 62, 31, C_FOCUS);
     for (int i = 0; i < vis; i++) {
         int idx = c->scroll + i;
         float y = py + 110 + i * 72;
-        bool f = idx == c->sel;
-        if (f) fill_rrect(px + 30, y, pw - 60, 62, 14, C_FOCUS);
-        text_draw_clip(F_SEMI, 28, px + 60, y + 15, pw - 120, f ? RGB(10, 10, 10) : C_TEXT, AL_LEFT, c->items[idx]);
+        float ov = 1 - fabsf(y - hy) / 72;
+        text_draw_clip(F_SEMI, 28, px + 60, y + 15, pw - 120, color_mix(C_TEXT, RGB(10, 10, 10), ov < 0 ? 0 : ov), AL_LEFT, c->items[idx]);
     }
     if (c->n > vis) {
         char pos[48];
@@ -534,6 +525,7 @@ static void power_cb(void *ud, int idx) {
 
 static Screen *power_menu; /* the open Power menu (not opened twice; other choice lists do not stop it) */
 void power_menu_open(void) {
+    if (quick_open) { quick_open(); return; } /* the quick panel has Sleep / Restart / Power off too */
     Screen *t = app_top();
     if (t && t == power_menu && t->name && !strcmp(t->name, "choice")) return;
     static const char *items[3];
@@ -600,16 +592,20 @@ void side_draw(SideMenu *m) {
     }
     float item_h = 72, top = 190;
     clip_push(0, top - 10, w, UI_H - top - 30);
-    float y = top - m->scroll;
+    float y = top - m->scroll, pw = w - 36;
+    /* the white pill glides to the chosen row while the menu is open (where the rows are first) */
+    float sy = y;
+    for (int i = 0; i < m->n && i <= m->sel; i++) { if (m->items[i].gap_before) sy += 28; if (i < m->sel) sy += item_h; }
+    float hy = slide_to(m, sy);
+    if (m->open && m->n) { draw_shadow(18, hy, pw, 62, 31, 18, 0.6f * t); fill_rrect(18, hy, pw, 62, 31, color_alpha(C_FOCUS, t < 0.3f ? t / 0.3f : 1)); }
     for (int i = 0; i < m->n; i++) {
         SideItem *it = &m->items[i];
         if (it->gap_before) y += 28;
-        bool f = m->open && m->sel == i;
         bool act = i == m->active;
-        float pw = (w - 36);
-        if (f) fill_rrect(18, y, pw, 62, 16, C_FOCUS);
-        else if (act) fill_rrect(18, y, pw, 62, 16, color_alpha(m->accent, 0.28f + 0.1f * t));
-        Color c = f ? RGB(10, 10, 10) : act ? C_TEXT : (m->open ? C_TEXT : C_TEXT2);
+        float ov = m->open ? 1 - fabsf(y - hy) / item_h : 0;
+        if (ov < 0) ov = 0;
+        if (act && ov < 0.99f) fill_rrect(18, y, pw, 62, 31, color_alpha(m->accent, (0.28f + 0.1f * t) * (1 - ov)));
+        Color c = color_mix(act ? C_TEXT : (m->open ? C_TEXT : C_TEXT2), RGB(10, 10, 10), ov);
         draw_icon(it->icon, cx, y + 31, 28, c);
         if (t > 0.05f) {
             clip_push(SIDE_W - 10, y, w - SIDE_W - 10, 62);

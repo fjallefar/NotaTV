@@ -520,8 +520,8 @@ msgstr "Logins og serveradresser fra telefonen skal stadig godkendes på TV'et"
 msgid "Looks for a new version on GitHub and installs it"
 msgstr "Søger efter en ny version på GitHub og installerer den"
 
-msgid "Looks up cover art in MusicBrainz (open music database). Sends artist and album there"
-msgstr "Slår cover op i MusicBrainz (åben musikdatabase). Sender kunstner og album dertil"
+msgid "Looks up cover art at Apple (iTunes) and in MusicBrainz (open music database). Sends artist and album there"
+msgstr "Slår cover op hos Apple (iTunes) og i MusicBrainz (åben musikdatabase). Sender kunstner og album dertil"
 
 msgid "Makes the TV visible for 3 minutes. The code is confirmed here on the TV"
 msgstr "Gør TV'et synligt i 3 minutter. Koden godkendes her på TV'et"
@@ -1646,3 +1646,15 @@ msgstr "NotaTV bliver ved med at prøve selv, mens denne skærm er åben."
 
 msgid "This box cannot play that quality"
 msgstr "Denne boks kan ikke afspille den kvalitet"
+
+msgid "The box goes to sleep in 1 minute"
+msgstr "Boksen går i dvale om 1 minut"
+
+msgid "Sleep timer"
+msgstr "Sluk-timer"
+
+msgid "All settings"
+msgstr "Alle indstillinger"
+
+msgid "%d min left"
+msgstr "%d min tilbage"

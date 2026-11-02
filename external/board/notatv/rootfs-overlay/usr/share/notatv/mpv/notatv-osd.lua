@@ -33,6 +33,7 @@ end
 local function T(x) return TR[x] or x end
 
 local W, H = 1920, 1080
+local toast -- short message pill (defined further down)
 local ov = mp.create_osd_overlay("ass-events")
 local ovz = mp.create_osd_overlay("ass-events") -- the browse panel (animated on its own)
 ovz.z = 1
@@ -288,6 +289,41 @@ end
 
 local function ease(t) t = math.max(0, math.min(1, t)); return 1 - (1 - t) ^ 3 end
 
+-- a round disc (bezier circle, kappa 0.5523) in screen coordinates
+local function disc(cx, cy, r, color, alpha)
+    local k = r * 0.5523
+    return string.format("{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H%s&\\1a&H%s&\\p1}m %d %d b %d %d %d %d %d %d b %d %d %d %d %d %d b %d %d %d %d %d %d b %d %d %d %d %d %d{\\p0}",
+        hc(color), alpha, cx - r, cy, cx - r, cy - k, cx - k, cy - r, cx, cy - r, cx + k, cy - r, cx + r, cy - k, cx + r, cy,
+        cx + r, cy + k, cx + k, cy + r, cx, cy + r, cx - k, cy + r, cx - r, cy + k, cx - r, cy)
+end
+
+-- the dark fade at the bottom behind every bar (player, Live TV banner): one field with a very soft (blurred) top
+-- edge - smooth at any OSD resolution, and libass keeps the bitmap cached
+local function bottom_fade(parts, top)
+    top = top or (H - 270)
+    table.insert(parts, string.format("{\\an7\\pos(0,0)\\bord0\\shad0\\blur90\\1c&H%s&\\1a&H40&\\p1}m %d %d l %d %d %d %d %d %d{\\p0}",
+        hc("000000"), -200, top, W + 200, top, W + 200, H + 300, -200, H + 300))
+end
+
+-- the glass panel used for menus and lists (the same dark glass as the menus in NotaTV)
+local function glass(parts, x, y, w, h, r)
+    table.insert(parts, rrect(x, y, w, h, r, "281E1A", "0C"))
+    table.insert(parts, rrect(x, y, w, math.min(h, 160), r, "FFFFFF", "F0"))
+end
+
+-- a soft vertical gradient made of bands (libass has no gradients): alpha a0 at the top -> a1 at the bottom
+-- (ASS alpha: 0 = solid, 255 = invisible)
+local function vgrad(parts, x, y, w, h, color, a0, a1, n)
+    -- the bands lie exactly edge to edge: overlapping by a pixel drew darker lines across the picture
+    n = n or 10
+    for i = 0, n - 1 do
+        local y0, y1 = math.floor(y + h * i / n + 0.5), math.floor(y + h * (i + 1) / n + 0.5)
+        local t = (i + 0.5) / n
+        local a = math.floor(a0 + (a1 - a0) * t * t * (3 - 2 * t) + 0.5)
+        if y1 > y0 then table.insert(parts, rect(x, y0, w, y1 - y0, color, string.format("%02X", a))) end
+    end
+end
+
 local function cut(s, n)
     s = tostring(s or "")
     if #s <= n then return s end
@@ -311,19 +347,20 @@ end
 
 local function render_banner(parts, now)
     local c = chan
-    table.insert(parts, rect(0, H - 380, W, 380, "000000", "B0"))
-    table.insert(parts, rect(0, H - 280, W, 280, "000000", "80"))
-    table.insert(parts, rect(0, H - 180, W, 180, "000000", "60"))
-    -- logo
-    local lx, ly, lw, lh = 120, H - 262, 240, 136
-    table.insert(parts, rrect(lx, ly, lw, lh, 18, "F4EEEB", "00"))
+    bottom_fade(parts, H - 330)
+    -- logo (on a light card, like the channel logos on the home screen)
+    local lx, ly, lw, lh = 96, H - 262, 240, 136
+    if not c.logo_clean then -- an older tvshell: the logo as it comes, on a light card
+        table.insert(parts, rrect(lx, ly + 4, lw, lh, 20, "000000", "B0"))
+        table.insert(parts, rrect(lx, ly, lw, lh, 20, "F4EEEB", "00"))
+    end
     if c.logo then show_logo(lx + math.floor((lw - c.logo_w) / 2), ly + math.floor((lh - c.logo_h) / 2))
     else
         hide_logo()
-        table.insert(parts, text(lx + lw / 2, ly + lh / 2, 30, true, "463C3C", cut(c.name, 14), 5))
+        table.insert(parts, text(lx + lw / 2, ly + lh / 2, 30, true, c.logo_clean and "FFFFFF" or "463C3C", cut(c.name, 14), 5))
     end
     -- channel
-    local tx = 400
+    local tx = 380
     local num = tostring(c.num or "")
     table.insert(parts, text(tx, H - 262, 32, true, ACCENT, num))
     local px = tx + #num * 19 + 18
@@ -336,7 +373,7 @@ local function render_banner(parts, now)
     if c.total and c.total > 1 then table.insert(sub, string.format("%d af %d", c.pos, c.total)) end
     table.insert(parts, text(tx, H - 146, 28, false, GREY, table.concat(sub, "  ·  ")))
     -- program now/next
-    local cx, cw = 1080, W - 120 - 1080
+    local cx, cw = 1080, W - 96 - 1080
     if c.now then
         table.insert(parts, text(cx, H - 262, 22, true, ACCENT, "NU"))
         table.insert(parts, text(cx + cw, H - 262, 24, false, GREY,
@@ -353,7 +390,7 @@ local function render_banner(parts, now)
     else
         table.insert(parts, text(cx, H - 228, 30, false, GREY, T("No program info")))
     end
-    table.insert(parts, text(W - 120, 70, 40, true, "FFFFFF", os.date("%H:%M"), 9))
+    table.insert(parts, text(W - 96, 70, 40, true, "FFFFFF", os.date("%H:%M"), 9))
 end
 
 -- browse panel: slides in from the right, the rows slide along with each press
@@ -368,12 +405,12 @@ local function render_zap(parts, now)
     local px = W - 80 - pw + math.floor(slide * (pw + 120))
     local py, y0 = 130, 130 + 84
     local ph = 84 + rows * rh + 20
-    table.insert(parts, rrect(px, py, pw, ph, 28, "1E1A18", "30"))
+    glass(parts, px, py, pw, ph, 36)
     table.insert(parts, text(px + 30, py + 26, 26, true, "FFFFFF", string.format(T("Channel %d"), c.pos)))
     table.insert(parts, text(px + pw - 30, py + 28, 24, false, GREY, string.format("af %d", c.total), 9))
     -- highlight (fixed in the middle)
     local hy = y0 + 3 * rh
-    table.insert(parts, rrect(px + 14, hy + 4, pw - 40, rh - 8, 16, "FFFFFF", "00"))
+    table.insert(parts, rrect(px + 14, hy + 4, pw - 40, rh - 8, math.floor((rh - 8) / 2), "FFFFFF", "00"))
     local off = 0
     local st = (now - scroll_t) / SCROLL
     if st < 1 then off = math.floor(scroll_d * rh * (1 - ease(st))) end
@@ -456,25 +493,26 @@ function render()
         end
     else
         hide_poster()
-        table.insert(parts, rect(0, H - 300, W, 300, "000000", "70"))
-        table.insert(parts, rect(0, H - 200, W, 200, "000000", "50"))
+        bottom_fade(parts) -- the picture fades into the controls
     end
 
     -- bottom bar: title, subtitle, progress
-    local by = H - 250
+    local by = H - 262
     if not paused then
-        table.insert(parts, text(120, by, 52, true, "FFFFFF", fit_px(title, video_w() - 240, 52)))
+        table.insert(parts, text(96, by, 52, true, "FFFFFF", fit_px(title, video_w() - 192, 52)))
         if meta.subtitle and meta.subtitle ~= "" then
-            table.insert(parts, text(120, by + 66, 30, false, "D0D0D0", fit_px(meta.subtitle, video_w() - 240, 30)))
+            table.insert(parts, text(96, by + 66, 30, false, "D8D8D8", fit_px(meta.subtitle, video_w() - 192, 30)))
         end
     end
     if not live then
-        local bar_y, bx, bw = H - 120, 120, W - 240
+        local bar_y, bx, bw = H - 124, 96, W - 192
         local pct = math.max(0, math.min(1, pos / dur))
-        table.insert(parts, rect(bx, bar_y, bw, 8, "FFFFFF", "B0"))
-        table.insert(parts, rect(bx, bar_y, math.floor(bw * pct), 8, "FFFFFF", "00"))
-        table.insert(parts, string.format("{\\an5\\pos(%d,%d)\\bord0\\shad0\\1c&H" .. hc("FFFFFF") .. "&\\p1}m -12 0 b -12 -16 12 -16 12 0 b 12 16 -12 16 -12 0{\\p0}",
-            bx + math.floor(bw * pct), bar_y + 4))
+        table.insert(parts, rrect(bx, bar_y, bw, 10, 5, "FFFFFF", "B8"))
+        if bw * pct >= 10 then table.insert(parts, rrect(bx, bar_y, math.floor(bw * pct), 10, 5, "FFFFFF", "00")) end
+        -- the knob: a real circle centered on the line (drawn in screen coordinates, not \\an5-aligned)
+        local kx, ky = bx + math.floor(bw * pct), bar_y + 5
+        table.insert(parts, disc(kx, ky + 2, 16, "000000", "A0"))
+        table.insert(parts, disc(kx, ky, 13, "FFFFFF", "00"))
         table.insert(parts, text(bx, bar_y + 26, 30, false, "FFFFFF", fmt(pos)))
         local remain = dur - pos
         local ends = os.date("%H:%M", os.time() + math.floor(remain))
@@ -492,10 +530,11 @@ function render()
             table.insert(parts, text(lx, bar_y - 63, 32, true, "FFFFFF", lbl, 5))
         end
     else
-        table.insert(parts, text(120, H - 110, 30, true, "FF5555", "● LIVE"))
+        table.insert(parts, rrect(96, H - 124, 104, 44, 22, RED, "00"))
+        table.insert(parts, text(148, H - 102, 24, true, "FFFFFF", "LIVE", 5))
     end
     -- clock in the corner
-    if not menu then table.insert(parts, text(W - 120, 70, 40, true, "FFFFFF", os.date("%H:%M"), 9)) end
+    if not menu then table.insert(parts, text(W - 96, 70, 40, true, "FFFFFF", os.date("%H:%M"), 9)) end
     if menu and render_menu then render_menu(parts) end
     ov.data = table.concat(parts, "\n")
     ov:update()
@@ -638,8 +677,10 @@ end
 
 function render_menu(parts)
     if not menu then return end
-    local x, w = W - 640, 600
-    table.insert(parts, rect(x - 20, 0, w + 60, H, "101318", "18"))
+    -- a glass panel from the right, like the quick panel in the menus
+    local x, w = W - 644, 596
+    table.insert(parts, rect(0, 0, W, H, "000000", "B0"))
+    glass(parts, x - 24, 24, w + 48, H - 48, 36)
     local list, title
     if menu.level == 0 then
         list = sections()
@@ -658,7 +699,7 @@ function render_menu(parts)
         local it = list[i]
         local y = top + (i - first) * 76
         local f = i == menu.sel
-        if f then table.insert(parts, rect(x + 10, y, w, 64, "FFFFFF", "00")) end
+        if f then table.insert(parts, rrect(x, y, w, 64, 32, "FFFFFF", "00")) end
         local col = it.off and (f and "707070" or "6A6A6A") or (f and "101010" or "FFFFFF")
         local mark = (menu.level == 1 and it.on) and "✓ " or "   "
         table.insert(parts, text(x + 30, y + 14, 30, f, col, mark .. it.label))
@@ -683,13 +724,13 @@ local function menu_key(k)
             if not sec then return end
             if sec.id == "subsearch" and meta.subnokey then
                 -- no search without a key: say where to add it (two short lines, so it fits on the screen)
-                mp.osd_message(T("Searching for subtitles needs a free OpenSubtitles key.") .. "\n" ..
+                toast(T("Searching for subtitles needs a free OpenSubtitles key.") .. "\n" ..
                     T("Add it in Settings → Picture and sound."), 6)
                 close_menu()
                 return
             elseif sec.id == "subsearch" then
                 mp.commandv("script-message", "notatv-subsearch")
-                mp.osd_message(T("Searching for subtitles…"), 3)
+                toast(T("Searching for subtitles…"), 3)
                 close_menu()
                 return
             elseif sec.id == "stats" then
@@ -708,7 +749,7 @@ local function menu_key(k)
         elseif k == "ok" then
             local o = options(menu.section)[menu.sel]
             if o and o.off then
-                mp.osd_message(T("This box cannot play that quality"), 3)
+                toast(T("This box cannot play that quality"), 3)
                 render()
                 return
             end
@@ -733,9 +774,32 @@ mp.register_script_message("notatv-subresults", function()
 end)
 
 mp.register_script_message("notatv-show", function(sec) show(tonumber(sec) or 4) end)
+
+-- ---- short messages (volume, subtitles, audio ...): the same pill as NotaTV's own messages, top center ----
+local ovt = mp.create_osd_overlay("ass-events")
+ovt.z = 30
+ovt.res_x, ovt.res_y = W, H
+local toast_timer
+toast = function(msg, sec)
+    msg = mp.command_native({"expand-text", msg}) or msg -- ${volume} and the like
+    local lines = {}
+    for l in (msg .. "\n"):gmatch("(.-)\n") do if l ~= "" then table.insert(lines, l) end end
+    local w = 0
+    for _, l in ipairs(lines) do w = math.max(w, text_px(l, 28)) end
+    w = math.floor(w + 72)
+    local h = 28 + #lines * 38
+    local x, y = math.floor((W - w) / 2), 48
+    local parts = {rrect(x, y + 6, w, h, math.min(36, h / 2), "000000", "B0"), rrect(x, y, w, h, math.min(36, h / 2), "3E302A", "08")}
+    for i, l in ipairs(lines) do table.insert(parts, text(W / 2, y + 14 + (i - 1) * 38, 28, true, "FFFFFF", l, 8)) end
+    ovt.data = table.concat(parts, "\n")
+    ovt:update()
+    if toast_timer then toast_timer:kill() end
+    toast_timer = mp.add_timeout(sec or 2.5, function() ovt.data = ""; ovt:update() end)
+end
+mp.register_script_message("notatv-toast", function(msg, ms) toast(msg, (tonumber(ms) or 2500) / 1000) end)
 -- the Audio/Subtitles keys: tvshell cycles the track, this shows it with the same names as the menu
 mp.register_script_message("notatv-track-osd", function(kind)
-    mp.osd_message((kind == "sub" and T("Subtitles: %s") or T("Audio: %s")):format(current_label(kind)), 2.5)
+    toast((kind == "sub" and T("Subtitles: %s") or T("Audio: %s")):format(current_label(kind)), 2.5)
 end)
 
 -- ---- fade from/to black on start and stop (the UI fades out/in to match) ----
@@ -889,8 +953,8 @@ local function chat_draw()
         y = y - hgt
         table.insert(blocks, 1, {m = m, lines = lines, y = y})
     end
-    table.insert(parts, rect(CHAT_X, 0, CHAT_W, H, "141414", "00"))
-    table.insert(parts, rect(CHAT_X, 0, 2, H, "2A2A2A", "00"))
+    table.insert(parts, rect(CHAT_X, 0, CHAT_W, H, "1C1712", "00"))
+    table.insert(parts, rect(CHAT_X, 0, 2, H, "3A322C", "00"))
     table.insert(parts, text(CHAT_X + CHAT_PAD, CHAT_TOP, 26, true, "BBBBBB", "CHAT"))
     if #blocks == 0 then table.insert(parts, text(CHAT_X + CHAT_PAD, CHAT_TOP + 60, 24, false, "777777", T("Waiting for messages…"))) end
     for _, b in ipairs(blocks) do

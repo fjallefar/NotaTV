@@ -800,7 +800,7 @@ static void home_build(void) {
             item_label(e, t, sizeof t, st, sizeof st);
             h->title = str_dup(t);
             h->subtitle = str_dup(st);
-            h->image = backdrop_url(e, 640);
+            h->image = backdrop_url(e, 1280);
             h->logo = logo_url(e);
             h->key = str_printf("jf:%s", e->id);
             h->progress = e->run > 0 ? e->pos / e->run : 0;
@@ -1022,8 +1022,8 @@ static void draw_badges(const JItem *it, float xx, float yy, float ww, float hh)
 }
 
 static void draw_tile(const JItem *it, float x, float y, float w, float h, bool landscape, bool f) {
-    float sc = f ? 1.07f : 1, ww = w * sc, hh = h * sc, xx = x - (ww - w) / 2, yy = y - (hh - h) / 2;
-    if (f) draw_shadow(xx, yy, ww, hh, 14, 26, 1);
+    float fa = ui_focus(it, f), sc = 1 + 0.07f * fa, ww = w * sc, hh = h * sc, xx = x - (ww - w) / 2, yy = y - (hh - h) / 2;
+    ui_focus_under(xx, yy, ww, hh, 14, fa);
     fill_rrect(xx, yy, ww, hh, 14, C_SURFACE);
     char *u = landscape ? backdrop_url(it, 640) : poster_url(it);
     char t[256], sub[256];
@@ -1032,7 +1032,7 @@ static void draw_tile(const JItem *it, float x, float y, float w, float h, bool 
         text_draw_wrap(F_SEMI, 24, xx + 16, yy + 20, ww - 32, 4, 30, C_TEXT2, t);
     free(u);
     draw_badges(it, xx, yy, ww, hh);
-    if (f) stroke_rrect(xx - 4, yy - 4, ww + 8, hh + 8, 18, 4, C_FOCUS);
+    ui_focus_over(xx, yy, ww, hh, 14, fa);
     text_draw_clip(F_SEMI, 24, x, y + h + 14, w, f ? C_TEXT : C_TEXT2, AL_LEFT, t);
     if (sub[0]) text_draw_clip(F_REG, 22, x, y + h + 44, w, C_TEXT3, AL_LEFT, sub);
 }
@@ -1660,14 +1660,14 @@ static void jd_draw(Screen *s) {
         float ex = x + i * (JD_EP_W + JD_EP_GAP) - d->esx, ey = JD_EP_Y;
         if (ex > UI_W || ex + JD_EP_W < 0) continue;
         bool f = d->focus == 2 && d->ecol == i;
-        float sc = f ? 1.06f : 1, w = JD_EP_W * sc, h = JD_EP_H * sc, xx = ex - (w - JD_EP_W) / 2, yy = ey - (h - JD_EP_H) / 2;
-        if (f) draw_shadow(xx, yy, w, h, 14, 24, 1);
+        float fa = ui_focus(e, f), sc = 1 + 0.06f * fa, w = JD_EP_W * sc, h = JD_EP_H * sc, xx = ex - (w - JD_EP_W) / 2, yy = ey - (h - JD_EP_H) / 2;
+        ui_focus_under(xx, yy, w, h, 14, fa);
         fill_rrect(xx, yy, w, h, 14, C_SURFACE);
         char *u = str_printf("%s/Items/%s/Images/Primary?maxWidth=640&quality=85", jf_url(), e->id);
         if (!img_draw_cover(img_get(u), xx, yy, w, h, 14, 1)) draw_icon(ICON_TV, xx + w / 2, yy + h / 2, 60, C_TEXT3);
         free(u);
         draw_badges(e, xx, yy, w, h);
-        if (f) stroke_rrect(xx - 4, yy - 4, w + 8, h + 8, 18, 4, C_FOCUS);
+        ui_focus_over(xx, yy, w, h, 14, fa);
         char et[300];
         snprintf(et, sizeof et, "%d. %s", e->index, e->name ? e->name : "");
         text_draw_clip(F_SEMI, 24, ex, ey + JD_EP_H + 14, JD_EP_W, f ? C_TEXT : C_TEXT2, AL_LEFT, et);

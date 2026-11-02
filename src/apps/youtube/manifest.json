@@ -1,6 +1,6 @@
 {
   "id": "youtube",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "api": 2,
   "name": "YouTube",
   "desc": "Search and watch videos on YouTube",
@@ -11,11 +11,10 @@
   "order": 40,
   "default": true,
   "changes": {
-    "summary": "The video info page opens faster",
+    "summary": "A calmer, smoother look",
     "points": [
-      "The description, date and views are shown right away instead of after several seconds",
-      "The quality you choose is used for the next video too (it could play in 1080p after choosing 720p)",
-      "1440p and 4K are greyed out on a Raspberry Pi 4, which cannot play them from YouTube"
+      "What you choose lifts gently toward you with a soft glow instead of a white frame",
+      "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
     ]
   }
 }

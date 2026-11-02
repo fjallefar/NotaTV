@@ -63,7 +63,7 @@ void player_cmd(const char *const *args) { if (cur_state && ipc_fd >= 0) ipc_cmd
 void player_osd(const char *text, int ms) {
     char d[16];
     snprintf(d, sizeof d, "%d", ms);
-    CMD("show-text", text, d);
+    CMD("script-message", "notatv-toast", text, d); /* the same pill as the menus' messages (notatv-osd.lua) */
 }
 
 /* frame rate: find the connected display's preferred resolution */
@@ -586,11 +586,11 @@ static void handle_action(const InputEvent *ev, const PlayRequest *rq, MpvState 
             int on = !cfg_int("tw_chat", 1);
             cfg_set_int("tw_chat", on);
             CMD("script-message", "notatv-chat-show", on ? "1" : "0");
-            CMD("show-text", on ? T("Chat: on") : T("Chat: off"), "1500");
+            CMD("script-message", "notatv-toast", on ? T("Chat: on") : T("Chat: off"), "1500");
         }
         break;
-    case A_VOLUP: CMD("add", "volume", "5"); CMD("show-text", T("Volume: ${volume}%")); break;
-    case A_VOLDOWN: CMD("add", "volume", "-5"); CMD("show-text", T("Volume: ${volume}%")); break;
+    case A_VOLUP: CMD("add", "volume", "5"); CMD("script-message", "notatv-toast", T("Volume: ${volume}%"), "1500"); break;
+    case A_VOLDOWN: CMD("add", "volume", "-5"); CMD("script-message", "notatv-toast", T("Volume: ${volume}%"), "1500"); break;
     case A_MUTE: CMD("cycle", "mute"); break;
     case A_DIGIT: case A_CHAR:
         if (!rq->is_live && ev->ch >= '0' && ev->ch <= '9' && st->have_dur) { /* 1-9: 10-90 %, 0: start */

@@ -351,8 +351,10 @@ static void draw_apps(const Setup *v, float x, float y, float a) {
         if (f) draw_shadow(cx, cy, cw, APP_H, 20, 22, a);
         fill_rrect(cx, cy, cw, APP_H, 20, color_alpha(f ? C_SURFACE2 : C_SURFACE, a));
         if (on) stroke_rrect(cx, cy, cw, APP_H, 20, 3, color_alpha(C_OK, a * 0.9f));
-        fill_rrect_vgrad(cx + 22, cy + 30, 76, 76, 18, color_alpha(ap ? ap->c1 : c->c1, a), color_alpha(ap ? ap->c2 : c->c2, a));
-        draw_icon(ap ? ap->icon : c->icon, cx + 60, cy + 68, 40, color_alpha(ap ? ap->fg : c->fg, a));
+        if (!draw_app_art(g[i].id, cx + 22, cy + 30, 76, 76, 18, a)) {
+            fill_rrect_vgrad(cx + 22, cy + 30, 76, 76, 18, color_alpha(ap ? ap->c1 : c->c1, a), color_alpha(ap ? ap->c2 : c->c2, a));
+            draw_icon(ap ? ap->icon : c->icon, cx + 60, cy + 68, 40, color_alpha(ap ? ap->fg : c->fg, a));
+        }
         text_draw_clip(F_SEMI, 26, cx + 116, cy + 46, cw - 170, color_alpha(C_TEXT, a), AL_LEFT, ap ? T(ap->name) : c->name);
         float bx = cx + cw - 34, by = cy + 34;
         if (on) { fill_circle(bx, by, 16, color_alpha(C_OK, a)); draw_icon(ICON_CHECK, bx, by, 18, color_alpha(C_TEXT, a)); }

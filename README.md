@@ -23,7 +23,8 @@ NotaTV is its own Linux distribution (Buildroot) with its own user interface, wr
 - **Seerr**: find and request movies and shows (Overseerr/Jellyseerr)
 - **Music** from your phone via **AirPlay** and **Bluetooth**
 - **Game streaming** from a PC with Sunshine (Moonlight protocol, ~11 ms on the box)
-- **Casting**: DLNA, Plex cast, YouTube cast, Jellyfin "Play On", AirPlay screen mirroring
+- **Tesla**: your car's battery, charging and status live from your own TeslaMate
+- **Casting**: DLNA, YouTube cast, Jellyfin "Play On", AirPlay screen mirroring
 - **Media player** for USB drives and SMB/NFS shares
 - **HDMI-CEC**: your TV remote controls the box
 - A **phone page** for typing, remote control and setup
@@ -68,6 +69,8 @@ The box only contacts outside services when you use a feature:
 | Your Seerr server, TMDB images | Seerr app |
 | netflix.com (public top 10 data file) | Seerr → Netflix top 10 |
 | Your IPTV provider | Live TV |
+| Your TeslaMate's MQTT server (local network) | Tesla app |
+| tile.openstreetmap.org | Tesla → Map (off until you turn it on) |
 | musicbrainz.org, coverartarchive.org | Cover art for Bluetooth music (can be turned off) |
 | api.github.com, github.com | Settings → System → Update NotaTV |
 | pool.ntp.org | Setting the clock at startup |
@@ -112,7 +115,7 @@ The TV's own remote works over HDMI-CEC. Many TVs (LG in particular) only pass o
 | Arrows / OK / Back | Navigate / select / back |
 | **Hold OK** | Extra options (YouTube: info, Live TV: channel menu) |
 | **Hold Back** | Go to the home screen |
-| 🔴 Red | **Menu, always.** Actions such as quit, refresh, aspect ratio and technical info are found here |
+| 🔴 Red | **Menu, always.** Actions such as quit, refresh, aspect ratio and technical info are found here. On the home screen: the quick panel |
 | 🟢 Green | Info |
 | 🟡 Yellow | Act on the selected item (favorite, remove, show password, Twitch chat on/off) |
 | 🔵 Blue | Search (YouTube, Plex, Seerr, Jellyfin, Twitch) |
@@ -126,6 +129,8 @@ The bar at the bottom of the screen shows the same actions as buttons, in the or
 - ↓ or 🔴 opens the player menu: subtitles, audio, quality, speed, subtitle search and aspect ratio.
 - 🟢 shows info, and Back stops.
 - In Live TV, ↑/↓ or CH± changes channel.
+
+**Quick panel:** 🔴 Red on the home screen (or the Power key) opens a panel from the right with the time, the box's name and address, a **sleep timer** (off, 15, 30, 60, 90 or 120 minutes - ←/→ or OK; a message one minute before, then the box goes to sleep), shortcuts to Bluetooth, Picture and sound, Network and all settings, and Sleep, Restart and Power off.
 
 **Keyboard (for development):** F2-F5 are the color keys, Esc is Back and Enter is OK.
 
@@ -163,9 +168,10 @@ In the App Store on the home screen you can install more apps, update apps (*Upd
 | **Seerr** | Find and request movies and shows (Overseerr/Jellyseerr) with Plex login. Season picker, trailers, "More like this" and Netflix top 10 for your country. |
 | **Music** | Receives music from your phone over **AirPlay** (iPhone/iPad/Mac) or **Bluetooth** (any phone). "Now playing" shows cover art, title and progress. |
 | **Games** | Game streaming from a PC running Sunshine with our own client `tvmoon`. HEVC is decoded in hardware straight to the screen, at 1080p 120 Hz. |
+| **Tesla** | Reads your own TeslaMate over its MQTT server (port 1883), read only: nothing is sent to the car and nothing is saved on disk. Finds TeslaMate on the network or takes an address, and asks for an MQTT login when the server wants one. Battery, range, charging, climate, tyres, locks and doors, the car seen from above, where it is, route with arrival time and battery at arrival, model and software. The side menu (Left) chooses the car, turns each part on or off, and puts up to 3 cars small at the top of the home screen. Everything is fitted to one screen. |
 | **Media** | USB drives are mounted automatically. SMB/NFS network drives are supported. Plays movies, music and pictures. |
 
-**Find servers on the network** (Plex and Jellyfin) only searches the local network: Plex GDM, Jellyfin UDP 7359 and a scan of your own subnet.
+**Find servers on the network** (Plex, Jellyfin and TeslaMate) only searches the local network: Plex GDM, Jellyfin UDP 7359 and a scan of your own subnet (TeslaMate: MQTT port 1883, plus port 4000 to explain when only TeslaMate's web page answers).
 
 **Subtitles from OpenSubtitles** (Plex and Jellyfin): press Red while a movie or episode plays and choose *Search subtitles*. It needs a free API key: create an account on opensubtitles.com, make a key under *Consumers* and enter it in *Settings → Picture and sound*. Add your OpenSubtitles username and password there too: OpenSubtitles may refuse downloads without a login. Without a key, the menu says where to add it. Movies are found by their TMDB id, episodes by show, season and episode; the subtitle you pick is downloaded and turned on at once.
 
@@ -181,13 +187,11 @@ Google Cast/Chromecast cannot be built as open source, because phones require a 
 | **Bluetooth** audio (BlueZ + bluez-alsa) | Any phone: any app, including Spotify |
 | **DLNA** receiver (libupnp) | BubbleUPnP, "Cast to Device" in Windows, VLC … |
 | **Jellyfin "Play On"** | The Jellyfin app |
-| **Plex cast** (GDM + Plex Companion) | The Plex app's cast button |
 | **YouTube cast** (DIAL + YouTube lounge) | The YouTube app: Cast, or "Link with TV code" |
 | **AirPlay screen mirroring** (UxPlay) | iPhone, iPad, Mac (shown as "NotaTV (screen)") |
 
-YouTube cast goes through YouTube's servers because the protocol requires it. Plex cast and DLNA stay on the local network.
+YouTube cast goes through YouTube's servers because the protocol requires it. DLNA stays on the local network.
 
-- **Plex cast** only takes commands from the Plex account the box is signed in with (or its Plex Home); plex.tv is asked once which account a phone belongs to.
 - **AirPlay screen mirroring** asks for the box's 4-digit code the first time a phone mirrors. The TV shows it, and it is under *Settings → Cast and sharing*.
 - **DLNA** only plays addresses on the network (http, https, rtsp).
 
@@ -293,6 +297,13 @@ Build the app packages first (`make -C src/apps`) and run with `TVSHELL_APPS=$PW
 
 **Making an app:** see [src/apps/README.md](src/apps/README.md).
 
+**The look** (keep it the same everywhere):
+- One left edge: 96 px from the screen edge (1920x1080 UI), also in the player OSD.
+- Focus is a lift, not a frame: `ui_focus()` + `ui_focus_under()/ui_focus_over()` (spring, shadow, soft glow, light from above). Lists use a white pill that glides (`slide_to()`), dialogs and panels are dark glass (`draw_panel()`), and short messages are a pill at the top center (`app_toast()` in the menus, `script-message notatv-toast` in the player).
+- Animations use springs (`spring_to()`, `SPRING_SNAPPY` for focus, `SPRING_SOFT` for things that slide) and stay short. On the Pi the GPU is the limit, so avoid extra full-screen layers: a screen that opens draws what is underneath from a snapshot.
+- App icons are our own drawings (no logo files from the services): `scripts/gen-icons.py` draws them as SVG and renders `src/shell/assets/icons/<app id>.png` (496x280, the home tile at 2x) with `rsvg-convert`. An app without an icon gets the colored tile with its glyph.
+- Channel logos go through `img_get_logo()`: cleaned once when loaded so they stand on the dark background without a box.
+
 **A box stuck on an update** ("Restart the box to finish the (previous) update" again and again, also after a restart): the updater in 1.0.0-1.0.2 could not finish an update that changes the kernel. Turn on *Developer mode (SSH)*, log in with `ssh root@<ip>` (password `notatv`) and run the fixed updater once. It finishes the stuck update and restarts the box:
 ```
 curl -fsSL https://raw.githubusercontent.com/fjallefar/NotaTV/main/external/board/rpi4/overlay/usr/libexec/notatv/update -o /tmp/update-fix && sh /tmp/update-fix resume
@@ -343,11 +354,12 @@ src/shell/                      the user interface (C11 + SDL3)
   bt.c dlna.c mirror.c netdisc.c moon.c   Bluetooth, DLNA, AirPlay mirroring, server discovery, game streaming
   subs.c         OpenSubtitles (shared by the apps' players)
   tz.c           time zones (tzlist.h is generated by scripts/gen-tzlist.py)
-  assets/        fonts (Inter) and language files (lang/*.po)
+  quick.c        the quick panel (sleep timer, settings shortcuts, power)
+  assets/        fonts (Inter), app icons (icons/*.png) and language files (lang/*.po)
 src/apps/                       the apps, one package per folder (iptv, plex, jellyfin, youtube, twitch, seerr,
-                                music, games, media), installed in /usr/lib/notatv/apps
+                                music, games, tesla, media), downloaded from the App Store into /data/notatv/apps-pkg
 src/moon/                       tvmoon: game streaming client (Moonlight protocol)
-scripts/                        i18n check, UI tests, time zone list generator
+scripts/                        i18n check, UI tests, time zone list generator, app icons (gen-icons.py)
 .github/workflows/release.yml   builds and publishes a release when a v* tag is pushed
 ```
 

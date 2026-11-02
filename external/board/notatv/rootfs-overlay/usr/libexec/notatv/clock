@@ -1,0 +1,32 @@
+#!/bin/sh
+# clock: save | restore
+# The Pi has no battery-backed clock and starts in 1970, where every HTTPS connection fails. The box remembers the
+# last known time in /data instead: restore (S05notatv, right after /data is mounted) sets the clock to that time,
+# or to the build time of the image if that is later, so the box starts only "as far behind as it was switched off"
+# and HTTPS works before a time server answers. NTP (S60notatv-services) then sets the real time.
+# save is called every 15 minutes, after each NTP sync and at shutdown.
+. /usr/libexec/notatv/lib.sh
+F=/data/notatv/clock
+
+build_time() { sed -n 's/^BUILD_EPOCH=//p' /etc/notatv-release; }
+num() { case "$1" in ''|*[!0-9]*) echo 0 ;; *) echo "$1" ;; esac; }
+
+case "$1" in
+save)
+	now=$(date -u +%s)
+	# never save a clock that is behind the image (e.g. still 1970 because restore failed)
+	[ "$now" -ge "$(num "$(build_time)")" ] || exit 0
+	echo "$now" > $F.tmp && mv $F.tmp $F
+	;;
+restore)
+	t=$(num "$(cat $F 2>/dev/null)")
+	b=$(num "$(build_time)")
+	[ "$b" -gt "$t" ] && t=$b
+	# only forward: a clock that is already later (RTC add-on board, NTP) is kept
+	if [ "$t" -gt "$(date -u +%s)" ]; then
+		date -u -s "@$t" >/dev/null && log "clock: set to the last known time $(date -u '+%Y-%m-%d %H:%M') UTC (NTP corrects it)"
+	fi
+	;;
+*) echo "usage: clock save|restore" >&2; exit 1 ;;
+esac
+exit 0

@@ -32,6 +32,8 @@ static double next_bus_try;       /* reconnect to the system D-Bus (it may start
 static bool pair_shown;           /* the pairing screen is open: check the adapter now and then */
 static int adapter_state;         /* -1 unknown, 0 no adapter (bluetoothd missing / chip did not start), 1 ok */
 static double next_adapter_check;
+static Screen *pair_scr;          /* the open pairing screen (closed by itself when a phone has paired) */
+static bool pair_close;
 
 /* ---------- small helpers ---------- */
 static void track_conn(const char *dev, bool on) {
@@ -101,6 +103,10 @@ static int dev_info(const char *dev_path) {
     get_str(dev_path, "org.bluez.Device1", "Alias", dev_cache[k].name, sizeof dev_cache[k].name);
     get_str(dev_path, "org.bluez.Device1", "Icon", dev_cache[k].icon, sizeof dev_cache[k].icon);
     return k;
+}
+/* a new device is cached before it has paired - often with the address as its name and no icon: read it again */
+static void dev_forget(const char *dev_path) {
+    for (int i = 0; i < dev_cache_n; i++) if (!strcmp(dev_cache[i].path, dev_path)) dev_cache[i].path[0] = 0;
 }
 static void device_name(const char *dev_path, char *out, size_t n) {
     snprintf(out, n, "%s", dev_cache[dev_info(dev_path)].name);
@@ -277,6 +283,25 @@ static void handle_props(const char *path, const char *iface, DBusMessageIter di
             dbus_bool_t b;
             dbus_message_iter_get_basic(&v, &b);
             if ((!strcmp(k, "Powered") && b) || (!strcmp(k, "Connectable") && !b && cfg_int("bt_enabled", 1))) bt_apply();
+        } else if (!strcmp(iface, "org.bluez.Device1") && !strcmp(k, "Paired") &&
+                   dbus_message_iter_get_arg_type(&v) == DBUS_TYPE_BOOLEAN) {
+            dbus_bool_t b;
+            dbus_message_iter_get_basic(&v, &b);
+            if (b) { /* pairing finished: real name/icon, and the pairing screen has done its job */
+                char dev[128], name[128];
+                dev_of(path, dev, sizeof dev);
+                dev_forget(dev);
+                if (!strcmp(transport_dev, dev)) {
+                    if (!strncmp(dev_cache[dev_info(dev)].icon, "input", 5)) { /* turned out to be a keyboard/controller: not music */
+                        transport_dev[0] = player_path[0] = 0;
+                        MUSIC(bt_state, false, false, NULL, false);
+                    } else {
+                        device_name(dev, name, sizeof name);
+                        MUSIC(bt_state, true, false, name, false);
+                    }
+                }
+                if (pair_scr) pair_close = true;
+            }
         } else if (!strcmp(iface, "org.bluez.Device1") && !strcmp(k, "Connected") &&
                    dbus_message_iter_get_arg_type(&v) == DBUS_TYPE_BOOLEAN) {
             dbus_bool_t b;
@@ -311,7 +336,9 @@ static void props_changed(const char *path, DBusMessage *m) {
     handle_props(path, iface, dict);
 }
 
-/* new object: e.g. the phone's player - its current track is only here (not in PropertiesChanged) */
+/* new object: e.g. the phone's player - its current track is only here (not in PropertiesChanged). Also a phone
+   that has never paired before: BlueZ creates its Device1 when it connects, and Connected=true (and later Paired)
+   only come here, not as a change - so the box did not notice the connection */
 static void interfaces_added(DBusMessage *m) {
     DBusMessageIter it, ifaces;
     const char *path;
@@ -327,7 +354,8 @@ static void interfaces_added(DBusMessage *m) {
         dbus_message_iter_get_basic(&kv, &iface);
         dbus_message_iter_next(&kv);
         dbus_message_iter_recurse(&kv, &dict);
-        if (!strcmp(iface, "org.bluez.MediaPlayer1") || !strcmp(iface, "org.bluez.MediaTransport1")) handle_props(path, iface, dict);
+        if (!strcmp(iface, "org.bluez.MediaPlayer1") || !strcmp(iface, "org.bluez.MediaTransport1") ||
+            !strcmp(iface, "org.bluez.Device1")) handle_props(path, iface, dict);
         dbus_message_iter_next(&ifaces);
     }
 }
@@ -436,6 +464,10 @@ void bt_tick(void) {
         next_try = app_time() + 5;
         register_agent();
     }
+    if (pair_close) { /* wait until the code dialog is closed: only close the pairing screen itself */
+        if (!pair_scr) pair_close = false;
+        else if (app_top() == pair_scr) { pair_close = false; app_pop(); }
+    }
     if (pair_until > 0 && app_time() >= pair_until) { /* pairing mode expired */
         pair_until = 0;
         set_bool(ADAPTER, "org.bluez.Adapter1", "Discoverable", false);
@@ -542,14 +574,21 @@ int bt_devices(BtDevice *out, int max) {
     return n;
 }
 
+typedef struct { char path[128], name[128]; } ConnReq;
 static void connect_done(DBusPendingCall *pc, void *ud) {
-    char *name = ud;
+    ConnReq *c = ud;
     DBusMessage *r = dbus_pending_call_steal_reply(pc);
-    if (r && dbus_message_get_type(r) == DBUS_MESSAGE_TYPE_ERROR)
-        app_toast(T("Could not connect to %s - is Bluetooth on on the phone?"), name);
+    const char *err = r && dbus_message_get_type(r) == DBUS_MESSAGE_TYPE_ERROR ? dbus_message_get_error_name(r) : NULL;
+    if (err && strcmp(err, "org.bluez.Error.AlreadyConnected"))
+        app_toast(T("Could not connect to %s - is Bluetooth on on the phone?"), c->name);
+    else if (r && !transport_dev[0]) { /* connected (or already was): show it, even if no signal said so */
+        track_conn(c->path, true);
+        snprintf(transport_dev, sizeof transport_dev, "%s", c->path);
+        MUSIC(bt_state, true, false, c->name, true);
+    }
     if (r) dbus_message_unref(r);
     dbus_pending_call_unref(pc);
-    free(name);
+    free(c);
 }
 
 void bt_connect(const char *path) {
@@ -557,11 +596,14 @@ void bt_connect(const char *path) {
     bt_wake(60);
     DBusMessage *m = dbus_message_new_method_call("org.bluez", path, "org.bluez.Device1", "Connect");
     if (!m) return;
-    char nm[128];
-    device_name(path, nm, sizeof nm);
+    ConnReq *c = calloc(1, sizeof *c);
+    if (!c) { dbus_message_unref(m); return; }
+    snprintf(c->path, sizeof c->path, "%s", path);
+    device_name(path, c->name, sizeof c->name);
     DBusPendingCall *pc = NULL;
     if (dbus_connection_send_with_reply(bus, m, &pc, 20000) && pc)
-        dbus_pending_call_set_notify(pc, connect_done, str_dup(nm), NULL);
+        dbus_pending_call_set_notify(pc, connect_done, c, NULL);
+    else free(c);
     dbus_message_unref(m);
 }
 
@@ -654,13 +696,16 @@ static bool pair_input(Screen *s, const InputEvent *ev) {
     return false;
 }
 static void pair_enter(Screen *s) {
-    (void)s;
+    pair_scr = s;
+    pair_close = false;
     pair_shown = true;
     if (bus) { check_adapter(); next_adapter_check = app_time() + 3; }
     pair_start();
 }
 static void pair_leave(Screen *s) {
     (void)s;
+    pair_scr = NULL;
+    pair_close = false;
     pair_shown = false;
     if (pair_until > 0) {
         pair_until = 0;

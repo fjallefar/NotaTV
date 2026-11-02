@@ -18,6 +18,53 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.5
+
+> **In short:** A new, calmer look across the whole box, a quick panel with a sleep timer, sharper pictures and the new Tesla app.
+> - What you choose lifts gently toward you, and apps open out of their tile
+> - Our own app icons, glass menus and the same player bar in every app
+> - Quick panel (Red on the home screen): sleep timer, shortcuts and power
+> - Sharper pictures on the home screen and channel logos without a white box
+> - New app: Tesla, your car's battery and charging from your own TeslaMate
+
+<!-- tldr:da
+Kort: Et nyt, roligere udseende i hele boksen, et hurtigpanel med sluk-timer, skarpere billeder og den nye Tesla-app.
+- Det, du vælger, løfter sig blødt frem, og apps åbner ud af deres flise
+- Egne app-ikoner, menuer af glas og samme afspillerbjælke i alle apps
+- Hurtigpanel (Rød på forsiden): sluk-timer, genveje og sluk
+- Skarpere billeder på forsiden og kanallogoer uden hvid boks
+- Ny app: Tesla, bilens batteri og opladning fra din egen TeslaMate
+-->
+
+**New look**
+- Home screen: one left edge for everything, calmer tiles with our own app icons, a soft glow in the color of the app in focus, and the name of every app under its tile. *Move app* (Green) shows after a few seconds on a tile.
+- Focus is the same everywhere: the chosen poster, tile or button lifts toward you with a small spring and a soft glow, instead of a white frame (Plex, Jellyfin, YouTube, Twitch, Seerr, the Live TV guide, the App Store).
+- An app grows out of its tile when you open it, and shrinks back into it on Back. What is underneath is drawn once instead of every frame, so the animations run smoothly on the Pi.
+- Dialogs, lists, the keyboard and the apps' side menus are dark glass, with a white pill that glides to the chosen row. Settings has the same gliding pill.
+- The App Store only shows a status when it matters (*Install*, *Update*, *Installing*).
+
+**Quick panel**
+- Red on the home screen (or the Power key) opens a panel from the right: the time, the box's name and address, a **sleep timer** (15 minutes to 2 hours, with a message one minute before), shortcuts to Bluetooth, Picture and sound, Network and all settings, and Sleep, Restart and Power off.
+
+**Player**
+- A soft fade at the bottom instead of dark bands (they drew lines across the picture), a rounded timeline, and LIVE as a red pill. The Live TV channel banner and channel list look the same as the rest.
+- Short messages (volume, subtitles, audio, chat on/off) are a pill at the top, the same as the menus' own messages.
+- The Red menu is a glass panel from the right. Game streaming's menu has the same look.
+
+**Pictures**
+- The home screen's row and top get pictures in twice the resolution from Plex and Jellyfin, and pictures shown smaller than they are stay smooth.
+- Channel logos stand on their own: a white background is removed, dark text is made light, the empty frame around them is cut away, and small logos are enlarged smoothly. No white box any more, also not while changing channel.
+
+**System**
+- The clock starts from the last known time (or the build time) instead of 1970 until a time server answers.
+- Bluetooth: a phone pairing for the first time is noticed, and the pairing screen closes when it is done.
+
+**Apps** (update in the App Store; the new look needs NotaTV 1.0.5)
+- Tesla 1.0.0 (new): battery, range, charging, climate, tyres, locks and doors, the car seen from above, route and arrival, read only from your own TeslaMate over MQTT. Up to 3 cars small at the top of the home screen.
+- Music 1.0.1: a cover in the album's colors while the real one loads, covers from Apple or MusicBrainz (your choice), protection against burn-in on OLED, and a small *Now playing* box in the top bar.
+- Plex 1.0.4, Jellyfin 1.0.3, YouTube 1.0.4, Twitch 1.0.4, Seerr 1.0.4 and Live TV 1.0.4: the new look, sharper pictures and channel logos without a box.
+- Plex 1.0.4: *Plex cast* is removed for now. The new Plex app for phones only casts to Chromecast, and app.plex.tv cannot reach the box, so it did not work from anything in use today. It will come back in a form that works.
+
 ## 1.0.4
 
 > **In short:** Series pages in Plex and Jellyfin, a TV guide in Live TV, a start-up animation, and many fixes.

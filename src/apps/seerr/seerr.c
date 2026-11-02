@@ -641,8 +641,8 @@ static void seerr_update(Screen *s, float dt) {
 }
 
 static void draw_poster(SItem *it, float x, float y, float w, float h, bool f) {
-    float sc = f ? 1.07f : 1, ww = w * sc, hh = h * sc, xx = x - (ww - w) / 2, yy = y - (hh - h) / 2;
-    if (f) draw_shadow(xx, yy, ww, hh, 14, 26, 1);
+    float fa = ui_focus(it, f), sc = 1 + 0.07f * fa, ww = w * sc, hh = h * sc, xx = x - (ww - w) / 2, yy = y - (hh - h) / 2;
+    ui_focus_under(xx, yy, ww, hh, 14, fa);
     fill_rrect(xx, yy, ww, hh, 14, C_SURFACE);
     char url[300] = "";
     if (it->poster) snprintf(url, sizeof url, TMDB_IMG "w342%s", it->poster);
@@ -661,7 +661,7 @@ static void draw_poster(SItem *it, float x, float y, float w, float h, bool f) {
         fill_rrect(xx + ww - 58, yy + hh - 58, 48, 48, 12, RGB(229, 9, 20));
         text_draw(F_BOLD, 28, xx + ww - 34, yy + hh - 51, C_TEXT, AL_CENTER, rk);
     }
-    if (f) stroke_rrect(xx - 4, yy - 4, ww + 8, hh + 8, 18, 4, C_FOCUS);
+    ui_focus_over(xx, yy, ww, hh, 14, fa);
     text_draw_clip(F_SEMI, 22, x, y + h + 14, w, f ? C_TEXT : C_TEXT2, AL_LEFT, it->title);
     char sub[64];
     snprintf(sub, sizeof sub, "%s%s%s", it->year ? it->year : "", it->year ? " · " : "", it->type && !strcmp(it->type, "tv") ? T("Show") : T("Movie"));
@@ -1200,7 +1200,7 @@ static void detail_draw(Screen *s) {
     bool f0 = d->btn == 0 && !d->focus;
     Color bg = !can_request ? (it->status >= 4 ? C_OK : RGB(99, 102, 241)) : (f0 ? C_FOCUS : RGBA(255, 255, 255, 40));
     fill_rrect(x, 720 - sc, w, 76, 38, bg);
-    if (f0 && !can_request) stroke_rrect(x - 4, 716 - sc, w + 8, 84, 42, 4, C_FOCUS);
+    if (f0 && !can_request) { ui_focus_under(x, 720 - sc, w, 76, 38, 1); fill_rrect(x, 720 - sc, w, 76, 38, bg); ui_focus_over(x, 720 - sc, w, 76, 38, 1); }
     Color fg = can_request && f0 ? RGB(10, 10, 10) : C_TEXT;
     draw_icon(can_request ? ICON_STAR : ICON_CHECK, x + 42, 758 - sc, 26, fg);
     text_draw(F_SEMI, 28, x + 70, 740 - sc, fg, AL_LEFT, lbl);

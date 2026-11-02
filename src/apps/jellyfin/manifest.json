@@ -1,6 +1,6 @@
 {
   "id": "jellyfin",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "Jellyfin",
   "desc": "Movies and shows from your Jellyfin server",
@@ -11,12 +11,11 @@
   "order": 30,
   "default": false,
   "changes": {
-    "summary": "A series page with all seasons and episodes",
+    "summary": "A calmer, smoother look",
     "points": [
-      "Play starts where you left off, or at the first new episode",
-      "Episodes from Continue and Latest open the series page",
-      "Search subtitles in the player menu (with an OpenSubtitles key)",
-      "Continue watching on the home screen, like Plex"
+      "What you choose lifts gently toward you with a soft glow instead of a white frame",
+      "Sharper pictures in the row on the home screen",
+      "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
     ]
   }
 }

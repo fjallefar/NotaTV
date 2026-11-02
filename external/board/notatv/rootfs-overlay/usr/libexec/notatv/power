@@ -19,6 +19,6 @@ sleep)
 	for p in /run/udhcpc.*.pid; do [ -f "$p" ] && kill -USR1 $(cat $p) 2>/dev/null; done
 	$H/music resume
 	;;
-reboot) $H/logs save; sync; reboot ;; # logs save: only with the troubleshooting log on
-poweroff) $H/logs save; [ "$(cfg_get cec_tv_off 1)" = 1 ] && $H/cec tv-off >/dev/null 2>&1; sync; poweroff ;;
+reboot) $H/logs save; $H/clock save; sync; reboot ;; # logs save: only with the troubleshooting log on
+poweroff) $H/logs save; $H/clock save; [ "$(cfg_get cec_tv_off 1)" = 1 ] && $H/cec tv-off >/dev/null 2>&1; sync; poweroff ;;
 esac

@@ -21,3 +21,6 @@ __pycache__/
 *-update.tar.gz
 *-update.tar.gz.sha256
 src/apps/out/
+compile_commands.json
+.cache/
+.serena/
