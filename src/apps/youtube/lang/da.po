@@ -294,8 +294,8 @@ msgstr "En telefon"
 msgid "YouTube: %s is connected"
 msgstr "YouTube: %s er forbundet"
 
-msgid "Up to 1080p on a Raspberry Pi 4 (YouTube has 1440p and 4K only in formats it cannot decode)"
-msgstr "Op til 1080p på en Raspberry Pi 4 (YouTube har kun 1440p og 4K i formater, den ikke kan afkode)"
+msgid "Up to 1080p on a Raspberry Pi (YouTube has 1440p and 4K only in formats it cannot decode)"
+msgstr "Op til 1080p på en Raspberry Pi (YouTube har kun 1440p og 4K i formater, den ikke kan afkode)"
 
 msgid "A calmer, smoother look"
 msgstr "Et roligere og blødere udseende"
@@ -305,3 +305,9 @@ msgstr "Det, du vælger, løfter sig blødt frem med en svag glød i stedet for 
 
 msgid "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
 msgstr "Det nye udseende kræver NotaTV 1.0.5 - på ældre versioner ser det ud som før"
+
+msgid "Ready for the Raspberry Pi 5"
+msgstr "Klar til Raspberry Pi 5"
+
+msgid "On a Raspberry Pi 5 the quality also stops at 1080p - YouTube has 1440p and 4K only in formats the Pi 5 cannot decode in hardware"
+msgstr "På en Raspberry Pi 5 stopper kvaliteten også ved 1080p - YouTube har kun 1440p og 4K i formater, Pi 5 ikke kan afkode i hardware"

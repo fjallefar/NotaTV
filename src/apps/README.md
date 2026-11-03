@@ -5,7 +5,7 @@ drawing, the player, the on-screen keyboard and dialogs, network calls, settings
 adds its own screens and logic.
 
 Every app is a package, i.e. a folder here in `src/apps/`: Live TV (`iptv`), Plex, Jellyfin, YouTube, Twitch,
-Seerr, Music, Games, Tesla and Media. Each one is built into its own `app.so`. Only Settings and the App Store are part of
+Seerr, Music, Radio, Games, Tesla and Media. Each one is built into its own `app.so`. Only Settings and the App Store are part of
 `tvshell` itself. The image comes without apps: they are downloaded from the App Store (the GitHub release `apps`)
 into `/data/notatv/apps-pkg/<id>/`.
 
@@ -58,7 +58,7 @@ const NotaApp nota_app = {
 
 | Field | Purpose |
 |---|---|
-| `order` | Position on the home screen. Live TV is 10, Plex 20, Jellyfin 30, YouTube 40, Twitch 50, Seerr 60, Music 70, Games 80, Tesla 85, Media 90. |
+| `order` | Position on the home screen. Live TV is 10, Plex 20, Jellyfin 30, YouTube 40, Twitch 50, Seerr 60, Music 70, Radio 75, Games 80, Tesla 85, Media 90. |
 | `flags` | `APP_DEFAULT_OFF`: not installed from the start. `APP_ROW_LOGOS`: the home row shows logos. |
 | `init` | Runs once per run of NotaTV: when it starts, or when the app is installed. Not again if the app is uninstalled and installed again before a restart. |
 | `tick` | Runs every frame while the app is installed. Use it for background services. |
@@ -142,6 +142,8 @@ ui_focus_over(x2, y2, w2, h2, 14, f);
 - Keep 96 px from the left screen edge, like the rest of the system.
 - `app_set_overlay(id, draw)`: a small layer on top of every screen. In the top bar, get the x from
   `app_overlay_place(right, w)` (NotaTV 1.0.6+), so overlays from different apps stand side by side.
+- `audio_bg_set(stop)` (NotaTV 1.0.7+): an app that plays audio while the UI runs (Radio) registers its stop function.
+  The Pi's HDMI audio takes one player at a time, so the system calls it before video or game streaming starts.
 - `gfx_drift_begin(x, y, w, h)` ... `gfx_drift_end(ox, oy)` (NotaTV 1.0.6+): burn-in protection that glides - what is
   drawn in between is shown moved by fractions of a pixel. Check that they are there (`if (gfx_drift_begin)`).
 

@@ -1,15 +1,13 @@
-# NotaTV - Raspberry Pi 4 (64-bit)
-start_file=start4.elf
-fixup_file=fixup4.dat
+# NotaTV - Raspberry Pi 4 and Pi 5 (64-bit, one image for both)
+# The Pi 5 has its bootloader in EEPROM and ignores start_file/fixup_file; it picks bcm2712*.dtb itself.
 kernel=Image
 arm_64bit=1
 
 # KMS-grafik med nok CMA-hukommelse til hardware-videodekodning
+# (the firmware maps vc4-kms-v3d to vc4-kms-v3d-pi4/-pi5 via overlays/overlay_map.dtb)
 dtoverlay=vc4-kms-v3d,cma-512
 max_framebuffers=2
 disable_overscan=1
-hdmi_enable_4kp60=1
-dtparam=audio=on
 
 # HDMI-CEC håndteres af Linux-kernen (TV-fjernbetjening -> /dev/cec0), ikke af firmwaren
 hdmi_ignore_cec_init=1
@@ -19,8 +17,17 @@ disable_splash=1
 boot_delay=0
 initial_turbo=30
 
-# seriel konsol (GPIO 14/15) til fejlfinding
+# seriel konsol til fejlfinding (Pi 4: GPIO 14/15, Pi 5: the 3-pin debug UART)
 enable_uart=1
+
+[pi4]
+start_file=start4.elf
+fixup_file=fixup4.dat
+hdmi_enable_4kp60=1
+dtparam=audio=on
+
+[pi5]
+# 4K60 works on both HDMI ports without extra settings
 
 [all]
 # the kernel set in use (the NotaTV updater switches it)

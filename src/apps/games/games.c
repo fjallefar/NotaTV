@@ -399,11 +399,13 @@ static const char *const mbr_l[] = {"5 Mbit/s", "10 Mbit/s", "15 Mbit/s", "20 Mb
 static const char *const mcod_o[] = {"auto", "hevc", "h264", NULL}, *const mcod_l[] = {N_("Automatic (HEVC)"), "HEVC", N_("H.264 (slow)"), NULL};
 static const char *const mmode_o[] = {"", "1920x1080@120", "1920x1080@60", "3840x2160@60", NULL};
 static const char *const mmode_l[] = {N_("Keep the UI's"), N_("1080p 120 Hz (lowest latency)"), "1080p 60 Hz", "4K 60 Hz", NULL};
+/* the Pi 5 has no hardware H.264 decoder: there tvmoon always streams HEVC */
+static const char *codec_locked(void) { return board_pi && board_pi() == 5 ? T("HEVC (the Pi 5 has no H.264 decoder)") : NULL; }
 static const Item game_items[] = {
     {N_("Resolution"), IT_CYCLE, "moon_res", "1920x1080", mres_o, mres_l, .help = N_("The resolution the PC streams in")},
     {N_("Frames per second"), IT_CYCLE, "moon_fps", "60", mfps_o, mfps_l, .help = N_("Above 60 requires the display mode to be 120 Hz")},
     {"Bitrate", IT_CYCLE, "moon_bitrate", "20000", mbr_o, mbr_l, .help = N_("Higher = sharper picture, but more data on the network")},
-    {"Codec", IT_CYCLE, "moon_codec", "auto", mcod_o, mcod_l, .help = N_("HEVC decodes in ~4 ms, H.264 takes ~67 ms on a Pi 4")},
+    {"Codec", IT_CYCLE, "moon_codec", "auto", mcod_o, mcod_l, .help = N_("HEVC decodes in ~4 ms, H.264 takes ~67 ms on a Pi 4"), .locked = codec_locked},
     {N_("Display mode while gaming"), IT_CYCLE, "moon_mode", "1920x1080@120", mmode_o, mmode_l, .help = N_("120 Hz halves the wait for the next frame. The TV switches mode at start")},
     {"HDR", IT_TOGGLE, "moon_hdr", "0", set_onoff, .help = N_("HEVC 10-bit HDR, if the PC's display is in HDR"), .locked = set_hdr_locked},
 };

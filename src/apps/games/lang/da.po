@@ -123,3 +123,12 @@ msgstr "Finder den almindelige søgning ingenting, spørger Spil også alle adre
 
 msgid "The search stops as soon as a PC answers, or when you leave Games"
 msgstr "Søgningen stopper, så snart en PC svarer, eller når du forlader Spil"
+
+msgid "HEVC (the Pi 5 has no H.264 decoder)"
+msgstr "HEVC (Pi 5 har ingen H.264-dekoder)"
+
+msgid "Ready for the Raspberry Pi 5"
+msgstr "Klar til Raspberry Pi 5"
+
+msgid "On a Raspberry Pi 5 games always stream in HEVC, because the Pi 5 has no H.264 decoder - the Codec choice is locked there (needs NotaTV 1.0.7)"
+msgstr "På en Raspberry Pi 5 streames spil altid i HEVC, fordi Pi 5 ikke har en H.264-dekoder - Codec-valget er låst dér (kræver NotaTV 1.0.7)"

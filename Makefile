@@ -1,4 +1,4 @@
-# NotaTV - build the whole system (Raspberry Pi 4)
+# NotaTV - build the whole system (one image for Raspberry Pi 4 and Pi 5)
 #   make / make rpi4  build everything: output-rpi4/, gives notatv-rpi4.img and the update package
 #                     (fetches Raspberry Pi's ffmpeg into src/rpi-ffmpeg the first time)
 #   make shell        build and run the user interface on the development PC (window)

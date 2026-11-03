@@ -340,9 +340,11 @@ static void act_reset(void) {
  * permanent once the box has run for a minute - if it does not start, a power cycle restores the old one */
 static void oc_done(char *out, void *ud) { (void)ud; str_trim(out); if (*out) app_toast("%s", tr_msg(out)); }
 static void oc_cb(void *ud, bool yes) { (void)ud; if (yes) run_async(oc_done, NULL, "oc apply"); }
+/* the setting per board (an SD card can move between a Pi 4 and a Pi 5): Pi 4 cpu_mhz (1500), Pi 5 cpu_mhz5 (2400) */
+static const char *oc_key(void) { return board_pi() == 5 ? "cpu_mhz5" : "cpu_mhz"; }
 static void act_oc_apply(void) {
     char title[96];
-    snprintf(title, sizeof title, T("Restart at %s MHz?"), cfg_get("cpu_mhz", "1500"));
+    snprintf(title, sizeof title, T("Restart at %s MHz?"), cfg_get(oc_key(), board_pi() == 5 ? "2400" : "1500"));
     confirm_open(title, T("If the box does not start (black screen for more than 2 minutes): turn it off and on again, and it will continue at the old frequency."), T("Restart"), T("Cancel"), oc_cb, NULL);
 }
 
@@ -511,6 +513,16 @@ static const Item oc_items[] = {
     {N_("Apply and restart"), IT_ACTION, .action = act_oc_apply,
      .help = N_("The new frequency is tried once first and saved after the box has run fine for a minute")},
 };
+/* Pi 5: 2400 MHz as standard; above that over_voltage_delta raises the voltage (see libexec/notatv/oc) */
+static const char *const cpu5_o[] = {"2400", "2600", "2800", "3000", NULL};
+static const char *const cpu5_l[] = {N_("2400 MHz (default)"), "2600 MHz", "2800 MHz", N_("3000 MHz (max - often unstable)"), NULL};
+static const Item oc5_items[] = {
+    {N_("Now"), IT_INFO, .info_cmd = "oc status"},
+    {N_("CPU frequency"), IT_CYCLE, "cpu_mhz5", "2400", cpu5_o, cpu5_l,
+     .help = N_("Above 2400 MHz the voltage is raised a little. Requires the active cooler and a 5 V/5 A power supply")},
+    {N_("Apply and restart"), IT_ACTION, .action = act_oc_apply,
+     .help = N_("The new frequency is tried once first and saved after the box has run fine for a minute")},
+};
 #define NI(a) (int)(sizeof(a) / sizeof(a[0]))
 /* Settings → Apps: the installed apps that have settings (from the app register), and Cast and sharing.
    Built when Settings opens (apps can be installed and uninstalled meanwhile). */
@@ -557,12 +569,17 @@ static Section sections[] = { /* not const: the number of Apps items is set when
 #define N_SEC NI(sections)
 static void rebuild_apps(void) {
     build_app_sections();
+    for (int i = 0; i < N_SEC; i++) /* Overclock: the limits of the board we run on */
+        if (sections[i].items == oc_items || sections[i].items == oc5_items) {
+            sections[i].items = board_pi() == 5 ? oc5_items : oc_items;
+            sections[i].n = board_pi() == 5 ? NI(oc5_items) : NI(oc_items);
+        }
     for (int i = 0; i < N_SEC; i++)
         if (sections[i].items == apps_links) sections[i].n = n_app_links;
 }
 
 _Static_assert(NI(net_items) <= MAX_ITEMS && NI(av_items) <= MAX_ITEMS && NI(cec_items) <= MAX_ITEMS && NI(bt_items) <= MAX_ITEMS &&
-               NI(cast_items) <= MAX_ITEMS && NI(sys_items) <= MAX_ITEMS && NI(oc_items) <= MAX_ITEMS, "øg MAX_ITEMS");
+               NI(cast_items) <= MAX_ITEMS && NI(sys_items) <= MAX_ITEMS && NI(oc_items) <= MAX_ITEMS && NI(oc5_items) <= MAX_ITEMS, "øg MAX_ITEMS");
 
 /* ---------- screen ---------- */
 typedef struct {

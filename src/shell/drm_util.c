@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <glob.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -261,3 +262,65 @@ bool display_audio_ok(DisplayAudio a) {
 bool hdr_cfg(const char *key, int def) { return cfg_int(key, def) != 0 && display_hdr_ok(); }
 /* a passthrough setting counts only if the display accepts the format */
 bool audio_cfg(const char *key, int def, DisplayAudio a) { return cfg_int(key, def) != 0 && display_audio_ok(a); }
+
+/* ---------- which display modes does the connected display have? ----------
+   The frame rate match used to guess a mode ("1920x1080@23.976", then "@24") and let mpv fail if the display did not
+   have it (about 1 s extra start-up each time, e.g. the Dell has no 1080p@24). Now the modes are read first and mpv
+   is only asked for one that exists. Rate as mpv computes it (clock / htotal / vtotal, x2 when interlaced), and mpv
+   compares rates rounded to 1/100 Hz - so "%.2f" of the same number always matches. */
+static double mode_hz(const drmModeModeInfo *m) {
+    if (!m->htotal || !m->vtotal) return 0;
+    double hz = m->clock * 1000.0 / m->htotal / m->vtotal;
+    return (m->flags & DRM_MODE_FLAG_INTERLACE) ? hz * 2 : hz;
+}
+
+/* how well a mode rate fits the wanted rate; lower is better, < 0 = not usable.
+   0: same rate. 1: an exact multiple (e.g. 47.952 for 23.976 - no judder). 2: almost the same (24 for 23.976 -
+   one repeated frame every ~40 s, still better than 60 Hz) */
+static int rate_fit(double hz, double want) {
+    if (hz <= 0 || want <= 0) return -1;
+    if (fabs(hz - want) < 0.005) return 0;
+    double k = round(hz / want);
+    if (k >= 2 && k <= 5 && fabs(hz - want * k) < 0.005 * k) return 1;
+    if (fabs(hz - want) < 0.06) return 2;
+    return -1;
+}
+
+bool display_mode_for(int w, int h, double want, char *out, size_t n) {
+    int best_fit = 99;
+    double best_hz = 0;
+    for (int card = 0; card < 4; card++) {
+        char path[32];
+        snprintf(path, sizeof path, "/dev/dri/card%d", card);
+        int fd = open(path, O_RDWR | O_CLOEXEC);
+        if (fd < 0) continue;
+        drmModeRes *res = drmModeGetResources(fd);
+        for (int i = 0; res && i < res->count_connectors; i++) {
+            /* "Current": no new probe of the display (a probe re-reads the EDID and can take a while) */
+            drmModeConnector *c = drmModeGetConnectorCurrent(fd, res->connectors[i]);
+            if (!c) continue;
+            if (c->connection == DRM_MODE_CONNECTED && c->connector_type != DRM_MODE_CONNECTOR_WRITEBACK)
+                for (int m = 0; m < c->count_modes; m++) {
+                    const drmModeModeInfo *mi = &c->modes[m];
+                    if (mi->hdisplay != w || mi->vdisplay != h || (mi->flags & DRM_MODE_FLAG_INTERLACE)) continue;
+                    double hz = mode_hz(mi);
+                    int fit = rate_fit(hz, want);
+                    /* the same fit: the lower rate (a 2x multiple before 5x) */
+                    if (fit >= 0 && (fit < best_fit || (fit == best_fit && hz < best_hz))) {
+                        best_fit = fit;
+                        best_hz = hz;
+                    }
+                }
+            drmModeFreeConnector(c);
+        }
+        drmModeFreeResources(res);
+        close(fd);
+    }
+    if (best_fit == 99) {
+        SDL_Log("drm: skærmen har ingen %dx%d-tilstand, der passer til %.3f Hz - beholder den nuværende", w, h, want);
+        return false;
+    }
+    snprintf(out, n, "%dx%d@%.2f", w, h, best_hz);
+    SDL_Log("drm: %.3f Hz ønsket -> tilstand %s", want, out);
+    return true;
+}

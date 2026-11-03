@@ -704,6 +704,17 @@ static PlayResult player_run_inner(const PlayRequest *rq);
 
 /* AirPlay/Bluetooth music pauses while a video plays. In the background (shell + script + D-Bus took time off
    the start of every video and the way back to the menu). */
+/* background audio (e.g. Radio): the Pi's HDMI audio device takes one player at a time, so the app that plays while
+   the UI runs is stopped before video or game streaming starts. Its stop function must have released the device
+   when it returns. */
+static void (*bg_stop)(void);
+void audio_bg_set(void (*stop)(void)) { bg_stop = stop; }
+void audio_bg_take(void) {
+    void (*f)(void) = bg_stop;
+    bg_stop = NULL;
+    if (f) { SDL_Log("player: stopper baggrundslyd"); f(); }
+}
+
 PlayResult player_run(const PlayRequest *rq) {
     static bool active;
     if (active) { /* e.g. a background job that wants to play while something plays: never two players at once */
@@ -713,6 +724,7 @@ PlayResult player_run(const PlayRequest *rq) {
         return r;
     }
     active = true;
+    audio_bg_take();
     run_cmd("%s/music pause >/dev/null 2>&1 &", helper_path());
     PlayResult res = player_run_inner(rq);
     run_cmd("%s/music resume >/dev/null 2>&1 &", helper_path());
@@ -747,17 +759,16 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
         return res;
     }
 
-    /* billedfrekvens-match */
-    char modes[3][48] = {"", "", ""};
+    /* frame rate match: only a mode the display really has (display_mode_for reads its mode list), so mpv
+       does not have to fail and start again. The empty mode last is the safety net if mpv still fails. */
+    char modes[2][48] = {"", ""};
     int n_modes = 0;
     if (cfg_int("match_rate", 1) && input_evdev_active()) {
         char res_s[32];
-        if (preferred_res(res_s, sizeof res_s)) {
+        int w = 0, h = 0;
+        if (preferred_res(res_s, sizeof res_s) && sscanf(res_s, "%dx%d", &w, &h) == 2) {
             double rate = rq->is_live ? cfg_int("iptv_rate", 50) : display_rate_for(g_probe_fps);
-            if (rate > 0) {
-                snprintf(modes[n_modes++], 48, "%s@%.3g", res_s, rate);
-                if (rate != floor(rate)) snprintf(modes[n_modes++], 48, "%s@%.0f", res_s, ceil(rate));
-            }
+            if (rate > 0 && display_mode_for(w, h, rate, modes[n_modes], sizeof modes[n_modes])) n_modes++;
         }
     }
     snprintf(modes[n_modes++], 48, "%s", "");

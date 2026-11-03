@@ -1,0 +1,166 @@
+# NotaTV app "radio" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "80s"
+msgstr "80'erne"
+
+msgid "90s"
+msgstr "90'erne"
+
+msgid "Added to favourites as number %d"
+msgstr "Tilføjet til favoritter som nummer %d"
+
+msgid "Cannot reach the radio directory - check the network"
+msgstr "Kan ikke nå radiokataloget - tjek netværket"
+
+msgid "Chill"
+msgstr "Chill"
+
+msgid "Choose"
+msgstr "Vælg"
+
+msgid "Choose a country"
+msgstr "Vælg et land"
+
+msgid "Christmas"
+msgstr "Jul"
+
+msgid "Classical"
+msgstr "Klassisk"
+
+msgid "CONNECTING"
+msgstr "FORBINDER"
+
+msgid "Connecting…"
+msgstr "Forbinder…"
+
+msgid "Could not start the radio"
+msgstr "Radioen kunne ikke starte"
+
+msgid "Change country"
+msgstr "Skift land"
+
+msgid "Country"
+msgstr "Country"
+
+msgid "Dance"
+msgstr "Dance"
+
+msgid "%d stations"
+msgstr "%d stationer"
+
+msgid "Electronic"
+msgstr "Elektronisk"
+
+msgid "Favourite"
+msgstr "Favorit"
+
+msgid "Favourites"
+msgstr "Favoritter"
+
+msgid "Genres"
+msgstr "Genrer"
+
+msgid "Hip hop"
+msgstr "Hiphop"
+
+msgid "Jazz"
+msgstr "Jazz"
+
+msgid "Listen"
+msgstr "Lyt"
+
+msgid "Live"
+msgstr "Direkte"
+
+msgid "Menu"
+msgstr "Menu"
+
+msgid "News"
+msgstr "Nyheder"
+
+msgid "No favourite number %c"
+msgstr "Ingen favorit nummer %c"
+
+msgid "No favourites yet. Press Yellow on a station to add it - the first nine get a number you can press on the remote."
+msgstr "Ingen favoritter endnu. Tryk Gul på en station for at tilføje den - de første ni får et nummer, du kan trykke på fjernbetjeningen."
+
+msgid "Nothing found"
+msgstr "Intet fundet"
+
+msgid "Oldies"
+msgstr "Oldies"
+
+msgid "ON THE RADIO NOW"
+msgstr "I RADIOEN NU"
+
+msgid "Open"
+msgstr "Åbn"
+
+msgid "Pop"
+msgstr "Pop"
+
+msgid "Popular"
+msgstr "Populære"
+
+msgid "Popular in %s"
+msgstr "Populære i %s"
+
+msgid "Popular worldwide"
+msgstr "Populære i hele verden"
+
+msgid "Radio"
+msgstr "Radio"
+
+msgid "Radio stations from your country and the whole world"
+msgstr "Radiokanaler fra dit land og hele verden"
+
+msgid "Recently played"
+msgstr "Senest lyttet"
+
+msgid "Removed from favourites"
+msgstr "Fjernet fra favoritter"
+
+msgid "Remove favourite"
+msgstr "Fjern favorit"
+
+msgid "Rock"
+msgstr "Rock"
+
+msgid "Search"
+msgstr "Søg"
+
+msgid "Search radio stations"
+msgstr "Søg efter radiokanaler"
+
+msgid "Search: %s"
+msgstr "Søgning: %s"
+
+msgid "%s is not answering right now"
+msgstr "%s svarer ikke lige nu"
+
+msgid "Sport"
+msgstr "Sport"
+
+msgid "Stop"
+msgstr "Stop"
+
+msgid "Talk"
+msgstr "Snak"
+
+msgid "The stations you listen to show up here."
+msgstr "De kanaler, du lytter til, kommer frem her."
+
+msgid "Whole world"
+msgstr "Hele verden"
+
+msgid "You can have up to %d favourites"
+msgstr "Du kan have op til %d favoritter"
+
+msgid "Protect OLED screens from burn-in"
+msgstr "Beskyt OLED-skærme mod indbrænding"
+
+msgid "While the radio plays, everything on the Radio screen and the Now playing box moves very slowly, and the stations dim when you only listen. You will not notice it"
+msgstr "Mens radioen spiller, flytter alt på Radio-skærmen og Spiller nu-boksen sig meget langsomt, og kanalerne dæmpes, når du bare lytter. Du lægger ikke mærke til det"

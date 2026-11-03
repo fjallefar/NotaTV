@@ -73,6 +73,15 @@ msgstr "2,35:1"
 msgid "2147 MHz (max - often unstable)"
 msgstr "2147 MHz (maks. - ofte ustabil)"
 
+msgid "2400 MHz (default)"
+msgstr "2400 MHz (standard)"
+
+msgid "3000 MHz (max - often unstable)"
+msgstr "3000 MHz (maks. - ofte ustabil)"
+
+msgid "Above 2400 MHz the voltage is raised a little. Requires the active cooler and a 5 V/5 A power supply"
+msgstr "Over 2400 MHz hæves spændingen en smule. Kræver den aktive køler og en 5 V/5 A strømforsyning"
+
 msgid "a phone"
 msgstr "en telefon"
 

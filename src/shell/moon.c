@@ -16,6 +16,7 @@
 int moon_run(char *const *argv, void (*on_line)(const char *line, void *ud), void *ud) {
     int pfd[2];
     if (pipe2(pfd, O_CLOEXEC) != 0) return -1;
+    audio_bg_take();
     run_cmd("%s/music pause >/dev/null 2>&1", helper_path());
     bool video_off = app_video_suspend();
     pid_t pid = fork();

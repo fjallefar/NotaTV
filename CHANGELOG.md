@@ -18,6 +18,36 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.7
+
+> **In short:** NotaTV now also runs on the Raspberry Pi 5, there is a new Radio app, and movies start faster on displays that cannot change to the movie's frame rate.
+> - Raspberry Pi 5: the same image starts on a Pi 4 and a Pi 5 (new and not fully tested yet)
+> - New app: Radio, with stations from your country and the whole world (in the App Store)
+> - The box checks which frame rates your display has before a movie starts
+
+<!-- tldr:da
+Kort: NotaTV kører nu også på Raspberry Pi 5, der er en ny Radio-app, og film starter hurtigere på skærme, der ikke kan skifte til filmens billedfrekvens.
+- Raspberry Pi 5: det samme image starter på en Pi 4 og en Pi 5 (nyt og ikke fuldt testet endnu)
+- Ny app: Radio med kanaler fra dit land og hele verden (i App Store)
+- Boksen tjekker, hvilke billedfrekvenser skærmen har, før en film starter
+-->
+
+**Raspberry Pi 5**
+- One image for both: the same `notatv-rpi4.img.xz` starts on a Raspberry Pi 4 and a Raspberry Pi 5 (also the Pi 400 and Pi 500), and the same update package updates both. The box finds out which board it runs on by itself and adapts. New and not fully tested on a Pi 5 yet.
+- The Pi 5 decodes only HEVC in hardware (4K, 10-bit HDR). H.264 and VP9 up to 1080p are decoded in software by its faster CPU.
+- Overclock has its own choices on a Pi 5: 2400 MHz (standard), 2600, 2800 and 3000 MHz; above 2400 the voltage is raised a little. Needs the active cooler and a 5 V/5 A power supply. The choice is saved per board, and an SD card moved to the other board starts at its standard frequency.
+- Game streaming always uses HEVC on a Pi 5 (it has no H.264 decoder).
+
+**Playback**
+- Frame rate match reads the display's own list of modes first and only asks for one it has. Before, a 24 fps movie on a display without 24 Hz (e.g. many PC monitors) failed once and started again, about a second slower. When the exact rate is missing, an exact multiple (e.g. 48 Hz for 24 fps) or an almost equal rate (24 Hz for 23.976 fps) is used; otherwise the display stays as it is.
+- Logos in the .ico format (many radio stations, e.g. DR) are shown. A card on the home screen without a logo shows its name instead of a TV icon.
+- Background audio: an app that plays while you use the rest of the box (Radio) is stopped by itself when a video or game starts, since the HDMI audio takes one player at a time.
+
+**Apps**
+- New: Radio 1.0.0. Stations from radio-browser.info (free and open, no login). The country follows the one chosen in the setup guide, and another can be chosen in the app. Popular, genres, search, recently played and favourites (Yellow; the first nine get a number you press on the remote). It plays in the background with a *Now playing* box in the top bar, shows the station on the home screen, and the home row *Radio* starts a recent station with one press. Burn-in protection for OLED screens (on by default, like Music): the screen glides very slowly, the key hints go away after 30 seconds, and after a minute of only listening everything but *Now playing* dims. Stopping by itself before video needs NotaTV 1.0.7.
+- YouTube 1.0.5: on a Raspberry Pi 5 the quality also stops at 1080p (YouTube has 1440p and 4K only as VP9/AV1, which the Pi 5 cannot decode in hardware).
+- Games 1.0.2: on a Raspberry Pi 5 games always stream in HEVC, and the Codec choice is locked there.
+
 ## 1.0.6
 
 > **In short:** Wi-Fi is ready sooner after starting, and Music gets a Disconnect button and smoother burn-in protection.

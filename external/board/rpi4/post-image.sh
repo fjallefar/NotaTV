@@ -1,5 +1,5 @@
 #!/bin/sh
-# NotaTV Pi 4: build the SD card image (boot + rootfs + data)
+# NotaTV Pi 4/5: build the SD card image (boot + rootfs + data)
 set -e
 # which kernel set the firmware loads (see libexec/notatv/update): the root one; always 128 bytes, so the updater
 # can switch it with one write
@@ -8,13 +8,14 @@ set -e
 	> "$BINARIES_DIR/rpi-firmware/notatv-slot.txt"
 support/scripts/genimage.sh -c "$BR2_EXTERNAL_NOTATV_PATH/board/rpi4/genimage.cfg"
 cp "$BINARIES_DIR/notatv-rpi4.img" "$BR2_EXTERNAL_NOTATV_PATH/../notatv-rpi4.img"
-echo "NotaTV Pi 4-image: $BINARIES_DIR/notatv-rpi4.img ($(du -h "$BINARIES_DIR/notatv-rpi4.img" | cut -f1))"
+echo "NotaTV Pi 4/5-image: $BINARIES_DIR/notatv-rpi4.img ($(du -h "$BINARIES_DIR/notatv-rpi4.img" | cut -f1))"
 
 # update package for "Check for updates" (put on the GitHub release together with .sha256)
 U="$BR2_EXTERNAL_NOTATV_PATH/../notatv-rpi4-update.tar.gz"
 S=$(mktemp -d)
 mkdir -p "$S/boot"
 cp -a "$BINARIES_DIR/Image" "$BINARIES_DIR"/bcm2711-rpi-4-b.dtb "$BINARIES_DIR"/bcm2711-rpi-400.dtb \
+	"$BINARIES_DIR"/bcm2712-rpi-5-b.dtb "$BINARIES_DIR"/bcm2712d0-rpi-5-b.dtb "$BINARIES_DIR"/bcm2712-rpi-500.dtb \
 	"$BINARIES_DIR/rpi-firmware/start4.elf" "$BINARIES_DIR/rpi-firmware/fixup4.dat" "$BINARIES_DIR/rpi-firmware/overlays" "$S/boot/"
 # users and groups: Buildroot adds the packages' users (dbus, avahi ...) only inside the rootfs image, not in
 # $TARGET_DIR. An update with $TARGET_DIR's /etc/passwd removed them, so dbus-daemon and avahi-daemon could not

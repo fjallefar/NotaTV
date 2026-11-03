@@ -15,13 +15,14 @@ Cheers!
 
 **A TV box operating system built from scratch, using only open source software.**
 
-NotaTV is its own Linux distribution (Buildroot) with its own user interface, written in C with SDL3 and drawn straight to the screen via KMS/DRM. It turns a Raspberry Pi 4 into a TV box. It has no Android, no Kodi and no closed-source apps.
+NotaTV is its own Linux distribution (Buildroot) with its own user interface, written in C with SDL3 and drawn straight to the screen via KMS/DRM. It turns a Raspberry Pi 4 or Pi 5 into a TV box. It has no Android, no Kodi and no closed-source apps.
 
 - **Live TV / IPTV** with program guide (M3U or Xtream Codes)
 - **Plex** and **Jellyfin** clients with direct play (4K HDR)
 - **YouTube** (yt-dlp) and **Twitch** with chat
 - **Seerr**: find and request movies and shows (Overseerr/Jellyseerr)
 - **Music** from your phone via **AirPlay** and **Bluetooth**
+- **Radio**: stations from your own country and the whole world, playing while you use the rest of the box
 - **Game streaming** from a PC with Sunshine (Moonlight protocol, ~11 ms on the box)
 - **Tesla**: your car's battery, charging and status live from your own TeslaMate
 - **Casting**: DLNA, YouTube cast, Jellyfin "Play On", AirPlay screen mirroring
@@ -30,7 +31,7 @@ NotaTV is its own Linux distribution (Buildroot) with its own user interface, wr
 - A **phone page** for typing, remote control and setup
 - **English and Danish** user interface
 
-Platform: **Raspberry Pi 4**.
+Platform: **Raspberry Pi 4 and Pi 5** (one image for both; the Pi 5 support is new and not fully tested yet).
 
 ---
 
@@ -71,6 +72,7 @@ The box only contacts outside services when you use a feature:
 | Your IPTV provider | Live TV |
 | Your TeslaMate's MQTT server (local network) | Tesla app |
 | tile.openstreetmap.org | Tesla → Map (off until you turn it on) |
+| radio-browser.info and the radio stations' own servers | Radio app (station lists, logos, the stream) |
 | musicbrainz.org, coverartarchive.org | Cover art for Bluetooth music (can be turned off) |
 | api.github.com, github.com | Settings → System → Update NotaTV |
 | pool.ntp.org | Setting the clock at startup |
@@ -79,15 +81,16 @@ The box only contacts outside services when you use a feature:
 
 ## Installation
 
-### Raspberry Pi 4
+### Raspberry Pi 4 and Pi 5
 
-1. Download `notatv-rpi4.img.xz` from the [latest release](https://github.com/fjallefar/NotaTV/releases/latest).
+1. Download `notatv-rpi4.img.xz` (the same image works on a Pi 5) from the [latest release](https://github.com/fjallefar/NotaTV/releases/latest).
 2. Write it to an SD card with Raspberry Pi Imager ("Use custom") or balenaEtcher.
    Or on Linux with `dd` (replace `/dev/sdX` with your SD card - **everything on it is erased**):
    ```sh
    xz -dc notatv-rpi4.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync
    ```
 3. Connect the TV to **HDMI 0**, the port next to the USB-C power input.
+   A Pi 5 needs the official 5 V/5 A power supply and active cooling (e.g. the Active Cooler).
 
 On first boot the data partition grows to fill the SD card. While the box starts, the TV shows the NotaTV name with three pulsing dots until the menus appear.
 
@@ -163,10 +166,11 @@ In the App Store on the home screen you can install more apps, update apps (*Upd
 | **Live TV** | M3U playlist or Xtream Codes login (live channels only). Channels are grouped by country. Favorites can be sorted. **TV guide** shows your favorites on a timeline (left/right moves between programs, OK watches the channel). Channel numbers and now/next information come from XMLTV or Xtream's short EPG. |
 | **Plex** | Sign in via `plex.tv/link`. Supports several servers, hubs, libraries, "Continue watching" and direct play. Search covers all servers. The home screen has two styles: *hero* or *focus*. *Search subtitles* in the player menu finds subtitles on OpenSubtitles (see below). |
 | **Jellyfin** | Server address, username and password. Libraries, a series page with seasons and episodes, and "Continue watching" and "Next episode" (also on the home screen). Always plays the original file (no server transcoding), with the audio and subtitles chosen for your Jellyfin user. Playback progress is reported to the server, and the server sees the box under its own name. *Search subtitles* in the player menu finds subtitles on OpenSubtitles (see below). |
-| **YouTube** | yt-dlp with Node.js and mpv. Videos are resolved while they are in focus, so playback starts almost instantly. Quality up to 1080p on a Raspberry Pi 4 (1440p and 4K are greyed out: YouTube only has them as VP9/AV1). Optional account via cookies from the phone page. Subscriptions can be imported from Google Takeout. |
+| **YouTube** | yt-dlp with Node.js and mpv. Videos are resolved while they are in focus, so playback starts almost instantly. Quality up to 1080p on a Raspberry Pi (1440p and 4K are greyed out: YouTube only has them as VP9/AV1). Optional account via cookies from the phone page. Subscriptions can be imported from Google Takeout. |
 | **Twitch** | Sign in with a code or QR code at `twitch.tv/activate`. Following, Popular, Categories and Search. Chat is read anonymously and shown as a sidebar. Quality (1080p to 360p) in the player menu. |
 | **Seerr** | Find and request movies and shows (Overseerr/Jellyseerr) with Plex login. Season picker, trailers, "More like this" and Netflix top 10 for your country. |
 | **Music** | Receives music from your phone over **AirPlay** (iPhone/iPad/Mac) or **Bluetooth** (any phone). "Now playing" shows cover art, title and progress. |
+| **Radio** | Stations from radio-browser.info (free and open, no login). The country follows the one chosen in the setup guide (the stations of another country can be chosen in the app). Popular, genres, search, recently played and favourites (Yellow; the first nine get a number you press on the remote). Plays in the background while you use the rest of the box, with a *Now playing* box in the top bar and the station on the home screen; it stops by itself when a video or game starts. |
 | **Games** | Game streaming from a PC running Sunshine with our own client `tvmoon`. HEVC is decoded in hardware straight to the screen, at 1080p 120 Hz. |
 | **Tesla** | Reads your own TeslaMate over its MQTT server (port 1883), read only: nothing is sent to the car and nothing is saved on disk. Finds TeslaMate on the network or takes an address, and asks for an MQTT login when the server wants one. Battery, range, charging, climate, tyres, locks and doors, the car seen from above, where it is, route with arrival time and battery at arrival, model and software. The side menu (Left) chooses the car, turns each part on or off, and puts up to 3 cars small at the top of the home screen. Everything is fitted to one screen. |
 | **Media** | USB drives are mounted automatically. SMB/NFS network drives are supported. Plays movies, music and pictures. |
@@ -357,7 +361,7 @@ src/shell/                      the user interface (C11 + SDL3)
   quick.c        the quick panel (sleep timer, settings shortcuts, power)
   assets/        fonts (Inter), app icons (icons/*.png) and language files (lang/*.po)
 src/apps/                       the apps, one package per folder (iptv, plex, jellyfin, youtube, twitch, seerr,
-                                music, games, tesla, media), downloaded from the App Store into /data/notatv/apps-pkg
+                                music, radio, games, tesla, media), downloaded from the App Store into /data/notatv/apps-pkg
 src/moon/                       tvmoon: game streaming client (Moonlight protocol)
 scripts/                        i18n check, UI tests, time zone list generator, app icons (gen-icons.py)
 .github/workflows/release.yml   builds and publishes a release when a v* tag is pushed
@@ -373,6 +377,10 @@ scripts/                        i18n check, UI tests, time zone list generator, 
   - It decodes HEVC (4K, 10-bit) and H.264 (up to 1080p) in hardware, but not VP9 or AV1. That is why YouTube prefers H.264 up to 1080p.
   - 4K60 HEVC peaks at about 42 fps.
   - Dolby Vision plays as HDR10.
+- **Raspberry Pi 5 hardware:**
+  - It decodes only HEVC in hardware - no H.264, VP9 or AV1. H.264 and VP9 up to 1080p are decoded in software by the faster CPU.
+  - Game streaming always uses HEVC.
+  - Overclocking has its own limits (2400 MHz standard, up to 3000 MHz).
 - **TV without HDR (or HDR turned off):** HDR video is tone-mapped to SDR on the Pi's GPU with the simplest curve (`clip`), bright enough to look like an SDR version, so the brightest highlights are clipped. 4K is drawn at 900p and scaled up by the display hardware to keep a full 24 fps. For Plex, the server can convert HDR instead (Apps → Plex; 1080p, stereo sound for now).
 - **Always HDR:** SDR video at 50/60 fps reaches only about 30 fps in this mode.
 - Keyboard, mouse and controller input during game streaming is not finished yet.

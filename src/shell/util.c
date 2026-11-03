@@ -17,6 +17,20 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+/* ---------- board ---------- */
+int board_pi(void) {
+    static int pi = -1;
+    if (pi < 0) {
+        /* compatible is a list of 0-separated strings, e.g. "raspberrypi,5-model-b\0brcm,bcm2712\0" */
+        char c[256];
+        size_t n = 0;
+        FILE *f = fopen("/proc/device-tree/compatible", "rb");
+        if (f) { n = fread(c, 1, sizeof c, f); fclose(f); }
+        pi = memmem(c, n, "brcm,bcm2712", 12) ? 5 : memmem(c, n, "brcm,bcm2711", 12) ? 4 : 0;
+    }
+    return pi;
+}
+
 /* ---------- strenge ---------- */
 char *str_dup(const char *s) { return s ? strdup(s) : NULL; }
 

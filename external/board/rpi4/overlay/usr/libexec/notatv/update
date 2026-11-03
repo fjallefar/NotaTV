@@ -316,7 +316,7 @@ install() {
 	for f in usr/bin/tvshell bin/busybox usr/libexec/notatv/update etc/notatv-release etc/init.d/rcS; do
 		[ -f "$N/rootfs/$f" ] || { rm -rf $N; die "The update is missing files"; }
 	done
-	for f in Image bcm2711-rpi-4-b.dtb start4.elf fixup4.dat; do
+	for f in Image bcm2711-rpi-4-b.dtb bcm2712-rpi-5-b.dtb bcm2712d0-rpi-5-b.dtb start4.elf fixup4.dat; do
 		[ -s "$N/boot/$f" ] || { rm -rf $N; die "The update is missing files"; }
 	done
 	# the right device and the version the release says

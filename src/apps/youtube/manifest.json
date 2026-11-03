@@ -1,6 +1,6 @@
 {
   "id": "youtube",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": 2,
   "name": "YouTube",
   "desc": "Search and watch videos on YouTube",
@@ -11,10 +11,9 @@
   "order": 40,
   "default": true,
   "changes": {
-    "summary": "A calmer, smoother look",
+    "summary": "Ready for the Raspberry Pi 5",
     "points": [
-      "What you choose lifts gently toward you with a soft glow instead of a white frame",
-      "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
+      "On a Raspberry Pi 5 the quality also stops at 1080p - YouTube has 1440p and 4K only in formats the Pi 5 cannot decode in hardware"
     ]
   }
 }

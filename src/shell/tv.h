@@ -248,10 +248,16 @@ typedef enum { DA_AC3, DA_EAC3, DA_DTS, DA_DTSHD, DA_TRUEHD, DA_HD } DisplayAudi
 bool display_audio_ok(DisplayAudio a);     /* false if the display's EDID lists no such audio format */
 bool audio_cfg(const char *key, int def, DisplayAudio a); /* passthrough setting that only counts if the display accepts it */
 void drm_set_ui_hdr(bool on); /* the TV in HDR10 for the UI (on) or back to SDR (off) */
+bool display_mode_for(int w, int h, double hz, char *out, size_t n); /* "WxH@R" of an existing display mode that fits hz (same rate, exact multiple or almost the same); false = none */
 /* OpenSubtitles */
 int subs_search(int tmdb, const char *query, int season, int episode, char ***labels);
 char *subs_fetch(int idx);
 void player_osd(const char *text, int ms);
+/* background audio (NotaTV 1.0.7+): an app that plays audio while the UI runs (Radio) registers its stop function; the
+   system calls it (once) before video or game streaming needs the audio device. The function must have released the
+   device when it returns. NULL = nothing plays */
+NOTA_NEW void audio_bg_set(void (*stop)(void));
+void audio_bg_take(void); /* the system: stop background audio now (player_run, moon_run) */
 
 /* ---------- App / screens ---------- */
 typedef struct Screen Screen;
@@ -470,6 +476,9 @@ char *str_dup(const char *s);
 char *file_read_all(const char *path, long max); /* whole file, 0-terminated; NULL if missing or > max */
 char *str_printf(const char *fmt, ...);
 void str_trim(char *s);
+/* which Raspberry Pi this is: 4 (BCM2711: Pi 4, Pi 400, CM4), 5 (BCM2712: Pi 5, Pi 500, CM5), 0 = other/unknown.
+   One image runs on both; use this where they differ (video decoders, overclock limits) */
+NOTA_NEW int board_pi(void);
 
 /* Dialogs / keyboard */
 typedef void (*KbDone)(void *ud, const char *text); /* text NULL = cancelled */

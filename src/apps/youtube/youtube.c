@@ -142,18 +142,10 @@ static char pf_busy_id[16]; /* video being looked up right now ("" = none) */
 static char pf_focus[16];
 static double pf_focus_t;
 
-/* YouTube has 1440p and 4K only as VP9/AV1, which the Pi 4 cannot decode in hardware (H.264 goes up to 1080p):
-   there 1080p is the most, and 1440p/2160p are shown greyed out. Other devices (later ports) get up to 2160p. */
-static int yt_max(void) {
-    static int max;
-    if (!max) {
-        char m[128] = "";
-        FILE *f = fopen("/proc/device-tree/model", "r");
-        if (f) { size_t n = fread(m, 1, sizeof m - 1, f); m[n] = 0; fclose(f); }
-        max = strstr(m, "Raspberry Pi 4") || strstr(m, "Raspberry Pi 400") || strstr(m, "Compute Module 4") ? 1080 : 2160;
-    }
-    return max;
-}
+/* YouTube has 1440p and 4K only as VP9/AV1. The Pi 4 cannot decode those in hardware (H.264 goes up to 1080p),
+   and the Pi 5 has no hardware decoder for them at all (only HEVC): it decodes in software and mpv draws such
+   frames in 1080p anyway. On both, 1080p is the most, and 1440p/2160p are shown greyed out. Other devices get 2160p. */
+static int yt_max(void) { return !board_pi || board_pi() ? 1080 : 2160; } /* older NotaTV: Pi only */
 static int yt_quality(void) {
     int q = cfg_int("yt_quality", 1080);
     return q <= 0 ? 1080 : q > yt_max() ? yt_max() : q;
@@ -1646,7 +1638,7 @@ static const Item yt_items[] = {
     {N_("YouTube cast"), IT_TOGGLE, "ytcast_enabled", "1", set_onoff, .changed = ytcast_apply, .help = N_("The cast button in the YouTube app can play on NotaTV. Control goes through YouTube (Google)")},
     {N_("YouTube: link with TV code"), IT_ACTION, .action = act_ytpair, .help = N_("If NotaTV does not show up under Cast in the YouTube app: link with a code")},
     {N_("YouTube max quality"), IT_CYCLE, "yt_quality", "1080", ytq_o, ytq_l,
-     .help = N_("Up to 1080p on a Raspberry Pi 4 (YouTube has 1440p and 4K only in formats it cannot decode)")},
+     .help = N_("Up to 1080p on a Raspberry Pi (YouTube has 1440p and 4K only in formats it cannot decode)")},
     {N_("YouTube subtitles"), IT_TOGGLE, "yt_subs", "0", set_onoff, .help = N_("Downloads English subtitles - makes start about 2 sec. slower")},
     {N_("Sign out of YouTube"), IT_ACTION, .action = act_yt_logout, .help = N_("Deletes the accounts (cookies), subscriptions, search history and what you have watched"),
      .locked = yt_signed_out},

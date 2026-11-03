@@ -336,6 +336,20 @@ typedef struct {
     const char *mode;
 } StreamOpts;
 
+/* is there a hardware H.264 decoder (the Pi 4's bcm2835-codec via v4l2m2m)? The Pi 5 has none, only HEVC */
+static bool h264_hw(void) {
+    for (int i = 0; i < 32; i++) {
+        char p[64], n[64] = "";
+        snprintf(p, sizeof p, "/sys/class/video4linux/video%d/name", i);
+        FILE *f = fopen(p, "r");
+        if (!f) continue;
+        bool hit = fgets(n, sizeof n, f) && strstr(n, "codec-decode");
+        fclose(f);
+        if (hit) return true;
+    }
+    return false;
+}
+
 static int cmd_stream(const char *host, int appid, const StreamOpts *o) {
     SERVER_DATA srv;
     char a[64];
@@ -354,9 +368,12 @@ static int cmd_stream(const char *host, int appid, const StreamOpts *o) {
     sc.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
     sc.clientRefreshRateX100 = o->fps * 100;
     /* Pi 4: HEVC goes through the stateless v4l2-request decoder (low latency, up to 4K),
-       H.264 through v4l2m2m (max 1080p). Both are announced; the host prefers HEVC. */
-    if (!strcmp(o->codec, "h264")) sc.supportedVideoFormats = VIDEO_FORMAT_H264;
-    else if (!strcmp(o->codec, "hevc")) sc.supportedVideoFormats = VIDEO_FORMAT_H265;
+       H.264 through v4l2m2m (max 1080p). Both are announced; the host prefers HEVC.
+       Pi 5: only HEVC has a hardware decoder, so H.264 is never asked for there. */
+    bool h264 = h264_hw();
+    if (!h264 && strcmp(o->codec, "hevc") && strcmp(o->codec, "auto")) tlog("stream: ingen H.264-dekoder (Pi 5) - bruger HEVC");
+    if (!strcmp(o->codec, "h264") && h264) sc.supportedVideoFormats = VIDEO_FORMAT_H264;
+    else if (!strcmp(o->codec, "hevc") || !h264) sc.supportedVideoFormats = VIDEO_FORMAT_H265;
     else sc.supportedVideoFormats = VIDEO_FORMAT_H264 | VIDEO_FORMAT_H265;
     if (o->hdr) sc.supportedVideoFormats |= VIDEO_FORMAT_H265_MAIN10;
     sc.colorSpace = o->hdr ? COLORSPACE_REC_2020 : COLORSPACE_REC_709;

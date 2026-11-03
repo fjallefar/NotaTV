@@ -22,6 +22,11 @@ progress() { echo "$*" > /tmp/notatv-progress; log "$*"; }
 # message to the user interface: English text with %s and arguments after \037 (tvshell translates, see tr_msg)
 msg() { f=$1; shift; printf '%s' "$f"; for a in "$@"; do printf '\037%s' "$a"; done; printf '\n'; }
 device_name() { cfg_get device_name NotaTV; }
+# which Raspberry Pi: 4 (BCM2711), 5 (BCM2712) or 0 (other) - one image runs on both
+board_pi() {
+	c=$(tr '\000' ' ' < /proc/device-tree/compatible 2>/dev/null)
+	case "$c" in *brcm,bcm2712*) echo 5 ;; *brcm,bcm2711*) echo 4 ;; *) echo 0 ;; esac
+}
 
 # the data partition (label NOTADATA) on the same disk as the root filesystem - never one on another disk, e.g. a
 # USB stick someone labelled NOTADATA (its settings and app packages would be used, as root)

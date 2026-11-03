@@ -1,0 +1,13 @@
+{
+  "id": "radio",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Radio",
+  "desc": "Radio stations from your country and the whole world",
+  "icon": "music",
+  "c1": [255, 150, 40],
+  "c2": [200, 70, 20],
+  "fg": [255, 255, 255],
+  "order": 75,
+  "default": false
+}

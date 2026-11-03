@@ -1,14 +1,23 @@
 #!/bin/sh
-# Overclocking the Raspberry Pi 4: status | apply | boot
+# Overclocking the Raspberry Pi 4 and Pi 5: status | apply | boot
 #   status  current CPU frequency, temperature and any warnings (for settings)
-#   apply   write cfg cpu_mhz into the boot config and reboot. A new frequency is first tried once
+#   apply   write cfg cpu_mhz (Pi 4) / cpu_mhz5 (Pi 5) into the boot config and reboot. A new frequency is first tried once
 #           via tryboot (tryboot.txt); if the box does not start, a power cycle restores the old config.
 #   boot    (from init) after a successful tryboot: make the new config permanent after 60 s
 # Tested on Pi 4 Rev 1.1 (2026-10-31): 2147 MHz with over_voltage=6 is the ceiling without force_turbo (warranty bit),
 # but it crashed shortly after 5 min at full load; 2300 and 2200 do not boot. 2100 passed the test, but
 # rebooted by itself after a few hours of use (2026-10-31) - 2000 is used on the test box.
 # GPU clocks (v3d/gpu_freq) cannot be raised together with hdmi_enable_4kp60 - the firmware crashes.
+# Pi 5: 2400 MHz as standard; the voltage is raised with over_voltage_delta (microvolts on top of the firmware's own
+# curve) - not tested on a box yet. The block in config.txt has a [pi4]/[pi5] filter, so a card moved to the
+# other board starts at its standard frequency.
 . /usr/libexec/notatv/lib.sh
+
+if [ "$(board_pi)" = 5 ]; then
+	PI=5 KEY=cpu_mhz5 DEF=2400
+else
+	PI=4 KEY=cpu_mhz DEF=1500
+fi
 
 BOOT=/run/notatv/boot
 BEGIN="# --- NotaTV overclock (styres fra Indstillinger) ---"
@@ -29,8 +38,13 @@ tryboot_active() {
 # config.txt without the overclock block + a new block for $1 MHz
 make_config() {
 	sed "/^$BEGIN\$/,/^$END\$/d" $BOOT/config.txt
-	[ "$1" -gt 1500 ] 2>/dev/null || return 0
-	printf '%s\nover_voltage=6\narm_freq=%s\n%s\n' "$BEGIN" "$1" "$END"
+	[ "$1" -gt $DEF ] 2>/dev/null || return 0
+	if [ $PI = 5 ]; then
+		if [ "$1" -ge 3000 ]; then v=100000; else v=50000; fi
+		printf '%s\n[pi5]\nover_voltage_delta=%s\narm_freq=%s\n[all]\n%s\n' "$BEGIN" "$v" "$1" "$END"
+	else
+		printf '%s\n[pi4]\nover_voltage=6\narm_freq=%s\n[all]\n%s\n' "$BEGIN" "$1" "$END"
+	fi
 }
 
 cur_mhz() { echo $(($(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq) / 1000)); }
@@ -45,7 +59,7 @@ status)
 	echo "$s"
 	;;
 apply)
-	want=$(cfg_get cpu_mhz 1500)
+	want=$(cfg_get $KEY $DEF)
 	mount_boot || { echo "Cannot find the boot partition"; exit 1; }
 	make_config "$want" > $BOOT/tryboot.txt.new
 	if cmp -s $BOOT/tryboot.txt.new $BOOT/config.txt; then
@@ -54,12 +68,12 @@ apply)
 		exit 0
 	fi
 	rm -f $FAILED
-	if [ "$want" -le 1500 ]; then
+	if [ "$want" -le $DEF ]; then
 		# back to default: no risk, write directly
 		mv $BOOT/tryboot.txt.new $BOOT/config.txt
 		rm -f $PENDING
 		sync; umount $BOOT
-		log "overclock: tilbage til 1500 MHz"
+		log "overclock: tilbage til $DEF MHz"
 		reboot
 	else
 		mv $BOOT/tryboot.txt.new $BOOT/tryboot.txt
@@ -76,7 +90,7 @@ boot)
 		# the attempt did not boot (power cycle) - we are running on the old config
 		rm -f $PENDING
 		echo "$want" > $FAILED
-		cfg_set cpu_mhz "$(cur_mhz)"
+		cfg_set $KEY "$(cur_mhz)"
 		log "overclock: $want MHz startede ikke - beholder $(cur_mhz) MHz"
 		exit 0
 	fi

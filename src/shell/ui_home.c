@@ -391,7 +391,10 @@ static void home_draw(Screen *s) {
             fill_rrect(xx, yy, w, hh, 18, logo ? color_mix(C_SURFACE, C_SURFACE2, fc) : C_SURFACE);
             Image *im = logo ? img_get_logo(it->image) : img_get(it->image);
             if (logo ? !img_draw(im, xx + w * 0.2f, yy + hh * 0.16f, w * 0.6f, hh * 0.42f, 12, 1) : !img_draw_cover(im, xx, yy, w, hh, 18, 1)) {
-                draw_icon(ICON_TV, xx + w / 2, yy + hh / 2 - 20, 70, C_TEXT3);
+                /* no logo (none, still loading or not readable): the name on a logo card, otherwise the app's icon */
+                if (logo && it->title && *it->title)
+                    text_draw_wrap(F_BOLD, 34, xx + 28, yy + hh / 2 - 44, w - 56, 2, 42, C_TEXT2, it->title);
+                else draw_icon(h->cont_app ? h->cont_app->icon : ICON_TV, xx + w / 2, yy + hh / 2 - 20, 70, C_TEXT3);
             }
             if (it->progress > 0) {
                 fill_rrect(xx + 14, yy + hh - 16, w - 28, 6, 3, RGBA(0, 0, 0, 150));

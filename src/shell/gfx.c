@@ -1019,6 +1019,73 @@ static unsigned char *logo_clean(unsigned char *px, int *pw, int *ph) {
 }
 
 /* fetch (cache in /tmp/tvimg) and decode an image; any thread. *hdr gets an HDR copy when the menus are in HDR */
+/* Windows .ico (stb_image cannot read it): the largest image in the file, either a PNG inside or a bitmap
+   (1/4/8 bit with palette, 24 or 32 bit) with its transparency mask. RGBA, freed with stbi_image_free (= free). */
+static uint32_t le32(const unsigned char *p) { return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; }
+static unsigned le16(const unsigned char *p) { return p[0] | p[1] << 8; }
+static unsigned char *ico_decode(const unsigned char *d, size_t len, int *ow, int *oh) {
+    if (len < 6 || le16(d) != 0 || (le16(d + 2) != 1 && le16(d + 2) != 2)) return NULL;
+    unsigned n = le16(d + 4), best = 0;
+    long best_score = -1;
+    if (!n || n > 64 || 6 + 16 * (size_t)n > len) return NULL;
+    for (unsigned i = 0; i < n; i++) {
+        const unsigned char *e = d + 6 + 16 * i;
+        long w = e[0] ? e[0] : 256, h = e[1] ? e[1] : 256, bpp = le16(e + 6);
+        long score = w * h * 64 + bpp;
+        if (le32(e + 8) && le32(e + 12) < len && score > best_score) { best_score = score; best = i; }
+    }
+    if (best_score < 0) return NULL;
+    const unsigned char *e = d + 6 + 16 * best;
+    size_t sz = le32(e + 8), off = le32(e + 12);
+    if (off >= len || sz > len - off) sz = len - off;
+    const unsigned char *b = d + off;
+    if (sz > 8 && !memcmp(b, "\x89PNG", 4)) {
+        int w, h, c;
+        if (!stbi_info_from_memory(b, (int)sz, &w, &h, &c) || (long)w * h > IMG_MAX_PIXELS) return NULL;
+        unsigned char *px = stbi_load_from_memory(b, (int)sz, &w, &h, &c, 4);
+        if (px) { *ow = w; *oh = h; }
+        return px;
+    }
+    if (sz < 40) return NULL;
+    uint32_t hs = le32(b), comp = le32(b + 16), used = le32(b + 32);
+    int32_t w = (int32_t)le32(b + 4), h2 = (int32_t)le32(b + 8);
+    unsigned bpp = le16(b + 14);
+    int h = h2 / 2;
+    if (hs < 40 || hs > sz || w <= 0 || w > 512 || h <= 0 || h > 512) return NULL;
+    if (comp != 0 && !(comp == 3 && bpp == 32)) return NULL;
+    if (bpp != 1 && bpp != 4 && bpp != 8 && bpp != 24 && bpp != 32) return NULL;
+    size_t ncol = bpp <= 8 ? (used && used <= (1u << bpp) ? used : 1u << bpp) : 0;
+    size_t pal = hs, xor_off = pal + ncol * 4, stride = (((size_t)w * bpp + 31) / 32) * 4;
+    size_t and_off = xor_off + stride * h, astride = (((size_t)w + 31) / 32) * 4;
+    if (xor_off + stride * h > sz) return NULL;
+    bool have_mask = and_off + astride * h <= sz;
+    unsigned char *px = malloc((size_t)w * h * 4);
+    if (!px) return NULL;
+    bool any_alpha = false;
+    for (int y = 0; y < h; y++) {
+        const unsigned char *row = b + xor_off + stride * (size_t)(h - 1 - y); /* bottom-up */
+        unsigned char *o = px + (size_t)y * w * 4;
+        for (int x = 0; x < w; x++, o += 4) {
+            if (bpp == 32) { o[0] = row[x * 4 + 2]; o[1] = row[x * 4 + 1]; o[2] = row[x * 4]; o[3] = row[x * 4 + 3]; if (o[3]) any_alpha = true; continue; }
+            if (bpp == 24) { o[0] = row[x * 3 + 2]; o[1] = row[x * 3 + 1]; o[2] = row[x * 3]; o[3] = 255; continue; }
+            unsigned idx = bpp == 8 ? row[x] : bpp == 4 ? (row[x / 2] >> (x % 2 ? 0 : 4)) & 15 : (row[x / 8] >> (7 - x % 8)) & 1;
+            const unsigned char *c = idx < ncol ? b + pal + idx * 4 : (const unsigned char *)"\0\0\0\0";
+            o[0] = c[2]; o[1] = c[1]; o[2] = c[0]; o[3] = 255;
+        }
+    }
+    /* the AND mask (1 = transparent) - for 32 bit only if the image has no alpha of its own */
+    if (have_mask && (bpp != 32 || !any_alpha))
+        for (int y = 0; y < h; y++) {
+            const unsigned char *row = b + and_off + astride * (size_t)(h - 1 - y);
+            for (int x = 0; x < w; x++)
+                if ((row[x / 8] >> (7 - x % 8)) & 1) px[((size_t)y * w + x) * 4 + 3] = 0;
+                else if (bpp == 32) px[((size_t)y * w + x) * 4 + 3] = 255;
+        }
+    *ow = w;
+    *oh = h;
+    return px;
+}
+
 static unsigned char *img_fetch(const char *url, int *ow, int *oh, unsigned char **hdr) {
     bool is_logo;
     url = logo_strip(url, &is_logo);
@@ -1052,6 +1119,7 @@ static unsigned char *img_fetch(const char *url, int *ow, int *oh, unsigned char
         unsigned char *px = NULL;
         if (stbi_info_from_memory(data, (int)len, &w, &h, &n) && (long)w * h <= IMG_MAX_PIXELS)
             px = stbi_load_from_memory(data, (int)len, &w, &h, &n, 4);
+        else px = ico_decode(data, len, &w, &h); /* favicons (radio stations, websites) are often .ico */
         if (px && is_logo) px = logo_clean(px, &w, &h);
         if (px) {
             out = px; *ow = w; *oh = h;

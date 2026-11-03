@@ -76,6 +76,16 @@ ICONS = {
       <ellipse cx="190" cy="188" rx="24" ry="19" fill="#fff"/>
       <ellipse cx="266" cy="172" rx="24" ry="19" fill="#fff"/>
       <path d="M318 120 V176 M338 100 V196 M358 128 V168" stroke="#fff" stroke-width="11" stroke-linecap="round" opacity="0.85"/>"""),
+    # Radio: an old radio with an antenna, a speaker and a dial
+    "radio": icon("#FFA03A", "#C2410C", """
+      <path d="M226 98 L190 60" stroke="#fff" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="188" cy="58" r="9" fill="#fff"/>
+      <rect x="160" y="96" width="176" height="112" rx="24" fill="#fff"/>
+      <circle cx="212" cy="152" r="34" fill="#EA580C"/>
+      <circle cx="212" cy="152" r="13" fill="#fff" opacity="0.9"/>
+      <rect x="262" y="122" width="54" height="10" rx="5" fill="#EA580C"/>
+      <path d="M282 116 V138" stroke="#9A3412" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="274" cy="172" r="11" fill="#EA580C"/><circle cx="306" cy="172" r="11" fill="#EA580C"/>"""),
     # Games: a game pad
     "games": icon("#34D399", "#047857", """
       <path d="M196 96 H300 Q348 96 356 150 Q362 196 334 200 Q316 202 300 178 H196 Q180 202 162 200 Q134 196 140 150 Q148 96 196 96 Z" fill="#fff"/>
