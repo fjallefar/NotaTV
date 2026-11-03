@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 /* the apps on the home screen: the installed ones from the app register (apps.c), in their order */
 #define MAX_VIS 64
@@ -138,20 +139,114 @@ static bool item_same(const HomeItem *a, const HomeItem *b) {
            str_same(a->key, b->key) && str_same(a->logo, b->logo) && a->progress == b->progress;
 }
 
+/* removed from the row (Green on an item): kept in <data>/home-hidden.txt as app, progress, place, title, subtitle.
+ * An item comes back by itself when you watch it again: its progress changes, or it becomes the first in the row.
+ * Cleared on every sign-out (wipe_session_traces) and when the app is uninstalled. */
+#define MAX_HID 64
+typedef struct { char app[32]; double prog; int idx; char *title, *sub; } Hidden;
+static Hidden hid[MAX_HID];
+static int n_hid = -1; /* -1 = not loaded yet */
+static void hid_path(char *p, size_t n) { snprintf(p, n, "%s/home-hidden.txt", data_dir()); }
+static void hid_load(void) {
+    if (n_hid >= 0) return;
+    n_hid = 0;
+    char p[512], line[1024];
+    hid_path(p, sizeof p);
+    FILE *f = fopen(p, "r");
+    if (!f) return;
+    while (n_hid < MAX_HID && fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\n")] = 0;
+        char *sv, *app = strtok_r(line, "\t", &sv), *pr = strtok_r(NULL, "\t", &sv), *ix = strtok_r(NULL, "\t", &sv);
+        char *ti = strtok_r(NULL, "\t", &sv), *su = strtok_r(NULL, "\t", &sv);
+        if (!app || !pr || !ix || !ti) continue;
+        Hidden *e = &hid[n_hid++];
+        snprintf(e->app, sizeof e->app, "%s", app);
+        e->prog = atof(pr);
+        e->idx = atoi(ix);
+        e->title = str_dup(ti);
+        e->sub = su && strcmp(su, "-") ? str_dup(su) : NULL;
+    }
+    fclose(f);
+}
+static void hid_save(void) {
+    char p[512], t[520];
+    hid_path(p, sizeof p);
+    if (n_hid <= 0) { unlink(p); return; }
+    snprintf(t, sizeof t, "%s.tmp", p);
+    FILE *f = fopen(t, "w");
+    if (!f) return;
+    for (int i = 0; i < n_hid; i++)
+        fprintf(f, "%s\t%.4f\t%d\t%s\t%s\n", hid[i].app, hid[i].prog, hid[i].idx, hid[i].title, hid[i].sub && *hid[i].sub ? hid[i].sub : "-");
+    fclose(f);
+    rename(t, p);
+}
+/* no tabs or line breaks in what is saved */
+static char *hid_clean(const char *s) {
+    char *d = str_dup(s ? s : "");
+    for (char *c = d; *c; c++) if (*c == '\t' || *c == '\n' || *c == '\r') *c = ' ';
+    return d;
+}
+static int hid_find(const char *app, const HomeItem *it) {
+    char *t = hid_clean(it->title), *u = hid_clean(it->subtitle);
+    int r = -1;
+    for (int i = 0; i < n_hid && r < 0; i++)
+        if (!strcmp(hid[i].app, app) && !strcmp(hid[i].title, t) && !strcmp(hid[i].sub ? hid[i].sub : "", u)) r = i;
+    free(t); free(u);
+    return r;
+}
+static void hid_del(int i) {
+    free(hid[i].title); free(hid[i].sub);
+    memmove(&hid[i], &hid[i + 1], (n_hid - i - 1) * sizeof hid[0]);
+    n_hid--;
+}
+static void hid_add(const char *app, const HomeItem *it, int idx) {
+    hid_load();
+    if (hid_find(app, it) >= 0) return;
+    if (n_hid == MAX_HID) hid_del(0); /* the oldest goes */
+    Hidden *e = &hid[n_hid++];
+    snprintf(e->app, sizeof e->app, "%s", app);
+    e->prog = it->progress;
+    e->idx = idx;
+    char *t = hid_clean(it->title), *u = hid_clean(it->subtitle);
+    e->title = t;
+    e->sub = *u ? u : (free(u), NULL);
+    hid_save();
+}
+/* sign-out / uninstall (called from wipe_session_traces and app_uninstall); app NULL = all apps */
+void home_hidden_forget(const char *app) {
+    hid_load();
+    for (int i = n_hid - 1; i >= 0; i--) if (!app || !strcmp(hid[i].app, app)) hid_del(i);
+    hid_save();
+}
+
 static void collect_continue(Home *h) {
     const NotaApp *app = pick_cont_app(h);
-    HomeItem *a = NULL;
-    int na = app && app->row ? app->row(&a) : 0;
-    if (!a) na = 0;
+    HomeItem *all = NULL;
+    int nall = app && app->row ? app->row(&all) : 0;
+    if (!all) nall = 0;
+    /* leave out what was removed from the row - unless it has been watched again since */
+    hid_load();
+    const HomeItem *a[64];
+    int na = 0;
+    bool dirty = false;
+    for (int i = 0; i < nall && na < 64; i++) {
+        int k = n_hid ? hid_find(app->id, &all[i]) : -1;
+        if (k >= 0) {
+            if (fabs(all[i].progress - hid[k].prog) > 0.01 || (i == 0 && hid[k].idx > 0)) { hid_del(k); dirty = true; } /* watched again */
+            else { if (i != hid[k].idx) { hid[k].idx = i; dirty = true; } continue; }
+        }
+        a[na++] = &all[i];
+    }
+    if (dirty) hid_save();
     if (app == h->cont_app && na == h->n_cont && h->cont) { /* every 2 s: nothing to copy when nothing changed */
         bool same = true;
-        for (int i = 0; i < na && same; i++) same = item_same(&h->cont[i], &a[i]);
+        for (int i = 0; i < na && same; i++) same = item_same(&h->cont[i], a[i]);
         if (same) return;
     }
     free_continue(h);
     h->cont_app = app;
     h->cont = calloc(na + 1, sizeof(HomeItem));
-    for (int i = 0; i < na; i++) copy_item(&h->cont[h->n_cont++], &a[i]);
+    for (int i = 0; i < na; i++) copy_item(&h->cont[h->n_cont++], a[i]);
     if (h->col2 >= h->n_cont) h->col2 = h->n_cont ? h->n_cont - 1 : 0;
     if (h->n_cont == 0 && h->row == 1) h->row = 0;
 }
@@ -181,7 +276,7 @@ static void home_update(Screen *s, float dt) {
     }
     if (h->moving) h->wiggle += dt;
     h->rest += dt;
-    h->hint_a = anim_to(h->hint_a, h->rest > 3 && h->row == 0 && !h->moving ? 1 : 0, dt, h->rest > 3 ? 4 : 18);
+    h->hint_a = anim_to(h->hint_a, h->rest > 3 && (h->row == 0 || h->n_cont > 0) && !h->moving ? 1 : 0, dt, h->rest > 3 ? 4 : 18);
     for (int i = 0; i < n_vis; i++)
         spring_to(&h->foc[i], (h->row == 0 && h->col == i && !h->moving) || (h->moving && h->col == i) ? 1 : 0, dt, SPRING_SNAPPY);
     for (int i = 0; i < 64; i++)
@@ -297,7 +392,7 @@ static void home_draw(Screen *s) {
     draw_icon(ip[0] ? ICON_WIFI : ICON_WIFI, UI_W - 250, 82, 34, ip[0] ? C_TEXT2 : C_DANGER);
     if (h->hint_a > 0.01f && n_vis > 1) { /* how to move a tile: Green (there is no "hold OK" on CEC) - only after
                                                resting on a tile for a while, so it is not mistaken for a status */
-        const char *l = T("Move app");
+        const char *l = h->row == 1 ? T("Remove from the row") : T("Move app");
         float hx = UI_W - 310 - 36 - text_width(F_REG, 22, l);
         fill_rrect(hx - 14, 58, text_width(F_REG, 22, l) + 64, 46, 23, RGBA(255, 255, 255, (uint8_t)(16 * h->hint_a)));
         fill_circle(hx + 15, 81, 12, RGBA(64, 186, 92, (uint8_t)(255 * h->hint_a)));
@@ -410,6 +505,38 @@ static void home_draw(Screen *s) {
     }
 }
 
+/* Green on an item in the row below the apps: remove it from the row (until it is watched again) */
+static Home *rm_home;
+static HomeItem rm_item;
+static char rm_app[32];
+static int rm_idx;
+static void remove_cb(void *ud, bool yes) {
+    (void)ud;
+    if (yes && rm_home) {
+        hid_add(rm_app, &rm_item, rm_idx);
+        free_continue(rm_home); /* collected again without it */
+        collect_continue(rm_home);
+    }
+    free(rm_item.title); free(rm_item.subtitle);
+    rm_item = (HomeItem){0};
+}
+static void remove_ask(Home *h) {
+    const HomeItem *it = &h->cont[h->col2];
+    free(rm_item.title); free(rm_item.subtitle);
+    rm_item = (HomeItem){str_dup(it->title), str_dup(it->subtitle), NULL, NULL, it->progress, NULL};
+    snprintf(rm_app, sizeof rm_app, "%s", h->cont_app->id);
+    /* its place in the app's own list (the row on screen leaves out what is removed) */
+    HomeItem *all = NULL;
+    int nall = h->cont_app->row ? h->cont_app->row(&all) : 0;
+    rm_idx = h->col2;
+    for (int i = 0; all && i < nall; i++)
+        if (str_same(all[i].title, it->title) && str_same(all[i].subtitle, it->subtitle)) { rm_idx = i; break; }
+    rm_home = h;
+    char title[256];
+    snprintf(title, sizeof title, T("Remove \"%s\" from the row?"), it->title ? it->title : "");
+    confirm_open(title, T("It comes back by itself when you watch it again."), T("Remove"), T("Cancel"), remove_cb, NULL);
+}
+
 static bool home_input(Screen *s, const InputEvent *ev) {
     Home *h = s->st;
     h->rest = 0;
@@ -472,6 +599,7 @@ static bool home_input(Screen *s, const InputEvent *ev) {
         return true;
     case A_INFO: /* green: pick up the tile to move it (LG CEC has no real "held OK", see STATUS) */
         if (h->row == 0 && n_vis > 1 && !ev->repeat) { h->moving = true; h->wiggle = 0; }
+        else if (h->row == 1 && h->col2 < h->n_cont && h->cont_app && !ev->repeat) remove_ask(h);
         return true;
     case A_MENU:
         power_menu_open();

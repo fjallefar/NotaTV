@@ -182,8 +182,34 @@ static void act_wifi_forget(void) { run_async(forgot, NULL, "wifi forget"); }
 static void act_phone_pin(void) { phone_pin_change(NULL); }
 static void act_netwatch(void) { app_push(netwatch_screen()); }
 static void act_bt_pair(void) { app_push(bt_pair_screen()); }
-static void forget_cb(void *ud, bool yes) { (void)ud; if (yes) bt_forget_all(); }
-static void act_bt_forget(void) { confirm_open(T("Forget all Bluetooth devices?"), T("The phones will need to be paired again afterwards."), T("Forget"), T("Cancel"), forget_cb, NULL); }
+/* Forget paired devices: choose one device or all of them, then confirm */
+static BtDevice fg_dev[16];
+static int fg_n, fg_sel; /* fg_sel = fg_n: all devices */
+static void forget_cb(void *ud, bool yes) {
+    (void)ud;
+    if (!yes) return;
+    if (fg_sel >= fg_n) { bt_forget_all(); return; }
+    bt_forget(fg_dev[fg_sel].path);
+    app_toast(T("%s forgotten"), fg_dev[fg_sel].name);
+}
+static void forget_pick(void *ud, int idx) {
+    (void)ud;
+    if (idx < 0 || idx > fg_n) return;
+    fg_sel = idx;
+    char title[192];
+    if (idx == fg_n) snprintf(title, sizeof title, "%s", T("Forget all Bluetooth devices?"));
+    else snprintf(title, sizeof title, T("Forget %s?"), fg_dev[idx].name);
+    confirm_open(title, idx == fg_n ? T("The phones will need to be paired again afterwards.") : T("It will need to be paired again afterwards."),
+                 T("Forget"), T("Cancel"), forget_cb, NULL);
+}
+static void act_bt_forget(void) {
+    fg_n = bt_devices(fg_dev, 16);
+    if (fg_n <= 0) { fg_n = 0; app_toast(T("No paired devices")); return; }
+    const char *items[17];
+    for (int i = 0; i < fg_n; i++) items[i] = fg_dev[i].name[0] ? fg_dev[i].name : fg_dev[i].path;
+    items[fg_n] = T("All devices");
+    choice_open(T("Forget which device?"), items, fg_n + 1, 0, forget_pick, NULL);
+}
 
 /* --- name / text fields --- */
 static const Item *text_item;
@@ -412,7 +438,7 @@ static const Item bt_items[] = {
     {N_("Only visible while Music is open"), IT_TOGGLE, "bt_ondemand", "1", onoff, .changed = bt_apply,
      .help = N_("Phones can only find and connect to the TV while Music or \"Pair a phone\" is open (and for 2 min. after). Paired controllers and keyboards can always connect. Turn off if phones should be able to connect on their own")},
     {N_("Pair a phone"), IT_ACTION, .action = act_bt_pair, .help = N_("Makes the TV visible for 3 minutes. The code is confirmed here on the TV")},
-    {N_("Forget paired devices"), IT_ACTION, .action = act_bt_forget},
+    {N_("Forget paired devices"), IT_ACTION, .action = act_bt_forget, .help = N_("Choose a phone, controller or keyboard to forget - or all of them")},
     {N_("Cover art for Bluetooth music"), IT_TOGGLE, "music_cover_lookup", "1", onoff, .help = N_("Looks up cover art at Apple (iTunes) and in MusicBrainz (open music database). Sends artist and album there")},
     {N_("AirPlay (music from phone)"), IT_TOGGLE, "airplay_enabled", "1", onoff, .changed = restart_music, .help = N_("iPhone, iPad and Mac can play music on the TV. Local network only")},
 };

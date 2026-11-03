@@ -1,6 +1,6 @@
 {
   "id": "iptv",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": 2,
   "name": "Live TV",
   "desc": "Watch live TV and channels from your IPTV provider",
@@ -11,11 +11,10 @@
   "order": 10,
   "default": true,
   "changes": {
-    "summary": "A calmer, smoother look",
+    "summary": "The right channel name when you start from the home screen",
     "points": [
-      "What you choose lifts gently toward you with a soft glow instead of a white frame",
-      "Channel logos without the white box, and they fill their place",
-      "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
+      "A channel started from the home screen shows its own name in the banner - before it could show the channel you watched last",
+      "Channels from the home screen are also found when your provider has given them new addresses, so you can change channel from there"
     ]
   }
 }

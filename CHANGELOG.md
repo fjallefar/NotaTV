@@ -18,6 +18,30 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.8
+
+> **In short:** Remove things from the row on the home screen, forget one Bluetooth device at a time, and Live TV shows the right channel name when you start from the home screen.
+> - Home screen: press Green on something in the row below the apps to remove it - it comes back when you watch it again
+> - Bluetooth: forget one phone, controller or keyboard instead of all of them
+> - Live TV: the right channel name in the banner when you start a channel from the home screen
+
+<!-- tldr:da
+Kort: Fjern ting fra rækken på forsiden, glem én Bluetooth-enhed ad gangen, og Live TV viser det rigtige kanalnavn, når du starter fra forsiden.
+- Forsiden: tryk Grøn på noget i rækken under apps for at fjerne det - det kommer tilbage, når du ser det igen
+- Bluetooth: glem én telefon, controller eller ét tastatur i stedet for dem alle
+- Live TV: det rigtige kanalnavn i banneret, når du starter en kanal fra forsiden
+-->
+
+**Home screen and settings**
+- Remove something from the row below the apps (Continue watching, Recent channels, Radio, YouTube): press Green on it and confirm. It comes back by itself when you watch it again. Works for every app; what is removed is forgotten when you sign out of an app or uninstall it. It is only removed on the box - Plex and Jellyfin still have it in their own Continue watching.
+- Bluetooth: *Forget paired devices* now lists the paired phones, controllers and keyboards, so you can forget one of them - or all, as before.
+
+**Playback**
+- Live TV from the home screen: the channel banner showed the wrong name (often the channel watched last) when the channel list was not loaded yet or the provider had given the channel a new address. The channel is now also found by name, and otherwise it gets a banner of its own. Starting a channel also no longer puts the first channel of the list in *Recently watched*.
+
+**Apps**
+- Live TV 1.0.5: the right channel name in the banner when a channel is started from the home screen.
+
 ## 1.0.7
 
 > **In short:** NotaTV now also runs on the Raspberry Pi 5, there is a new Radio app, and movies start faster on displays that cannot change to the movie's frame rate.

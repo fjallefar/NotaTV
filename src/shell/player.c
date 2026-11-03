@@ -252,6 +252,7 @@ typedef struct {
     double pos, dur;
     bool paused, eof, have_dur;
     int plpos;
+    bool pl_started; /* mpv has reported a real playlist position (see playlist-pos) */
     bool menu;             /* the settings menu in mpv is open */
     char quality[32];      /* anmodet kvalitet */
     bool subsearch, goto_channel;
@@ -385,6 +386,10 @@ static void ipc_read(MpvState *st, const PlayRequest *rq) {
                     else if (!strcmp(nm, "eof-reached")) st->eof = cJSON_IsTrue(data);
                     else if (!strcmp(nm, "playlist-pos") && cJSON_IsNumber(data)) {
                         int p = data->valueint;
+                        /* mpv first reports 0 = the playlist file itself, before it jumps to --playlist-start:
+                           that is not a channel change (it put channel 1 in "recent" and on the banner) */
+                        if (p == 0 && rq->playlist_start > 0 && !st->pl_started) p = -1;
+                        else if (p >= 0) st->pl_started = true;
                         if (p != st->plpos && p >= 0) {
                             st->plpos = p;
                             if (rq->channel_changed) rq->channel_changed(rq->ud, p);

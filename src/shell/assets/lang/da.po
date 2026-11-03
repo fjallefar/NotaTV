@@ -1667,3 +1667,33 @@ msgstr "Alle indstillinger"
 
 msgid "%d min left"
 msgstr "%d min tilbage"
+
+msgid "Remove \"%s\" from the row?"
+msgstr "Fjern \"%s\" fra rækken?"
+
+msgid "It comes back by itself when you watch it again."
+msgstr "Den kommer selv tilbage, når du ser den igen."
+
+msgid "Remove"
+msgstr "Fjern"
+
+msgid "Remove from the row"
+msgstr "Fjern fra rækken"
+
+msgid "%s forgotten"
+msgstr "%s er glemt"
+
+msgid "Forget %s?"
+msgstr "Glem %s?"
+
+msgid "It will need to be paired again afterwards."
+msgstr "Den skal parres igen bagefter."
+
+msgid "All devices"
+msgstr "Alle enheder"
+
+msgid "Forget which device?"
+msgstr "Hvilken enhed skal glemmes?"
+
+msgid "Choose a phone, controller or keyboard to forget - or all of them"
+msgstr "Vælg en telefon, controller eller et tastatur, der skal glemmes - eller dem alle"

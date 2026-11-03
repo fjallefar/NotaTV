@@ -1452,6 +1452,41 @@ static void iptv_draw(Screen *s) {
 /* ---------- playback ---------- */
 typedef struct { int *list; int n, cur, shown; } PlayCtx; /* shown: the channel the banner shows */
 
+/* the channel logo for the banner - only if it has already been fetched (network here would block channel changes) */
+static void osd_logo(cJSON *o, const char *logo, int slot) {
+    int lw, lh;
+    char lp[64];
+    snprintf(lp, sizeof lp, "/tmp/notatv-logo-%d.bgra", slot);
+    char lu[1024]; /* the cleaned logo with transparency (no light card in the banner) where NotaTV can */
+    snprintf(lu, sizeof lu, "%s%s", logo_card() ? "" : "logo:", logo ? logo : "");
+    /* also while zapping: only from the cache (img_cached), so no network is waited for; a small logo is quick */
+    if (!logo_card()) cJSON_AddTrueToObject(o, "logo_clean"); /* no light card in the banner, logo or not */
+    if (logo && *logo && img_cached(lu) && img_export_bgra(lu, lp, 220, 120, &lw, &lh)) {
+        cJSON_AddStringToObject(o, "logo", lp);
+        if (hdr_cfg("hdr_always", 0)) { /* the TV in HDR: the OSD script uses this one */
+            char hp[64];
+            snprintf(hp, sizeof hp, "/tmp/notatv-logo-%d-hdr.bgra", slot);
+            if (img_export_bgra_ex(lu, hp, 220, 120, &lw, &lh, true)) cJSON_AddStringToObject(o, "logo_hdr", hp);
+        }
+        cJSON_AddNumberToObject(o, "logo_w", lw);
+        cJSON_AddNumberToObject(o, "logo_h", lh);
+    }
+}
+
+/* write /tmp/notatv-chan.json (frees o) and tell the OSD script */
+static void osd_write(cJSON *o, const char *mode) {
+    char *js = cJSON_PrintUnformatted(o);
+    cJSON_Delete(o);
+    FILE *f = js ? fopen("/tmp/notatv-chan.json.part", "w") : NULL;
+    if (f) {
+        fputs(js, f);
+        fclose(f);
+        rename("/tmp/notatv-chan.json.part", "/tmp/notatv-chan.json");
+        player_message("notatv-chan", mode);
+    }
+    free(js);
+}
+
 /* the channel banner + browse panel are drawn by notatv-osd.lua from /tmp/notatv-chan.json */
 /* mode: "show" (after a channel change), "zap" (browsing), "update" (new program info - does not change visibility) */
 static void osd_channel(PlayCtx *pc, int idx, const char *mode) {
@@ -1495,35 +1530,9 @@ static void osd_channel(PlayCtx *pc, int idx, const char *mode) {
         cJSON_AddStringToObject(e, "name", DNAME(&D.ch[pc->list[j]]));
         cJSON_AddItemToArray(arr, e);
     }
-    /* logo only if it has already been fetched - network here would block channel changes */
-    int lw, lh;
-    char lp[64];
-    snprintf(lp, sizeof lp, "/tmp/notatv-logo-%d.bgra", idx % 2);
-    char lu[1024]; /* the cleaned logo with transparency (no light card in the banner) where NotaTV can */
-    snprintf(lu, sizeof lu, "%s%s", logo_card() ? "" : "logo:", c->logo ? c->logo : "");
-    /* also while zapping: only from the cache (img_cached), so no network is waited for; a small logo is quick */
-    if (!logo_card()) cJSON_AddTrueToObject(o, "logo_clean"); /* no light card in the banner, logo or not */
     (void)zapping;
-    if (c->logo && img_cached(lu) && img_export_bgra(lu, lp, 220, 120, &lw, &lh)) {
-        cJSON_AddStringToObject(o, "logo", lp);
-        if (hdr_cfg("hdr_always", 0)) { /* the TV in HDR: the OSD script uses this one */
-            char hp[64];
-            snprintf(hp, sizeof hp, "/tmp/notatv-logo-%d-hdr.bgra", idx % 2);
-            if (img_export_bgra_ex(lu, hp, 220, 120, &lw, &lh, true)) cJSON_AddStringToObject(o, "logo_hdr", hp);
-        }
-        cJSON_AddNumberToObject(o, "logo_w", lw);
-        cJSON_AddNumberToObject(o, "logo_h", lh);
-    }
-    char *js = cJSON_PrintUnformatted(o);
-    cJSON_Delete(o);
-    FILE *f = fopen("/tmp/notatv-chan.json.part", "w");
-    if (f) {
-        fputs(js, f);
-        fclose(f);
-        rename("/tmp/notatv-chan.json.part", "/tmp/notatv-chan.json");
-        player_message("notatv-chan", mode);
-    }
-    free(js);
+    osd_logo(o, c->logo, idx % 2);
+    osd_write(o, mode);
 }
 
 static void on_channel(void *ud, int idx) {
@@ -1579,21 +1588,39 @@ static void play_list(int *list, int n, int start) {
 void iptv_play_recent(int idx) {
     recent_load();
     if (idx < 0 || idx >= n_recent) return;
-    /* find the channel in the loaded list to get channel changes */
+    /* find the channel in the loaded list to get channel changes: by address, otherwise by name
+       (some providers give new addresses when the list is fetched again) */
     if (D.n_ch) {
-        int *all = malloc(sizeof(int) * D.n_ch);
         int start = -1;
-        for (int i = 0; i < D.n_ch; i++) {
-            all[i] = i;
-            if (start < 0 && !strcmp(D.ch[i].url, recents[idx].url)) start = i;
+        for (int i = 0; i < D.n_ch && start < 0; i++)
+            if (!strcmp(D.ch[i].url, recents[idx].url)) start = i;
+        for (int i = 0; i < D.n_ch && start < 0; i++)
+            if (!strcmp(DNAME(&D.ch[i]), recents[idx].name)) start = i;
+        if (start >= 0) {
+            int *all = malloc(sizeof(int) * D.n_ch);
+            if (all) {
+                for (int i = 0; i < D.n_ch; i++) all[i] = i;
+                play_list(all, D.n_ch, start);
+                free(all);
+                return;
+            }
         }
-        if (start >= 0) { play_list(all, D.n_ch, start); free(all); return; }
-        free(all);
-    }
+    } else iptv_load(false); /* the list was not loaded yet (Live TV not opened since start): next time it is */
+    /* only this channel: a banner of its own, so the OSD does not show the channel from the last time */
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddNumberToObject(o, "num", 1);
+    cJSON_AddStringToObject(o, "name", recents[idx].name);
+    cJSON_AddNumberToObject(o, "pos", 1);
+    cJSON_AddNumberToObject(o, "total", 1);
+    cJSON_AddNumberToObject(o, "now_t", (double)time(NULL));
+    osd_logo(o, recents[idx].logo, 0);
+    osd_write(o, "show");
     PlayRequest rq = {0};
     rq.url = recents[idx].url;
     rq.title = recents[idx].name;
     rq.is_live = true;
+    static const char *extra[] = {"--user-agent=" IPTV_UA, NULL};
+    rq.extra = extra;
     player_run(&rq);
 }
 

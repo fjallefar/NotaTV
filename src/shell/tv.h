@@ -573,6 +573,7 @@ int bt_devices(BtDevice *out, int max); /* paired devices (blocking, short timeo
 void bt_connect(const char *path);      /* the box calls the phone: the music moves to the TV */
 void bt_disconnect(void);               /* disconnect the phone that is playing */
 void bt_forget_all(void);
+void bt_forget(const char *path);       /* forget one paired device */
 void power_menu_open(void);
 NOTA_NEW void quick_open(void); /* the quick panel from the right (sleep timer, settings shortcuts, power) */
 void quick_tick(void);
@@ -582,6 +583,7 @@ struct HomeItem { char *title, *subtitle, *image, *key; double progress; char *l
 void wipe_file(const char *path);        /* overwrite (small files) and delete */
 void wipe_dir(const char *dir);          /* everything in a folder */
 void wipe_session_traces(void);          /* /tmp leftovers: mpv log, image cache */
+void home_hidden_forget(const char *app); /* what was removed from the home row (NULL = all apps) */
 void subs_forget(void);
 
 /* the focus wrappers (see focus_amt above) - inline, so an app works on a NotaTV without them */

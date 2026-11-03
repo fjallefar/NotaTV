@@ -614,6 +614,20 @@ void bt_disconnect(void) {
     MUSIC(bt_state, false, false, NULL, false);
 }
 
+/* forget one paired device (path from bt_devices) */
+void bt_forget(const char *path) {
+    if (!bus || !path || strncmp(path, ADAPTER "/dev_", strlen(ADAPTER) + 5)) return;
+    DBusMessage *rm = dbus_message_new_method_call("org.bluez", ADAPTER, "org.bluez.Adapter1", "RemoveDevice");
+    if (!rm) return;
+    dbus_message_append_args(rm, DBUS_TYPE_OBJECT_PATH, &path, DBUS_TYPE_INVALID);
+    send_call(rm);
+    if (!strcmp(transport_dev, path)) { /* the phone that was playing */
+        transport_dev[0] = player_path[0] = 0;
+        MUSIC(bt_state, false, false, NULL, false);
+    }
+    dev_forget(path);
+}
+
 /* forget all paired devices (Adapter1.RemoveDevice for each) */
 void bt_forget_all(void) {
     if (!bus) return;

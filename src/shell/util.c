@@ -864,6 +864,7 @@ void wipe_dir(const char *dir) {
 }
 /* leftovers in /tmp that can hold addresses, tokens or pictures from the account (mpv log, image cache, now playing) */
 void wipe_session_traces(void) {
+    home_hidden_forget(NULL); /* titles removed from the home row */
     wipe_dir("/tmp/tvimg");
     /* mpv-out.log holds the stream URLs with tokens (Plex/Jellyfin), the yt-dlp log searches, and the subtitle
        files and channel logos show what was watched */
