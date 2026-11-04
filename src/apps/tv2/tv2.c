@@ -550,7 +550,7 @@ static void remove_denied_cards(Tv2 *v, bool hide) {
         s->n = w;
     }
     compact_sections(v);
-    if (v->nsec == 0) snprintf(v->msg, sizeof v->msg, T("Ingen titler i dit abonnement"));
+    if (v->nsec == 0) snprintf(v->msg, sizeof v->msg, T("No titles in your subscription"));
 }
 
 static int locked_mode(void) {
@@ -792,7 +792,7 @@ static void device_done(void *ud, cJSON *json, long status);
 
 static void start_login(Tv2 *v) {
     v->gen++;
-    set_loading(v, T("Henter login-kode…"));
+    set_loading(v, T("Getting a sign-in code…"));
     char *scope = url_encode("openid profile email offline_access");
     char *aud = url_encode(TV2_AUDIENCE);
     char *body = str_printf("client_id=%s&scope=%s&audience=%s", TV2_CLIENT_ID, scope, aud);
@@ -804,7 +804,7 @@ static void start_login(Tv2 *v) {
 static void login_error(Tv2 *v, cJSON *j, long status) {
     char *err = j ? jstr(j, "error") : NULL;
     char *desc = j ? jstr(j, "error_description") : NULL;
-    set_error(v, T("Login fejlede: %s"), desc ? desc : (err ? err : T("ingen forbindelse")));
+    set_error(v, T("Sign-in failed: %s"), desc ? desc : (err ? err : T("no connection")));
     free(err); free(desc);
     (void)status;
 }
@@ -833,9 +833,9 @@ static void token_done(void *ud, cJSON *json, long status) {
         v->profile_name[0] = 0;
         cfg_set("tv2_profile", "");
         cfg_set("tv2_profile_name", "");
-        app_toast(T("Logget ind på TV 2 Play"));
+        app_toast(T("Signed in to TV 2 Play"));
         v->state = S_LOADING;
-        snprintf(v->msg, sizeof v->msg, T("Henter din profil…"));
+        snprintf(v->msg, sizeof v->msg, T("Getting your profile…"));
         v->gen++;
         load_profiles(v);
         return;
@@ -847,9 +847,9 @@ static void token_done(void *ud, cJSON *json, long status) {
         v->interval += 5;
         v->poll_next = app_time() + v->interval;
     } else if (err) {
-        set_error(v, T("Login fejlede: %s"), desc ? desc : err);
+        set_error(v, T("Sign-in failed: %s"), desc ? desc : err);
     } else if (status != 200) {
-        set_error(v, T("Login fejlede (%ld)"), status);
+        set_error(v, T("Sign-in failed (%ld)"), status);
     }
     free(err); free(desc);
 }
@@ -884,13 +884,13 @@ static void refresh_done(void *ud, cJSON *json, long status) {
         free(at);
         save_token_json(v, json);
         v->state = S_LOADING;
-        snprintf(v->msg, sizeof v->msg, T("Henter din profil…"));
+        snprintf(v->msg, sizeof v->msg, T("Getting your profile…"));
         v->gen++;
         load_profiles(v);
         return;
     }
     v->state = S_LOGIN;
-    snprintf(v->msg, sizeof v->msg, T("Login er udløbet. Log ind igen."));
+    snprintf(v->msg, sizeof v->msg, T("Your sign-in has expired. Sign in again."));
     clear_token_file();
     v->token[0] = 0;
     cfg_set("tv2_refresh", "");
@@ -925,7 +925,7 @@ static bool refresh_sync(Tv2 *v) {
 static void refresh_async(Tv2 *v) {
     if (!v->refresh[0]) { v->state = S_LOGIN; return; }
     v->gen++;
-    set_loading(v, T("Fornyer login…"));
+    set_loading(v, T("Renewing sign-in…"));
     char *rt = url_encode(v->refresh);
     char *aud = url_encode(TV2_AUDIENCE);
     char *body = str_printf("grant_type=refresh_token&client_id=%s&refresh_token=%s&audience=%s", TV2_CLIENT_ID, rt, aud);
@@ -945,7 +945,7 @@ static void auth_failed(Tv2 *v) {
     } else {
         v->state = S_LOGIN;
         v->auth_retried = false;
-        snprintf(v->msg, sizeof v->msg, T("Login er udløbet. Log ind igen."));
+        snprintf(v->msg, sizeof v->msg, T("Your sign-in has expired. Sign in again."));
     }
 }
 
@@ -1036,7 +1036,7 @@ static void parse_hero(Tv2 *v, cJSON *hero) {
         const char *lcolor = NULL;
         const char *label = card_label(card, &lcolor);
         if (!title && acc) title = acc;
-        if (!cta_txt) cta_txt = (cta_path && !strncmp(cta_path, "/afspil/", 8)) ? T("Afspil") : T("Mere info");
+        if (!cta_txt) cta_txt = (cta_path && !strncmp(cta_path, "/afspil/", 8)) ? T("Play") : T("More info");
         Hero *h = &v->hero[v->nhero++];
         memset(h, 0, sizeof *h);
         h->title = str_dup(title);
@@ -1098,7 +1098,7 @@ static void parse_page_cards(Tv2 *v, Section *s, cJSON *cards) {
             const char *ctn = jval(cli, "__typename");
             if (ctn && !strcmp(ctn, "OpenEntitlementClientAction")) {
                 c->ent = 2;
-                c->lock = str_dup(T("Kræver adgang til TV 2-kanalen"));
+                c->lock = str_dup(T("Needs access to the TV 2 channel"));
             } else c->ent = 1;
         }
     }
@@ -1134,17 +1134,17 @@ static void parse_page(Tv2 *v, cJSON *page) {
 static void page_done(void *ud, cJSON *json, long status) {
     Tv2 *v = ud;
     if (status == 401) { auth_failed(v); return; }
-    if (status != 200 || !json) { set_error(v, T("TV 2 svarede med fejl %ld"), status); return; }
+    if (status != 200 || !json) { set_error(v, T("TV 2 answered with error %ld"), status); return; }
     cJSON *data = cJSON_GetObjectItem(json, "data");
     cJSON *page = data ? cJSON_GetObjectItem(data, "page") : NULL;
-    if (!cJSON_IsObject(page)) { set_error(v, T("Kunne ikke hente TV 2-siden")); return; }
+    if (!cJSON_IsObject(page)) { set_error(v, T("Could not load the TV 2 page")); return; }
     clear_sections(v);
     parse_page(v, page);
     compact_sections(v);
     v->auth_retried = false;
     v->state = S_READY;
     v->msg[0] = 0;
-    if (v->nsec == 0) snprintf(v->msg, sizeof v->msg, T("Intet indhold på denne side"));
+    if (v->nsec == 0) snprintf(v->msg, sizeof v->msg, T("Nothing on this page"));
     entitlement_start(v);
 }
 
@@ -1155,7 +1155,7 @@ static void home_load(Tv2 *v) {
     v->state = S_LOADING;
     v->search_home = false;
     v->detail_focus = false;
-    snprintf(v->msg, sizeof v->msg, T("Henter forsiden…"));
+    snprintf(v->msg, sizeof v->msg, T("Loading the front page…"));
     clear_sections(v);
     clear_hero(v);
     v->hero_focus = true;
@@ -1175,7 +1175,7 @@ static void page_load(Tv2 *v, const char *path, const char *title, int view) {
     v->hero_focus = false;
     v->detail_focus = false;
     snprintf(v->heading, sizeof v->heading, "%s", title && *title ? title : T("TV 2 Play"));
-    snprintf(v->msg, sizeof v->msg, T("Henter…"));
+    snprintf(v->msg, sizeof v->msg, T("Loading…"));
     clear_sections(v);
     clear_hero(v);
     cJSON *vars = cJSON_CreateObject();
@@ -1188,7 +1188,7 @@ static void page_by_path(Tv2 *v, const char *path, const char *title) {
     page_load(v, path, title, V_BROWSE);
 }
 static void categories_load(Tv2 *v) {
-    page_load(v, "/kategorier", T("Kategorier"), V_CATEGORIES);
+    page_load(v, "/kategorier", T("Categories"), V_CATEGORIES);
 }
 static void live_load(Tv2 *v) {
     page_load(v, "/live", T("Live TV"), V_LIVE);
@@ -1207,10 +1207,10 @@ static void profile_open(Tv2 *v) {
 static void search_http_done(void *ud, cJSON *json, long status) {
     Tv2 *v = ud;
     if (status == 401) { auth_failed(v); return; }
-    if (status != 200 || !json) { set_error(v, T("Søgningen fejlede (%ld)"), status); return; }
+    if (status != 200 || !json) { set_error(v, T("The search failed (%ld)"), status); return; }
     cJSON *data = cJSON_GetObjectItem(json, "data");
     cJSON *sr = data ? cJSON_GetObjectItem(data, "searchResultsPage") : NULL;
-    if (!cJSON_IsObject(sr)) { set_error(v, T("Kunne ikke søge")); return; }
+    if (!cJSON_IsObject(sr)) { set_error(v, T("Could not search")); return; }
     clear_sections(v);
     cJSON *decks = cJSON_GetObjectItem(sr, "decks");
     cJSON *deck;
@@ -1219,7 +1219,7 @@ static void search_http_done(void *ud, cJSON *json, long status) {
         if (!tn || strcmp(tn, "SearchPageSearchResult")) continue;
         cJSON *list = cJSON_GetObjectItem(deck, "cardList");
         if (!cJSON_IsArray(list) || cJSON_GetArraySize(list) == 0) continue;
-        Section *s = add_section(v, v->query[0] ? v->query : T("Resultater"));
+        Section *s = add_section(v, v->query[0] ? v->query : T("Results"));
         cJSON *card;
         cJSON_ArrayForEach(card, list) {
             cJSON *act = cJSON_GetObjectItem(card, "action");
@@ -1257,7 +1257,7 @@ static void search_http_done(void *ud, cJSON *json, long status) {
     v->auth_retried = false;
     v->state = S_READY;
     v->msg[0] = 0;
-    if (v->nsec == 0) snprintf(v->msg, sizeof v->msg, T("Ingen resultater"));
+    if (v->nsec == 0) snprintf(v->msg, sizeof v->msg, T("No results"));
     entitlement_start(v);
 }
 
@@ -1267,8 +1267,8 @@ static void search_submit(Tv2 *v, const char *q) {
     v->gen++;
     v->path[0] = 0;
     v->state = S_LOADING;
-    snprintf(v->heading, sizeof v->heading, T("Søg: %s"), q);
-    snprintf(v->msg, sizeof v->msg, T("Søger…"));
+    snprintf(v->heading, sizeof v->heading, T("Search: %s"), q);
+    snprintf(v->msg, sizeof v->msg, T("Searching…"));
     clear_sections(v);
     cJSON *vars = cJSON_CreateObject();
     cJSON_AddStringToObject(vars, "query", q);
@@ -1296,16 +1296,16 @@ static void search_done(void *ud, const char *q) {
 static void episodes_done(void *ud, cJSON *json, long status) {
     Tv2 *v = ud;
     if (status == 401) { auth_failed(v); return; }
-    if (status != 200 || !json) { set_error(v, T("Kunne ikke hente afsnit (%ld)"), status); return; }
+    if (status != 200 || !json) { set_error(v, T("Could not load episodes (%ld)"), status); return; }
     cJSON *data = cJSON_GetObjectItem(json, "data");
     cJSON *items = data ? cJSON_GetObjectItem(data, "detailsPageCardListItems") : NULL;
-    if (!cJSON_IsArray(items)) { set_error(v, T("Kunne ikke hente afsnit")); return; }
+    if (!cJSON_IsArray(items)) { set_error(v, T("Could not load episodes")); return; }
     clear_sections(v);
     Section *s = NULL;
     int n = cJSON_GetArraySize(items);
     for (int i = 0; i < n; i++) {
         if (i % CARD_COLS == 0) {
-            s = add_section(v, T("Afsnit"));
+            s = add_section(v, T("Episodes"));
         }
         cJSON *item = cJSON_GetArrayItem(items, i);
         cJSON *act = cJSON_GetObjectItem(item, "action");
@@ -1326,13 +1326,13 @@ static void episodes_done(void *ud, cJSON *json, long status) {
     v->auth_retried = false;
     v->state = S_READY;
     v->msg[0] = 0;
-    if (v->nsec == 0) snprintf(v->msg, sizeof v->msg, T("Ingen afsnit fundet"));
+    if (v->nsec == 0) snprintf(v->msg, sizeof v->msg, T("No episodes found"));
 }
 
 static void load_episodes(Tv2 *v, const char *id) {
     v->gen++;
     v->state = S_LOADING;
-    snprintf(v->msg, sizeof v->msg, T("Henter afsnit…"));
+    snprintf(v->msg, sizeof v->msg, T("Loading episodes…"));
     cJSON *vars = cJSON_CreateObject();
     cJSON_AddStringToObject(vars, "detailsPageCardListId", id);
     cJSON_AddNumberToObject(vars, "limit", 100);
@@ -1345,10 +1345,10 @@ static void load_episodes(Tv2 *v, const char *id) {
 static void details_done(void *ud, cJSON *json, long status) {
     Tv2 *v = ud;
     if (status == 401) { auth_failed(v); return; }
-    if (status != 200 || !json) { set_error(v, T("Kunne ikke hente serien (%ld)"), status); return; }
+    if (status != 200 || !json) { set_error(v, T("Could not load the series (%ld)"), status); return; }
     cJSON *data = cJSON_GetObjectItem(json, "data");
     cJSON *dp = data ? cJSON_GetObjectItem(data, "detailsPage") : NULL;
-    if (!cJSON_IsObject(dp)) { set_error(v, T("Kunne ikke hente serien")); return; }
+    if (!cJSON_IsObject(dp)) { set_error(v, T("Could not load the series")); return; }
     const char *tn = jval(dp, "__typename");
     if (tn && !strcmp(tn, "DetailsPageRedirect")) {
         const char *url = jval(dp, "redirectUrl");
@@ -1384,7 +1384,7 @@ static void details_done(void *ud, cJSON *json, long status) {
             if (atn && !strcmp(atn, "DetailsPageInternalLinkAction") && (!url || strncmp(url, "/afspil/", 8)))
                 v->detail_cta_ent = 1;
             if (!v->detail_cta[0])
-                snprintf(v->detail_cta, sizeof v->detail_cta, "%s", T("Afspil"));
+                snprintf(v->detail_cta, sizeof v->detail_cta, "%s", T("Play"));
         }
         if (dtn && !strcmp(dtn, "DetailsPageRelatedDeck")) {
             cJSON *cl = cJSON_GetObjectItem(deck, "cardList");
@@ -1405,7 +1405,7 @@ static void details_done(void *ud, cJSON *json, long status) {
     if (episode_id) { load_episodes(v, episode_id); return; }
     clear_sections(v);
     if (episode_items) {
-        Section *s = add_section(v, T("Afsnit"));
+        Section *s = add_section(v, T("Episodes"));
         if (s) s->size = SZ_SMALL;
         cJSON *item;
         cJSON_ArrayForEach(item, episode_items) {
@@ -1425,7 +1425,7 @@ static void details_done(void *ud, cJSON *json, long status) {
         }
     }
     if (related_items) {
-        Section *rs = add_section(v, T("Mere som dette"));
+        Section *rs = add_section(v, T("More like this"));
         if (rs) { rs->fmt = FMT_POSTER; rs->size = SZ_MEDIUM; }
         cJSON *item;
         cJSON_ArrayForEach(item, related_items) {
@@ -1446,7 +1446,7 @@ static void details_done(void *ud, cJSON *json, long status) {
     v->auth_retried = false;
     v->state = S_READY;
     v->msg[0] = 0;
-    if (v->nsec == 0) snprintf(v->msg, sizeof v->msg, T("Intet at afspille"));
+    if (v->nsec == 0) snprintf(v->msg, sizeof v->msg, T("Nothing to play"));
 }
 
 static void details_load(Tv2 *v, const char *path, const char *title, const char *img) {
@@ -1463,7 +1463,7 @@ static void details_load(Tv2 *v, const char *path, const char *title, const char
     if (path != v->path) snprintf(v->path, sizeof v->path, "%s", path ? path : "");
     v->state = S_LOADING;
     snprintf(v->heading, sizeof v->heading, "%s", title && *title ? title : T("TV 2 Play"));
-    snprintf(v->msg, sizeof v->msg, T("Henter…"));
+    snprintf(v->msg, sizeof v->msg, T("Loading…"));
     clear_sections(v);
     cJSON *vars = cJSON_CreateObject();
     cJSON *ref = cJSON_CreateObject();
@@ -1479,7 +1479,7 @@ static void details_load(Tv2 *v, const char *path, const char *title, const char
 static void side_profile(Tv2 *v) {
     for (int i = 0; i < v->side.n && i < 8; i++)
         if (v->side_map[i] == M_MYPAGE)
-            snprintf(v->side.items[i].label, sizeof v->side.items[i].label, "%s", v->profile_name[0] ? v->profile_name : T("Min side"));
+            snprintf(v->side.items[i].label, sizeof v->side.items[i].label, "%s", v->profile_name[0] ? v->profile_name : T("My page"));
     snprintf(v->side.subtitle, sizeof v->side.subtitle, "%s", v->profile_name);
 }
 
@@ -1562,19 +1562,19 @@ static bool token_ensure(Tv2 *v) {
  * old generic "could not start" for titles that the subscription does not cover. */
 static void play_error_toast(const char *log) {
     char *s = file_read_all(log, 20000);
-    if (!s) { app_toast(T("Kunne ikke starte TV 2-afspilning")); return; }
+    if (!s) { app_toast(T("Could not start TV 2 playback")); return; }
     if (strstr(s, "LicenseNotGranted") || strstr(s, "proper product"))
-        app_toast(T("Titlen kræver køb eller leje"));
+        app_toast(T("This title must be bought or rented"));
     else if (strstr(s, "ConcurrencyLimitViolation") || strstr(s, "too many active streams"))
-        app_toast(T("TV 2 Play: for mange aktive streams"));
+        app_toast(T("TV 2 Play: too many active streams"));
     else if (strstr(s, "ingen WIDEVINE-stream") || strstr(s, "Missing media"))
-        app_toast(T("Titlen kan ikke afspilles med Widevine"));
+        app_toast(T("This title cannot be played with Widevine"));
     else if (strstr(s, "ingen noegle"))
-        app_toast(T("Kunne ikke hente DRM-nøgle"));
+        app_toast(T("Could not get the DRM key"));
     else if (strstr(s, "resolve fejlede"))
-        app_toast(T("Kunne ikke hente TV 2-streamen"));
+        app_toast(T("Could not load the TV 2 stream"));
     else
-        app_toast(T("Kunne ikke starte TV 2-afspilning"));
+        app_toast(T("Could not start TV 2 playback"));
     free(s);
 }
 
@@ -1606,8 +1606,8 @@ static bool cdm_fetch(const char *dir) {
     bool ok = false;
     for (;;) {
         if (file_exists(done)) { ok = true; break; }
-        if (file_exists(fail)) { app_toast(T("Kunne ikke hente Widevine-modulet - tjek netværket og prøv igen")); break; }
-        if (app_wait_frame(T("Henter Widevine-modulet (første gang, ca. 8 MB)…"))) break;
+        if (file_exists(fail)) { app_toast(T("Could not download the Widevine module - check the network and try again")); break; }
+        if (app_wait_frame(T("Downloading the Widevine module (first time, about 8 MB)…"))) break;
     }
     unlink(done); unlink(fail);
     free(done); free(fail);
@@ -1623,7 +1623,7 @@ static PlayResult play_one(Tv2 *v, const char *guid, const char *title,
     memset(&res, 0, sizeof res);
     res.cancelled = true;
     *started = false;
-    if (!guid_is_safe(guid)) { app_toast(T("Intet at afspille")); return res; }
+    if (!guid_is_safe(guid)) { app_toast(T("Nothing to play")); return res; }
 
     char *dir = app_dir();
     /* wvserve comes with the package; a test box may still have it in the data folder */
@@ -1636,7 +1636,7 @@ static PlayResult play_one(Tv2 *v, const char *guid, const char *title,
     char *log = str_printf("%s/serve.log", dir);
     char *posf = str_printf("%s/wvpos", dir);
     if (!file_exists(wv) || !file_exists(cdm)) {
-        if (!file_exists(wv)) app_toast(T("TV 2-afspilleren mangler - geninstallér appen i App Store"));
+        if (!file_exists(wv)) app_toast(T("The TV 2 player is missing - install the app again in the App Store"));
         free(dir); free(wv); free(cdm); free(tok); free(log); free(posf);
         return res;
     }
@@ -1655,7 +1655,7 @@ static PlayResult play_one(Tv2 *v, const char *guid, const char *title,
     snprintf(url, sizeof url, "http://127.0.0.1:%d/manifest.mpd", PORT);
     bool ready = false, cancelled = false, failed = false;
     for (int i = 0; i < 80; i++) {
-        if (app_wait_frame(T("Starter TV 2-afspilning…"))) { cancelled = true; break; }
+        if (app_wait_frame(T("Starting TV 2 playback…"))) { cancelled = true; break; }
         HttpBuf b;
         memset(&b, 0, sizeof b);
         if (http_get(url, NULL, &b) && b.status == 200) { http_free(&b); ready = true; break; }
@@ -1718,7 +1718,7 @@ static bool next_episode(Tv2 *v, const char *guid, char **ng, char **nt, char **
     bool take = false;
     for (int si = 0; si < v->nsec; si++) {
         Section *s = &v->sec[si];
-        if (!s->title || strcmp(s->title, T("Afsnit"))) continue;
+        if (!s->title || strcmp(s->title, T("Episodes"))) continue;
         for (int i = 0; i < s->n; i++) {
             Card *c = &s->cards[i];
             if (take) {
@@ -1734,7 +1734,7 @@ static bool next_episode(Tv2 *v, const char *guid, char **ng, char **nt, char **
 }
 
 static void tv2_play(Tv2 *v, const Card *c) {
-    if (!c || !c->guid || !*c->guid) { app_toast(T("Intet at afspille")); return; }
+    if (!c || !c->guid || !*c->guid) { app_toast(T("Nothing to play")); return; }
 
     char *guid = str_dup(c->guid), *title = str_dup(c->title);
     char *sub = str_dup(c->sub), *img = str_dup(c->img);
@@ -1751,13 +1751,13 @@ static void tv2_play(Tv2 *v, const Card *c) {
         free(guid); free(title); free(sub); free(img);
         guid = ng; title = nt; sub = ns; img = ni; /* next episode, or all NULL */
         if (!guid) break;
-        app_toast(T("Næste afsnit…"));
+        app_toast(T("Next episode…"));
     }
     free(guid); free(title); free(sub); free(img);
 
     if (to_login) {
         v->state = S_LOGIN;
-        snprintf(v->msg, sizeof v->msg, T("Login er udløbet. Log ind igen."));
+        snprintf(v->msg, sizeof v->msg, T("Your sign-in has expired. Sign in again."));
         return;
     }
     /* TV 2's server-side "Se videre" is updated by wvserve's concurrency
@@ -1773,11 +1773,10 @@ static void tv2_play(Tv2 *v, const Card *c) {
 /* ---------- navigation ---------- */
 static void confirm_noop(void *ud, bool yes) { (void)ud; (void)yes; }
 static void locked_prompt(Tv2 *v, const Card *c) {
-    const char *title = (c->title && *c->title) ? c->title : T("Denne titel");
-    const char *why = (c->lock && *c->lock) ? c->lock : T("Den kræver køb eller tilkøb.");
-    char *msg = str_printf(T("%s kræver køb eller tilkøb for at kunne afspilles.\n\n%s\n\n"
-                             "Tilføj det i TV 2 Play-appen eller på tv2play.dk."), title, why);
-    confirm_open(T("Ikke en del af dit abonnement"), msg, T("Luk"), "", confirm_noop, v);
+    const char *title = (c->title && *c->title) ? c->title : T("This title");
+    const char *why = (c->lock && *c->lock) ? c->lock : T("It must be bought or added to your subscription.");
+    char *msg = str_printf(T("%s must be bought or added on before it can be played.\n\n%s\n\nAdd it in the TV 2 Play app or at tv2play.dk."), title, why);
+    confirm_open(T("Not part of your subscription"), msg, T("Close"), "", confirm_noop, v);
     free(msg);
 }
 
@@ -1787,14 +1786,14 @@ static void open_card(Tv2 *v, const Card *c) {
     switch (c->type) {
     case CARD_COLLECTION:
         if (c->path && *c->path) page_by_path(v, c->path, c->title);
-        else app_toast(T("Tom samling"));
+        else app_toast(T("Empty collection"));
         break;
     case CARD_SERIES:
         if (c->path && *c->path) details_load(v, c->path, c->title, c->img);
-        else app_toast(T("Kunne ikke åbne serien"));
+        else app_toast(T("Could not open the series"));
         break;
     case CARD_LIVE:
-        app_toast(T("Live TV kræver live-DRM, som ikke er understøttet endnu"));
+        app_toast(T("Live TV needs live DRM, which is not supported yet"));
         break;
     default:
         if (c->path && (!strncmp(c->path, "/film/", 6) || !strncmp(c->path, "/program/", 9) ||
@@ -1838,7 +1837,7 @@ static void search_open(Tv2 *v) {
     v->heading[0] = 0;
     v->msg[0] = 0;
     clear_sections(v);
-    keyboard_open(T("Søg på TV 2 Play"), "", false, search_done, v);
+    keyboard_open(T("Search TV 2 Play"), "", false, search_done, v);
 }
 
 static void tv2_logout(void);
@@ -1875,15 +1874,15 @@ static void build_side(Tv2 *v) {
     side_clear(&v->side);
     memset(v->side_map, 0, sizeof v->side_map);
     v->side_map[0] = M_HOME;
-    side_add(&v->side, T("Forside"), ICON_TV, false);
+    side_add(&v->side, T("Home"), ICON_TV, false);
     v->side_map[1] = M_LIVE;
     side_add(&v->side, T("Live TV"), ICON_PLAY, false);
     v->side_map[2] = M_CATEGORIES;
-    side_add(&v->side, T("Kategorier"), ICON_FOLDER, false);
+    side_add(&v->side, T("Categories"), ICON_FOLDER, false);
     v->side_map[3] = M_SEARCH;
-    side_add(&v->side, T("Søg"), ICON_SEARCH, false);
+    side_add(&v->side, T("Search"), ICON_SEARCH, false);
     v->side_map[4] = M_MYPAGE;
-    side_add(&v->side, T("Min side"), ICON_GEAR, false);
+    side_add(&v->side, T("My page"), ICON_GEAR, false);
     v->side.active = 0;
 }
 
@@ -1966,11 +1965,11 @@ static void draw_card(const Card *c, float x, float y, bool focus) {
     if (c->label && *c->label) draw_label_chip(c->label, c->label_color, xx + 12, yy + 12);
     else if (c->type == CARD_SERIES) {
         fill_rrect(xx + 12, yy + 12, 74, 28, 6, RGBA(0, 0, 0, 190));
-        text_draw(F_BOLD, 16, xx + 49, yy + 17, TV2_TEXT, AL_CENTER, T("SERIE"));
+        text_draw(F_BOLD, 16, xx + 49, yy + 17, TV2_TEXT, AL_CENTER, T("SERIES"));
     }
     if (c->ent == 2) {
         const char *badge = (c->lock && (strstr(c->lock, "Lej") || strstr(c->lock, "lej")))
-                                ? T("LEJE") : T("TILKØB");
+                                ? T("RENT") : T("ADD-ON");
         float bw = 38 + text_width(F_BOLD, TS_LABEL, badge);
         float bx = xx + ww - bw - 12;
         fill_rrect(bx, yy + 12, bw, 28, 6, RGBA(0, 0, 0, 210));
@@ -2061,7 +2060,7 @@ static void draw_hero(Tv2 *v) {
                    h->title ? h->title : (h->acc ? h->acc : ""));
     if (h->sub)
         text_draw_wrap(F_REG, TS_BODY, SIDE_W + 60, y + 258, 740, 2, 28, TV2_TEXT2, h->sub);
-    const char *cta = (h->cta && *h->cta) ? h->cta : T("Mere info");
+    const char *cta = (h->cta && *h->cta) ? h->cta : T("More info");
     float tw = text_width(F_SEMI, TS_BUTTON, cta);
     float bw = tw + 64, bh = 58, bx = SIDE_W + 60, by = y + 390;
     if (v->hero_focus) fill_rrect(bx - 3, by - 3, bw + 6, bh + 6, 32, TV2_TEXT);
@@ -2089,7 +2088,7 @@ static void draw_detail_header(Tv2 *v) {
                    v->heading[0] ? v->heading : T("TV 2 Play"));
     if (v->detail_desc[0])
         text_draw_wrap(F_REG, 20, SIDE_W + 60, y + 200, 780, 3, 29, TV2_TEXT2, v->detail_desc);
-    const char *cta = v->detail_cta[0] ? v->detail_cta : T("Afspil");
+    const char *cta = v->detail_cta[0] ? v->detail_cta : T("Play");
     float tw = text_width(F_SEMI, TS_BUTTON, cta);
     float bw = tw + 64, bh = 58, bx = SIDE_W + 60, by = y + 390;
     if (v->detail_focus) fill_rrect(bx - 3, by - 3, bw + 6, bh + 6, 32, TV2_TEXT);
@@ -2101,7 +2100,7 @@ static void draw_detail_header(Tv2 *v) {
 
 static void draw_search_filter(Tv2 *v) {
     float x = SIDE_W + 60, y = 132;
-    const char *labels[3] = {T("Alle"), T("Film"), T("Serier")};
+    const char *labels[3] = {T("All"), T("Movies"), T("Series")};
     for (int i = 0; i < 3; i++) {
         float w = text_width(F_SEMI, TS_LABEL, labels[i]) + 34;
         fill_rrect(x, y, w, 36, 18, v->search_filter == i ? TV2_TEXT : TV2_SURFACE);
@@ -2114,9 +2113,9 @@ static void draw_search_filter(Tv2 *v) {
 static void draw_search_home(Tv2 *v) {
     float x = SIDE_W + 60, y = 160;
     if (v->nhist > 0) {
-        text_draw(F_BOLD, TS_H2, x, y, TV2_TEXT, AL_LEFT, T("Seneste søgninger"));
+        text_draw(F_BOLD, TS_H2, x, y, TV2_TEXT, AL_LEFT, T("Recent searches"));
         text_draw(F_REG, TS_BODY, x, y + 44, TV2_TEXT2, AL_LEFT,
-                  T("Tryk OK for at åbne tastaturet"));
+                  T("Press OK to open the keyboard"));
         for (int i = 0; i < v->nhist; i++) {
             float yy = y + 100 + i * 64;
             bool sel = i == v->hist_sel;
@@ -2125,23 +2124,23 @@ static void draw_search_home(Tv2 *v) {
                       sel ? TV2_BLACK : TV2_TEXT2, AL_LEFT, v->hist[i]);
         }
     } else {
-        text_draw(F_BOLD, TS_H1, x, y, TV2_TEXT, AL_LEFT, T("Søg"));
+        text_draw(F_BOLD, TS_H1, x, y, TV2_TEXT, AL_LEFT, T("Search"));
         text_draw(F_REG, TS_BODY, x, y + 48, TV2_TEXT2, AL_LEFT,
-                  T("Tryk OK for at åbne tastaturet"));
+                  T("Press OK to open the keyboard"));
         text_draw(F_REG, TS_BODY, x, y + 130, TV2_TEXT3, AL_LEFT,
-                  T("Ingen tidligere søgninger endnu"));
+                  T("No earlier searches yet"));
     }
 }
 
 static void draw_profile(Tv2 *v) {
     float pw = 720, ph = 500, px = UI_W / 2 - pw / 2, py = 190;
     fill_rrect(px, py, pw, ph, 24, TV2_SURFACE);
-    text_draw(F_BOLD, 40, UI_W / 2, py + 42, TV2_TEXT, AL_CENTER, T("Min side"));
+    text_draw(F_BOLD, 40, UI_W / 2, py + 42, TV2_TEXT, AL_CENTER, T("My page"));
     text_draw(F_SEMI, 30, UI_W / 2, py + 120, TV2_TEXT, AL_CENTER,
-              v->profile_name[0] ? v->profile_name : T("Min profil"));
+              v->profile_name[0] ? v->profile_name : T("My profile"));
     text_draw(F_REG, TS_BODY, UI_W / 2, py + 168, TV2_TEXT2, AL_CENTER,
-              T("Logget ind på TV 2 Play"));
-    const char *btn[2] = {T("Skift profil"), T("Log ud")};
+              T("Signed in to TV 2 Play"));
+    const char *btn[2] = {T("Switch profile"), T("Sign out")};
     float bw[2], gap = 30, tot = gap;
     for (int i = 0; i < 2; i++) { bw[i] = text_width(F_SEMI, TS_BUTTON, btn[i]) + 70; tot += bw[i]; }
     float bx = UI_W / 2 - tot / 2, by = py + 320;
@@ -2157,7 +2156,7 @@ static void draw_profile(Tv2 *v) {
 
 /* "Hvem ser med?": the account's profiles as round avatars with the name below */
 static void draw_who(Tv2 *v) {
-    text_draw(F_BOLD, TS_H1, UI_W / 2, 220, TV2_TEXT, AL_CENTER, T("Hvem ser med?"));
+    text_draw(F_BOLD, TS_H1, UI_W / 2, 220, TV2_TEXT, AL_CENTER, T("Who's watching?"));
     float d = 200, gap = 70, tot = v->nprof * d + (v->nprof - 1) * gap;
     float x = UI_W / 2 - tot / 2, y = 380;
     for (int i = 0; i < v->nprof; i++, x += d + gap) {
@@ -2173,7 +2172,7 @@ static void draw_who(Tv2 *v) {
             text_draw(F_BOLD, 90, xx + dd / 2, yy + dd / 2 - 55, TV2_TEXT, AL_CENTER, ini);
         }
         text_draw_clip(F_SEMI, 30, x + d / 2, y + d + 30, d + gap, f ? TV2_TEXT : TV2_TEXT2, AL_CENTER, p->name);
-        if (p->kids) text_draw(F_REG, TS_SMALL, x + d / 2, y + d + 74, TV2_TEXT3, AL_CENTER, T("Børneprofil"));
+        if (p->kids) text_draw(F_REG, TS_SMALL, x + d / 2, y + d + 74, TV2_TEXT3, AL_CENTER, T("Kids profile"));
     }
 }
 
@@ -2184,12 +2183,12 @@ static void hero_open(Tv2 *v) {
         Card c;
         memset(&c, 0, sizeof c);
         c.title = h->title;
-        c.lock = (char *)T("Kræver køb eller tilkøb");
+        c.lock = (char *)T("Must be bought or added on");
         locked_prompt(v, &c);
         return;
     }
     const char *path = (h->cta_path && *h->cta_path) ? h->cta_path : h->path;
-    if (!path || !*path) { app_toast(T("Intet at åbne")); return; }
+    if (!path || !*path) { app_toast(T("Nothing to open")); return; }
     char *guid = strstr(path, "/afspil/") ? guid_from_play_url(path) : NULL;
     if (guid) {
         Card c;
@@ -2215,7 +2214,7 @@ static void detail_cta_open(Tv2 *v) {
         Card c;
         memset(&c, 0, sizeof c);
         c.title = v->heading;
-        c.lock = (char *)T("Kræver køb eller tilkøb");
+        c.lock = (char *)T("Must be bought or added on");
         locked_prompt(v, &c);
         return;
     }
@@ -2236,7 +2235,7 @@ static void detail_cta_open(Tv2 *v) {
     if (v->detail_cta_path[0] && strcmp(v->detail_cta_path, v->path))
         details_load(v, v->detail_cta_path, v->heading, v->detail_img);
     else
-        app_toast(T("Titlen kan ikke afspilles endnu"));
+        app_toast(T("This title cannot be played yet"));
 }
 
 static void tv2_draw(Screen *s) {
@@ -2247,25 +2246,25 @@ static void tv2_draw(Screen *s) {
     if (v->state != S_READY) {
         draw_icon(ICON_PLAY, cx, 200, 100, TV2_RED);
         if (v->state == S_CODE) {
-            text_draw(F_BOLD, 42, cx, 320, TV2_TEXT, AL_CENTER, T("Log ind på TV 2 Play"));
-            text_draw(F_REG, 28, cx - 520, 400, TV2_TEXT2, AL_LEFT, T("1. Gå til auth.tv2.dk/activate"));
-            text_draw(F_REG, 28, cx - 520, 444, TV2_TEXT2, AL_LEFT, T("   - eller scan QR-koden"));
-            text_draw(F_REG, 28, cx - 520, 520, TV2_TEXT2, AL_LEFT, T("2. Indtast koden:"));
+            text_draw(F_BOLD, 42, cx, 320, TV2_TEXT, AL_CENTER, T("Sign in to TV 2 Play"));
+            text_draw(F_REG, 28, cx - 520, 400, TV2_TEXT2, AL_LEFT, T("1. Go to auth.tv2.dk/activate"));
+            text_draw(F_REG, 28, cx - 520, 444, TV2_TEXT2, AL_LEFT, T("   - or scan the QR code"));
+            text_draw(F_REG, 28, cx - 520, 520, TV2_TEXT2, AL_LEFT, T("2. Enter the code:"));
             text_draw(F_BOLD, 64, cx - 520, 570, TV2_TEXT, AL_LEFT, v->user_code);
             draw_qr(v->verify_complete[0] ? v->verify_complete : v->verify_uri, cx + 260, 400, 280);
             draw_spinner(cx - 480, 740, 16, TV2_TEXT3);
-            text_draw(F_REG, 22, cx - 440, 726, TV2_TEXT3, AL_LEFT, T("Venter på godkendelse…"));
+            text_draw(F_REG, 22, cx - 440, 726, TV2_TEXT3, AL_LEFT, T("Waiting for approval…"));
         } else if (v->state == S_LOADING) {
             draw_spinner(cx, 480, 30, TV2_TEXT);
             text_draw(F_REG, 26, cx, 550, TV2_TEXT2, AL_CENTER, v->msg);
         } else {
             text_draw(F_BOLD, 42, cx, 330, TV2_TEXT, AL_CENTER,
-                      v->state == S_ERROR ? T("Noget gik galt") : T("Log ind på TV 2 Play"));
+                      v->state == S_ERROR ? T("Something went wrong") : T("Sign in to TV 2 Play"));
             text_draw_wrap(F_REG, 28, cx - 520, 400, 1040, 6, 40, TV2_TEXT2,
-                           v->msg[0] ? v->msg : T("Se TV 2 Play på dit TV.\n\nTryk OK for at logge ind med en kode på skærmen."));
-            const char *b[1] = {v->state == S_ERROR ? T("Prøv igen") : T("Log ind")};
+                           v->msg[0] ? v->msg : T("Watch TV 2 Play on your TV.\n\nPress OK to sign in with a code on the screen."));
+            const char *b[1] = {v->state == S_ERROR ? T("Try again") : T("Sign in")};
             draw_buttons(cx, 780, b, 1, 0);
-            text_draw(F_REG, 22, cx, UI_H - 70, TV2_TEXT3, AL_CENTER, T("Venstre: menu"));
+            text_draw(F_REG, 22, cx, UI_H - 70, TV2_TEXT3, AL_CENTER, T("Left: menu"));
         }
         draw_tv2_topbar("TV 2 Play");
         tv2_side_draw(v);
@@ -2276,49 +2275,49 @@ static void tv2_draw(Screen *s) {
     case V_HOME:
         draw_hero(v);
         if (v->nsec) draw_sections(v);
-        else if (!v->nhero) draw_empty("TV 2 Play", v->msg[0] ? v->msg : T("Intet indhold"));
-        draw_tv2_topbar(T("Forside"));
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Afspil"), NULL, NULL, T("Søg"), T("Menu"));
+        else if (!v->nhero) draw_empty("TV 2 Play", v->msg[0] ? v->msg : T("Nothing here"));
+        draw_tv2_topbar(T("Home"));
+        draw_keybar(SIDE_W + 60, UI_H - 62, T("Play"), NULL, NULL, T("Search"), T("Menu"));
         break;
     case V_DETAIL:
         draw_detail_header(v);
         if (v->nsec) draw_sections(v);
-        else if (v->msg[0] && strcmp(v->msg, T("Intet at afspille")))
+        else if (v->msg[0] && strcmp(v->msg, T("Nothing to play")))
             text_draw_wrap(F_REG, TS_BODY, SIDE_W + 60, rows_top(v) - v->scroll,
                            UI_W - SIDE_W - 120, 4, 30, TV2_TEXT2, v->msg);
         draw_tv2_topbar("TV 2 Play");
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Afspil"), NULL, NULL, T("Søg"), T("Menu"));
+        draw_keybar(SIDE_W + 60, UI_H - 62, T("Play"), NULL, NULL, T("Search"), T("Menu"));
         break;
     case V_SEARCH:
         if (v->search_home) {
             draw_search_home(v);
-            draw_keybar(SIDE_W + 60, UI_H - 62, T("Søg"), T("Ryd"), NULL, T("Søg"), T("Menu"));
+            draw_keybar(SIDE_W + 60, UI_H - 62, T("Search"), T("Clear"), NULL, T("Search"), T("Menu"));
         } else {
             draw_search_filter(v);
             if (v->nsec) draw_sections(v);
             else
                 text_draw_wrap(F_REG, TS_BODY, SIDE_W + 60, rows_top(v) - v->scroll,
                                UI_W - SIDE_W - 120, 4, 30, TV2_TEXT2,
-                               v->msg[0] ? v->msg : T("Ingen resultater"));
-            draw_keybar(SIDE_W + 60, UI_H - 62, T("Afspil"), T("Filter"), NULL, T("Søg"), T("Menu"));
+                               v->msg[0] ? v->msg : T("No results"));
+            draw_keybar(SIDE_W + 60, UI_H - 62, T("Play"), T("Filter"), NULL, T("Search"), T("Menu"));
         }
-        draw_tv2_topbar(T("Søg"));
+        draw_tv2_topbar(T("Search"));
         break;
     case V_PROFILE:
         draw_profile(v);
-        draw_tv2_topbar(T("Min side"));
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Vælg"), NULL, NULL, NULL, T("Menu"));
+        draw_tv2_topbar(T("My page"));
+        draw_keybar(SIDE_W + 60, UI_H - 62, T("Select"), NULL, NULL, NULL, T("Menu"));
         break;
     case V_WHO:
         draw_who(v);
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Vælg"), NULL, NULL, NULL, NULL);
+        draw_keybar(SIDE_W + 60, UI_H - 62, T("Select"), NULL, NULL, NULL, NULL);
         break;
     default:
         if (v->nsec) draw_sections(v);
         else draw_empty(v->heading[0] ? v->heading : "TV 2 Play",
-                        v->msg[0] ? v->msg : T("Intet indhold"));
+                        v->msg[0] ? v->msg : T("Nothing here"));
         draw_tv2_topbar("TV 2 Play");
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Vælg"), NULL, NULL, T("Søg"), T("Menu"));
+        draw_keybar(SIDE_W + 60, UI_H - 62, T("Select"), NULL, NULL, T("Search"), T("Menu"));
         break;
     }
     tv2_side_draw(v);
@@ -2365,7 +2364,7 @@ static bool tv2_input(Screen *s, const InputEvent *ev) {
             else {
                 v->force_pick = true;
                 v->gen++;
-                set_loading(v, T("Henter profiler…"));
+                set_loading(v, T("Getting profiles…"));
                 load_profiles(v);
             }
         } else if (ev->a == A_BACK) back_home(v);
@@ -2387,7 +2386,7 @@ static bool tv2_input(Screen *s, const InputEvent *ev) {
         } else if (ev->a == A_SEARCH || ev->a == A_CHAR) {
             char init[8] = {0};
             if (ev->a == A_CHAR) { init[0] = (char)ev->ch; init[1] = 0; }
-            keyboard_open(T("Søg på TV 2 Play"), init, false, search_done, v);
+            keyboard_open(T("Search TV 2 Play"), init, false, search_done, v);
         } else if (ev->a == A_BACK) back_home(v);
         else if (ev->a == A_MENU || ev->a == A_LEFT) side_open(&v->side);
         return true;
@@ -2403,7 +2402,7 @@ static bool tv2_input(Screen *s, const InputEvent *ev) {
         else if (ev->a == A_BACK) return false;
         else if (ev->a == A_CHAR) {
             char init[8] = {(char)ev->ch, 0};
-            keyboard_open(T("Søg på TV 2 Play"), init, false, search_done, v);
+            keyboard_open(T("Search TV 2 Play"), init, false, search_done, v);
         }
         return true;
     }
@@ -2458,7 +2457,7 @@ static bool tv2_input(Screen *s, const InputEvent *ev) {
     case A_SEARCH: search_open(v); return true;
     case A_CHAR: {
         char init[8] = {(char)ev->ch, 0};
-        keyboard_open(T("Søg på TV 2 Play"), init, false, search_done, v);
+        keyboard_open(T("Search TV 2 Play"), init, false, search_done, v);
         return true;
     }
     case A_BACK:
@@ -2482,7 +2481,7 @@ static void tv2_update(Screen *s, float dt) {
     side_update(&v->side, dt);
     if (v->state == S_CODE && !v->polling && app_time() >= v->poll_next) {
         if (app_time() > v->code_expires) {
-            set_error(v, T("Koden er udløbet - tryk OK for en ny"));
+            set_error(v, T("The code has expired - press OK for a new one"));
             return;
         }
         v->polling = true;
@@ -2546,14 +2545,14 @@ static void tv2_enter(Screen *s) {
             load_profiles(v);
         } else {
             v->gen++;
-            set_loading(v, T("Henter din profil…"));
+            set_loading(v, T("Getting your profile…"));
             load_profiles(v);
         }
     } else if (v->refresh[0]) {
         refresh_async(v);
     } else {
         v->state = S_LOGIN;
-        snprintf(v->msg, sizeof v->msg, T("Tryk OK for at logge ind på TV 2 Play."));
+        snprintf(v->msg, sizeof v->msg, T("Press OK to sign in to TV 2 Play."));
     }
 }
 
@@ -2638,7 +2637,7 @@ static void tv2_forget(void) {
         live->auth_retried = false;
         clear_sections(live);
         live->state = S_LOGIN;
-        snprintf(live->msg, sizeof live->msg, T("Du er logget ud af TV 2 Play."));
+        snprintf(live->msg, sizeof live->msg, T("You are signed out of TV 2 Play."));
     }
 }
 
@@ -2658,20 +2657,20 @@ static void tv2_mode_changed(void) {
 
 static const char *const tv2_locked_o[] = {"0", "1", "2", NULL};
 static const char *const tv2_locked_l[] = {
-    N_("Vis med lås"), N_("Skjul på forsiden"), N_("Skjul overalt"), NULL
+    N_("Show with a lock"), N_("Hide on the front page"), N_("Hide everywhere"), NULL
 };
 static const Item tv2_items[] = {
-    {N_("Køb/tilkøb"), IT_CYCLE, "tv2_locked", "1", tv2_locked_o, tv2_locked_l,
-     .help = N_("TV 2-titler der kræver køb eller tilkøb: vis dem med en lås, skjul dem på forsiden, eller skjul dem overalt. Søgeresultater vises med lås i de to første valg."),
+    {N_("Buy/add-on"), IT_CYCLE, "tv2_locked", "1", tv2_locked_o, tv2_locked_l,
+     .help = N_("TV 2 titles that must be bought or added on: show them with a lock, hide them on the front page, or hide them everywhere. Search results show them with a lock in the first two choices."),
      .changed = tv2_mode_changed},
-    {N_("Log ud af TV 2 Play"), IT_ACTION, .action = tv2_logout,
-     .help = N_("Sletter login og profil fra dette TV"), .locked = tv2_signed_out},
+    {N_("Sign out of TV 2 Play"), IT_ACTION, .action = tv2_logout,
+     .help = N_("Deletes the sign-in and profile from this TV"), .locked = tv2_signed_out},
 };
 
 /* Not installed from the start, and the App Store only lists it when "closed software" is ticked
  * (manifest "nonfree": playback needs Google's Widevine module). */
 const NotaApp nota_app = {
-    NOTA_API, "tv2", "TV 2 Play", N_("Streaming fra TV 2 Play (Widevine)"), APP_VERSION, 35, APP_DEFAULT_OFF,
+    NOTA_API, "tv2", "TV 2 Play", N_("Streaming from TV 2 Play (Widevine)"), APP_VERSION, 35, APP_DEFAULT_OFF,
     ICON_FILM, {214, 0, 28, 255}, {140, 0, 18, 255}, {255, 255, 255, 255},
     .open = tv2_screen,
     .forget = tv2_forget,

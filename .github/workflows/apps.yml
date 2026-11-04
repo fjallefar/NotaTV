@@ -39,6 +39,8 @@ jobs:
           git checkout --force --detach "$GITHUB_SHA"
           git clean -fd
           LAST=$(git tag -l 'v*' --sort=-v:refname --merged HEAD | head -1)
+          # texts in English in the code, Danish in lang/da.po - stop before building if not
+          python3 scripts/i18n-check.py > i18n.log || { grep -vE ' 0 missing, 0 placeholder mismatches' i18n.log; echo 'Translations are missing or wrong (scripts/i18n-check.py)'; exit 1; }
           echo "Latest system release: $LAST"
           if ! git diff --quiet "$LAST" HEAD -- src/shell/tv.h; then
             echo "src/shell/tv.h changed since $LAST - the apps may need a newer tvshell. Make a system release instead."

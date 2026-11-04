@@ -1,9 +1,9 @@
 {
   "id": "tv2",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "api": 2,
   "name": "TV 2 Play",
-  "desc": "Streaming fra TV 2 Play (Widevine)",
+  "desc": "Streaming from TV 2 Play (Widevine)",
   "icon": "film",
   "c1": [240, 40, 30],
   "c2": [140, 16, 12],
@@ -13,10 +13,10 @@
   "nonfree": true,
   "helpers": ["wvserve"],
   "changes": {
-    "summary": "Your name in the menu",
+    "summary": "In your language",
     "points": [
-      "The menu shows the name of the profile you watch as instead of My page",
-      "Name and picture are fetched fresh from TV 2 each time the app opens"
+      "TV 2 Play now follows the language of the box - English or Danish",
+      "Titles and descriptions from TV 2 stay in Danish"
     ]
   }
 }

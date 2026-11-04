@@ -38,6 +38,8 @@ jobs:
           git checkout --force --detach "$GITHUB_REF_NAME"
           git clean -fd   # removes stray files, keeps ignored ones (buildroot/, dl/, output-rpi4/, secrets/)
           test "v$(cat VERSION)" = "$GITHUB_REF_NAME" || { echo "VERSION is $(cat VERSION), but the tag is $GITHUB_REF_NAME"; exit 1; }
+          # texts in English in the code, Danish in lang/da.po - stop before building if not
+          python3 scripts/i18n-check.py > i18n.log || { grep -vE ' 0 missing, 0 placeholder mismatches' i18n.log; echo 'Translations are missing or wrong (scripts/i18n-check.py)'; exit 1; }
 
       - name: Twitch Client ID
         env:

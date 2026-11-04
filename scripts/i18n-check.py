@@ -8,7 +8,11 @@ Finds every translatable text: T("...") / N_("...") in C (src/shell, src/moon), 
 script, data-t/data-th/data-tp in the phone page, and the English messages of the helper scripts.
 App packages are checked on their own: every text in src/apps/<id>/*.c must be in that app's lang/<code>.po
 (an app brings its own translations). Reports texts missing from a .po file, entries no longer used, and translations whose printf
-placeholders (%s, %d, %1$s ...) do not match the English text. Exit code 1 if anything is missing or wrong."""
+placeholders (%s, %d, %1$s ...) do not match the English text. Exit code 1 if anything is missing or wrong.
+
+The texts in the code are English (the Danish goes in lang/da.po): a text with æ, ø or å in the code, or an app
+with texts but no lang/da.po, is an error - so an app can never ship Danish-only again (TV 2 Play 1.0.0 did).
+The release workflows run this check and stop on errors."""
 import glob, html, json, os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -116,16 +120,28 @@ def check(ids, lang_dir, label):
     return bad
 
 
+def not_english(ids, label):
+    bad = [i for i in ids if re.search('[æøåÆØÅ]', i)]
+    for i in bad: print(f'  {label}: Danish text in the code (write it in English, Danish in lang/da.po): {ids[i]}: {i!r}')
+    return bool(bad)
+
+
 def main():
     ids = source_ids()
     bad = check(ids, LANG_DIR, '')
+    bad |= not_english(ids, 'NotaTV')
     for app in sorted(glob.glob(os.path.join(ROOT, 'src/apps/*/manifest.json'))):
         d = os.path.dirname(app)
         ids = c_ids(glob.glob(os.path.join(d, '*.c')), {})
         ch = json.load(open(app, encoding='utf-8')).get('changes') or {}  # what is new (shown in the App Store)
         for t in [ch.get('summary', '')] + list(ch.get('points', [])):
             if t: ids.setdefault(t, os.path.relpath(app, ROOT))
-        bad |= check(ids, os.path.join(d, 'lang'), 'app ' + os.path.basename(d) + ': ')
+        name = 'app ' + os.path.basename(d)
+        bad |= not_english(ids, name)
+        if ids and not os.path.exists(os.path.join(d, 'lang', 'da.po')):
+            print(f'{name}: {len(ids)} texts but no lang/da.po')
+            bad = True
+        bad |= check(ids, os.path.join(d, 'lang'), name + ': ')
     if '--pot' in sys.argv:
         with open(os.path.join(LANG_DIR, 'notatv.pot'), 'w', encoding='utf-8') as f:
             f.write('# NotaTV translation template. Copy to <code>.po, fill in msgstr and add the language to\n'

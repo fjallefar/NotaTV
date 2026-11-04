@@ -1,0 +1,319 @@
+# NotaTV app "tv2" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "No titles in your subscription"
+msgstr "Ingen titler i dit abonnement"
+
+msgid "Getting a sign-in code…"
+msgstr "Henter login-kode…"
+
+msgid "Sign-in failed: %s"
+msgstr "Login fejlede: %s"
+
+msgid "no connection"
+msgstr "ingen forbindelse"
+
+msgid "Signed in to TV 2 Play"
+msgstr "Logget ind på TV 2 Play"
+
+msgid "Getting your profile…"
+msgstr "Henter din profil…"
+
+msgid "Sign-in failed (%ld)"
+msgstr "Login fejlede (%ld)"
+
+msgid "Your sign-in has expired. Sign in again."
+msgstr "Login er udløbet. Log ind igen."
+
+msgid "Renewing sign-in…"
+msgstr "Fornyer login…"
+
+msgid "Play"
+msgstr "Afspil"
+
+msgid "More info"
+msgstr "Mere info"
+
+msgid "Needs access to the TV 2 channel"
+msgstr "Kræver adgang til TV 2-kanalen"
+
+msgid "TV 2 answered with error %ld"
+msgstr "TV 2 svarede med fejl %ld"
+
+msgid "Could not load the TV 2 page"
+msgstr "Kunne ikke hente TV 2-siden"
+
+msgid "Nothing on this page"
+msgstr "Intet indhold på denne side"
+
+msgid "Loading the front page…"
+msgstr "Henter forsiden…"
+
+msgid "Loading…"
+msgstr "Henter…"
+
+msgid "Categories"
+msgstr "Kategorier"
+
+msgid "The search failed (%ld)"
+msgstr "Søgningen fejlede (%ld)"
+
+msgid "Could not search"
+msgstr "Kunne ikke søge"
+
+msgid "Results"
+msgstr "Resultater"
+
+msgid "No results"
+msgstr "Ingen resultater"
+
+msgid "Search: %s"
+msgstr "Søg: %s"
+
+msgid "Searching…"
+msgstr "Søger…"
+
+msgid "Could not load episodes (%ld)"
+msgstr "Kunne ikke hente afsnit (%ld)"
+
+msgid "Could not load episodes"
+msgstr "Kunne ikke hente afsnit"
+
+msgid "Episodes"
+msgstr "Afsnit"
+
+msgid "No episodes found"
+msgstr "Ingen afsnit fundet"
+
+msgid "Loading episodes…"
+msgstr "Henter afsnit…"
+
+msgid "Could not load the series (%ld)"
+msgstr "Kunne ikke hente serien (%ld)"
+
+msgid "Could not load the series"
+msgstr "Kunne ikke hente serien"
+
+msgid "More like this"
+msgstr "Mere som dette"
+
+msgid "Nothing to play"
+msgstr "Intet at afspille"
+
+msgid "My page"
+msgstr "Min side"
+
+msgid "Could not start TV 2 playback"
+msgstr "Kunne ikke starte TV 2-afspilning"
+
+msgid "This title must be bought or rented"
+msgstr "Titlen kræver køb eller leje"
+
+msgid "TV 2 Play: too many active streams"
+msgstr "TV 2 Play: for mange aktive streams"
+
+msgid "This title cannot be played with Widevine"
+msgstr "Titlen kan ikke afspilles med Widevine"
+
+msgid "Could not get the DRM key"
+msgstr "Kunne ikke hente DRM-nøgle"
+
+msgid "Could not load the TV 2 stream"
+msgstr "Kunne ikke hente TV 2-streamen"
+
+msgid "Could not download the Widevine module - check the network and try again"
+msgstr "Kunne ikke hente Widevine-modulet - tjek netværket og prøv igen"
+
+msgid "Downloading the Widevine module (first time, about 8 MB)…"
+msgstr "Henter Widevine-modulet (første gang, ca. 8 MB)…"
+
+msgid "The TV 2 player is missing - install the app again in the App Store"
+msgstr "TV 2-afspilleren mangler - geninstallér appen i App Store"
+
+msgid "Starting TV 2 playback…"
+msgstr "Starter TV 2-afspilning…"
+
+msgid "Next episode…"
+msgstr "Næste afsnit…"
+
+msgid "This title"
+msgstr "Denne titel"
+
+msgid "It must be bought or added to your subscription."
+msgstr "Den kræver køb eller tilkøb."
+
+msgid "Not part of your subscription"
+msgstr "Ikke en del af dit abonnement"
+
+msgid "Close"
+msgstr "Luk"
+
+msgid "Empty collection"
+msgstr "Tom samling"
+
+msgid "Could not open the series"
+msgstr "Kunne ikke åbne serien"
+
+msgid "Live TV needs live DRM, which is not supported yet"
+msgstr "Live TV kræver live-DRM, som ikke er understøttet endnu"
+
+msgid "Search TV 2 Play"
+msgstr "Søg på TV 2 Play"
+
+msgid "Home"
+msgstr "Forside"
+
+msgid "Search"
+msgstr "Søg"
+
+msgid "SERIES"
+msgstr "SERIE"
+
+msgid "RENT"
+msgstr "LEJE"
+
+msgid "ADD-ON"
+msgstr "TILKØB"
+
+msgid "All"
+msgstr "Alle"
+
+msgid "Movies"
+msgstr "Film"
+
+msgid "Series"
+msgstr "Serier"
+
+msgid "Recent searches"
+msgstr "Seneste søgninger"
+
+msgid "Press OK to open the keyboard"
+msgstr "Tryk OK for at åbne tastaturet"
+
+msgid "No earlier searches yet"
+msgstr "Ingen tidligere søgninger endnu"
+
+msgid "My profile"
+msgstr "Min profil"
+
+msgid "Switch profile"
+msgstr "Skift profil"
+
+msgid "Sign out"
+msgstr "Log ud"
+
+msgid "Who's watching?"
+msgstr "Hvem ser med?"
+
+msgid "Kids profile"
+msgstr "Børneprofil"
+
+msgid "Must be bought or added on"
+msgstr "Kræver køb eller tilkøb"
+
+msgid "Nothing to open"
+msgstr "Intet at åbne"
+
+msgid "This title cannot be played yet"
+msgstr "Titlen kan ikke afspilles endnu"
+
+msgid "Sign in to TV 2 Play"
+msgstr "Log ind på TV 2 Play"
+
+msgid "1. Go to auth.tv2.dk/activate"
+msgstr "1. Gå til auth.tv2.dk/activate"
+
+msgid "   - or scan the QR code"
+msgstr "   - eller scan QR-koden"
+
+msgid "2. Enter the code:"
+msgstr "2. Indtast koden:"
+
+msgid "Waiting for approval…"
+msgstr "Venter på godkendelse…"
+
+msgid "Something went wrong"
+msgstr "Noget gik galt"
+
+msgid "Watch TV 2 Play on your TV.\n\nPress OK to sign in with a code on the screen."
+msgstr "Se TV 2 Play på dit TV.\n\nTryk OK for at logge ind med en kode på skærmen."
+
+msgid "Try again"
+msgstr "Prøv igen"
+
+msgid "Sign in"
+msgstr "Log ind"
+
+msgid "Left: menu"
+msgstr "Venstre: menu"
+
+msgid "Nothing here"
+msgstr "Intet indhold"
+
+msgid "Clear"
+msgstr "Ryd"
+
+msgid "Select"
+msgstr "Vælg"
+
+msgid "Getting profiles…"
+msgstr "Henter profiler…"
+
+msgid "The code has expired - press OK for a new one"
+msgstr "Koden er udløbet - tryk OK for en ny"
+
+msgid "Press OK to sign in to TV 2 Play."
+msgstr "Tryk OK for at logge ind på TV 2 Play."
+
+msgid "You are signed out of TV 2 Play."
+msgstr "Du er logget ud af TV 2 Play."
+
+msgid "Show with a lock"
+msgstr "Vis med lås"
+
+msgid "Hide on the front page"
+msgstr "Skjul på forsiden"
+
+msgid "Hide everywhere"
+msgstr "Skjul overalt"
+
+msgid "Buy/add-on"
+msgstr "Køb/tilkøb"
+
+msgid "TV 2 titles that must be bought or added on: show them with a lock, hide them on the front page, or hide them everywhere. Search results show them with a lock in the first two choices."
+msgstr "TV 2-titler der kræver køb eller tilkøb: vis dem med en lås, skjul dem på forsiden, eller skjul dem overalt. Søgeresultater vises med lås i de to første valg."
+
+msgid "Sign out of TV 2 Play"
+msgstr "Log ud af TV 2 Play"
+
+msgid "Deletes the sign-in and profile from this TV"
+msgstr "Sletter login og profil fra dette TV"
+
+msgid "Streaming from TV 2 Play (Widevine)"
+msgstr "Streaming fra TV 2 Play (Widevine)"
+msgid "%s must be bought or added on before it can be played.\n\n%s\n\nAdd it in the TV 2 Play app or at tv2play.dk."
+msgstr "%s kræver køb eller tilkøb for at kunne afspilles.\n\n%s\n\nTilføj det i TV 2 Play-appen eller på tv2play.dk."
+
+msgid "TV 2 Play"
+msgstr "TV 2 Play"
+
+msgid "Live TV"
+msgstr "Live TV"
+
+msgid "Menu"
+msgstr "Menu"
+
+msgid "Filter"
+msgstr "Filter"
+
+msgid "In your language"
+msgstr "På dit sprog"
+
+msgid "TV 2 Play now follows the language of the box - English or Danish"
+msgstr "TV 2 Play følger nu boksens sprog - engelsk eller dansk"
+
+msgid "Titles and descriptions from TV 2 stay in Danish"
+msgstr "Titler og beskrivelser fra TV 2 er stadig på dansk"
+
