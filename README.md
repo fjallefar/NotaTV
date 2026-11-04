@@ -40,7 +40,7 @@ Platform: **Raspberry Pi 4 and Pi 5** (one image for both; the Pi 5 support is n
 - [Open source only](#open-source-only)
 - [Installation](#installation)
 - [Using NotaTV](#using-notatv)
-- [Apps](#apps)
+- [Apps](#apps) (and [self-hosting](SELF-HOSTING.md) the servers they use)
 - [Casting from your phone](#casting-from-your-phone)
 - [Picture and sound](#picture-and-sound)
 - [Updating](#updating)
@@ -179,6 +179,8 @@ In the App Store on the home screen you can install more apps, update apps (*Upd
 | **Games** | Game streaming from a PC running Sunshine with our own client `tvmoon`. HEVC is decoded in hardware straight to the screen, at 1080p 120 Hz. |
 | **Tesla** | Reads your own TeslaMate over its MQTT server (port 1883), read only: nothing is sent to the car and nothing is saved on disk. Finds TeslaMate on the network or takes an address, and asks for an MQTT login when the server wants one. Battery, range, charging, climate, tyres, locks and doors, the car seen from above, where it is, route with arrival time and battery at arrival, model and software. The side menu (Left) chooses the car, turns each part on or off, and puts up to 3 cars small at the top of the home screen. Everything is fitted to one screen. |
 | **Media** | USB drives are mounted automatically. SMB/NFS network drives are supported. Plays movies, music and pictures. |
+
+**Host it yourself:** [SELF-HOSTING.md](SELF-HOSTING.md) lists, per app, the server software it talks to (Jellyfin, Seerr, Sunshine, TeslaMate, Live TV playlists ...) with links to each project.
 
 **Find servers on the network** (Plex, Jellyfin and TeslaMate) only searches the local network: Plex GDM, Jellyfin UDP 7359 and a scan of your own subnet (TeslaMate: MQTT port 1883, plus port 4000 to explain when only TeslaMate's web page answers).
 
