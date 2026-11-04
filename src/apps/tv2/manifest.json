@@ -1,6 +1,6 @@
 {
   "id": "tv2",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "TV 2 Play",
   "desc": "Streaming fra TV 2 Play (Widevine)",
@@ -13,10 +13,10 @@
   "nonfree": true,
   "helpers": ["wvserve"],
   "changes": {
-    "summary": "Your profile in the menu",
+    "summary": "Your name in the menu",
     "points": [
-      "The menu shows your TV 2 profile picture and name",
-      "Choose who is watching, and switch profile on My page"
+      "The menu shows the name of the profile you watch as instead of My page",
+      "Name and picture are fetched fresh from TV 2 each time the app opens"
     ]
   }
 }

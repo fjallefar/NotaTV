@@ -99,6 +99,7 @@ typedef struct {
     Tv2Prof prof[MAX_PROF];
     int nprof, who_sel;
     bool force_pick; /* "Skift profil": always show the picker */
+    bool bg_profiles; /* profiles refreshed in the background on open: only update name/avatar/token */
 } Tv2;
 
 typedef struct Tv2Req Tv2Req;
@@ -1474,6 +1475,14 @@ static void details_load(Tv2 *v, const char *path, const char *title, const char
     free(body);
 }
 
+/* the side menu shows who is watching: the name on the "Min side" row and under "TV 2 Play" */
+static void side_profile(Tv2 *v) {
+    for (int i = 0; i < v->side.n && i < 8; i++)
+        if (v->side_map[i] == M_MYPAGE)
+            snprintf(v->side.items[i].label, sizeof v->side.items[i].label, "%s", v->profile_name[0] ? v->profile_name : T("Min side"));
+    snprintf(v->side.subtitle, sizeof v->side.subtitle, "%s", v->profile_name);
+}
+
 static void profile_use(Tv2 *v, int i) {
     if (i < 0 || i >= v->nprof) return;
     Tv2Prof *p = &v->prof[i];
@@ -1484,7 +1493,8 @@ static void profile_use(Tv2 *v, int i) {
     cfg_set("tv2_profile_id", p->id);
     snprintf(v->profile_avatar, sizeof v->profile_avatar, "%s", p->avatar);
     cfg_set("tv2_profile_avatar", p->avatar);
-    snprintf(v->side.subtitle, sizeof v->side.subtitle, "%s", p->name);
+    if (p->avatar[0]) fprintf(stderr, "tv2: profile avatar %s\n", p->avatar); /* which image format TV 2 uses */
+    side_profile(v);
 }
 
 static void who_open(Tv2 *v) {
@@ -1533,8 +1543,9 @@ static void profiles_done(void *ud, cJSON *json, long status) {
     const char *cur = cfg_get("tv2_profile_id", "");
     int keep = -1;
     for (int i = 0; i < v->nprof; i++) if (*cur && !strcmp(v->prof[i].id, cur)) keep = i;
-    bool pick = v->force_pick;
-    v->force_pick = false;
+    bool pick = v->force_pick, bg = v->bg_profiles;
+    v->force_pick = v->bg_profiles = false;
+    if (bg && !pick) { if (keep >= 0) profile_use(v, keep); return; } /* the page is already loading */
     if (v->nprof > 1 && (pick || keep < 0)) { who_open(v); return; }
     if (v->nprof) profile_use(v, keep >= 0 ? keep : 0);
     home_load(v);
@@ -2504,7 +2515,7 @@ static void tv2_enter(Screen *s) {
     snprintf(v->profile, sizeof v->profile, "%s", cfg_get("tv2_profile", ""));
     snprintf(v->profile_name, sizeof v->profile_name, "%s", cfg_get("tv2_profile_name", ""));
     snprintf(v->profile_avatar, sizeof v->profile_avatar, "%s", cfg_get("tv2_profile_avatar", ""));
-    snprintf(v->side.subtitle, sizeof v->side.subtitle, "%s", v->profile_name);
+    side_profile(v);
     v->token_exp = atof(cfg_get("tv2_token_exp", "0"));
     v->view = V_HOME;
     v->nsec = 0;
@@ -2529,8 +2540,11 @@ static void tv2_enter(Screen *s) {
     history_load(v);
 
     if (token_valid(v)) {
-        if (v->profile[0]) home_load(v);
-        else {
+        if (v->profile[0]) {
+            home_load(v);
+            v->bg_profiles = true; /* fresh name, picture and token for the chosen profile */
+            load_profiles(v);
+        } else {
             v->gen++;
             set_loading(v, T("Henter din profil…"));
             load_profiles(v);
@@ -2616,7 +2630,7 @@ static void tv2_forget(void) {
         live->profile[0] = 0;
         live->profile_name[0] = 0;
         live->profile_avatar[0] = 0;
-        live->side.subtitle[0] = 0;
+        side_profile(live); /* back to "Min side" */
         live->nhist = 0;
         live->nprof = 0;
         clear_hero(live);

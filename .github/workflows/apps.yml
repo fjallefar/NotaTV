@@ -63,7 +63,7 @@ jobs:
           make -C buildroot O=$TREE/output-rpi4 BR2_EXTERNAL=$TREE/external tvshell-dirclean tvshell-build \
             > apps-build.log 2>&1 || { tail -80 apps-build.log; exit 1; }
           rm -rf dist-apps
-          python3 scripts/apps-catalog.py output-rpi4/build/tvshell-1.0/apps-out dist-apps --strip output-rpi4/host/bin/aarch64-linux-strip
+          python3 scripts/apps-catalog.py output-rpi4/build/tvshell-1.0/apps-out dist-apps --strip output-rpi4/host/bin/aarch64-linux-strip --notes apps-notes.md
           ls -la dist-apps
 
       - name: Publish to the App Store
@@ -88,6 +88,9 @@ jobs:
               store = call(api, json.dumps({"tag_name": "apps", "target_commitish": os.environ["GITHUB_SHA"],
                                             "name": "NotaTV App Store", "prerelease": True, "make_latest": "false",
                                             "body": "App packages for the NotaTV App Store. Boxes download them from here - do not delete."}).encode())
+          # the release text: every app with its version and what is new (made by apps-catalog.py --notes)
+          if os.path.exists("apps-notes.md"):
+              call(f"{api}/{store['id']}", json.dumps({"body": open("apps-notes.md", encoding="utf-8").read()}).encode(), method="PATCH")
           files = sorted(os.listdir("dist-apps"))
           for a in store.get("assets", []):
               if a["name"] in files:

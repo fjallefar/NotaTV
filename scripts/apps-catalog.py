@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Pack the built app packages for the App Store and write its catalog.
 
-  python3 scripts/apps-catalog.py <apps-out> <dist> [--strip <strip program>]
+  python3 scripts/apps-catalog.py <apps-out> <dist> [--strip <strip program>] [--notes <file.md>]
+
+--notes writes the text of the GitHub release "apps": every app with its version and what is new (its "changes"),
+so the release page shows the same notes as the App Store. It is written outside <dist> (not uploaded as a file).
 
 <apps-out> holds one folder per app (manifest.json, app.so, lang/), as built by src/apps/Makefile.
 For every app this writes <dist>/<id>-<version>-api<N>.tar.gz, and one catalog per app API version,
@@ -40,6 +43,9 @@ def main():
     strip = None
     if '--strip' in args:
         i = args.index('--strip'); strip = args[i + 1]; del args[i:i + 2]
+    notes = None
+    if '--notes' in args:
+        i = args.index('--notes'); notes = args[i + 1]; del args[i:i + 2]
     src, dist = args
     os.makedirs(dist, exist_ok=True)
     catalogs = {}
@@ -93,6 +99,21 @@ def main():
             json.dump({'api': api, 'apps': apps}, f, ensure_ascii=False, indent=1)
             f.write('\n')
         print(f'apps-api{api}.json  {len(apps)} apps')
+    if notes and catalogs:
+        api = max(catalogs)  # the newest app API: what an up-to-date box sees
+        out = ['Apps for the NotaTV App Store. Boxes download them from here - do not delete.', '',
+               f'## The apps now (app API {api})', '']
+        for a in catalogs[api]:
+            ch = a.get('changes') or {}
+            line = f"### {a['name']} {a['version']}"
+            if a.get('nonfree'): line += ' (needs closed software - opt-in)'
+            out.append(line)
+            out.append(ch.get('summary') or a.get('desc', ''))
+            out += [f'- {x}' for x in ch.get('points', [])]
+            out.append('')
+        with open(notes, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(out))
+        print(f'{notes}  release notes for "apps"')
 
 
 main()
