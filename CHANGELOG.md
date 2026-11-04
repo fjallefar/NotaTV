@@ -18,6 +18,24 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.10
+
+> **In short:** TV 2 Play lets you choose who is watching, and apps with closed software only show up where you chose them.
+> - TV 2 Play 1.0.1: choose your profile, and switch profile on My page
+> - Setup guide: TV 2 Play is no longer offered there
+> - App Store: apps that need closed software are listed below the check box
+
+<!-- tldr:da
+Kort: TV 2 Play lader dig vælge, hvem der ser med, og apps med lukket software dukker kun op, hvor du har valgt dem.
+- TV 2 Play 1.0.1: vælg din profil, og skift profil på Min side
+- Setup-guiden: TV 2 Play bliver ikke længere tilbudt dér
+- App Store: apps, der kræver lukket software, står under fluebenet
+-->
+
+- Setup guide: apps that need closed software (TV 2 Play) are no longer offered - only through the App Store's check box.
+- App Store: when the check box is ticked, those apps are listed below it, apart from the other apps.
+- TV 2 Play 1.0.1: choose who is watching when the account has several profiles, and switch profile on My page.
+
 ## 1.0.9
 
 > **In short:** TV 2 Play comes to the App Store as an opt-in app, behind a new check box for apps that need closed software.

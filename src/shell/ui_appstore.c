@@ -5,7 +5,8 @@
  * deletes everything the app has saved on the box (see app_uninstall). Settings and the App Store are not shown.
  * When apps have updates, a bar at the top updates them all at once. Before an update, a card shows what is new
  * (the manifest's "changes", see scripts/apps-catalog.py). A check box at the bottom lists apps that need closed
- * software (manifest "nonfree", e.g. a DRM module); they are hidden until it is ticked (cfg store_nonfree). */
+ * software (manifest "nonfree", e.g. a DRM module); they are hidden until it is ticked (cfg store_nonfree), and then
+ * listed below it, apart from the other apps. Installed ones are in Installed like any other. */
 #define _GNU_SOURCE /* nftw */
 #include "tv.h"
 #include <stdio.h>
@@ -36,7 +37,7 @@ typedef struct {
 typedef struct { char sel[40]; float sy; bool asked_restart; } Store;
 
 typedef struct { StoreItem it; int row, col; float y; } StoreCell;
-typedef struct { StoreCell c[STORE_MAX + 1]; int n, rows; float hdr_y[2]; int cnt[2], first_row[2]; } StoreLayout;
+typedef struct { StoreCell c[STORE_MAX + 2]; int n, rows; float hdr_y[2]; int cnt[2], first_row[2]; } StoreLayout;
 
 static int item_order(const StoreItem *s) { return s->app ? s->app->order : s->cat->order; }
 static const char *item_name(const StoreItem *s) { return s->app ? T(s->app->name) : s->cat->name; }
@@ -134,6 +135,7 @@ static void store_layout_build(StoreLayout *L) {
         int k = 0;
         for (int i = 0; i < n; i++) {
             if (items[i].installed != (sec == 0)) continue;
+            if (sec == 1 && items[i].cat && items[i].cat->nonfree) continue; /* listed under the check box */
             L->c[L->n++] = (StoreCell){items[i], row + k / STORE_COLS, k % STORE_COLS, y + (k / STORE_COLS) * STORE_PITCH};
             k++;
         }
@@ -147,6 +149,14 @@ static void store_layout_build(StoreLayout *L) {
     snprintf(nf->it.id, sizeof nf->it.id, NF_ID);
     nf->row = row++;
     nf->y = y;
+    y += NF_H + 30;
+    int k = 0; /* ticked: the apps with closed software that are not installed, below the check box */
+    for (int i = 0; i < n; i++) {
+        if (items[i].installed || !items[i].cat || !items[i].cat->nonfree) continue;
+        L->c[L->n++] = (StoreCell){items[i], row + k / STORE_COLS, k % STORE_COLS, y + (k / STORE_COLS) * STORE_PITCH};
+        k++;
+    }
+    row += (k + STORE_COLS - 1) / STORE_COLS;
     L->rows = row;
 }
 

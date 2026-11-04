@@ -40,7 +40,10 @@ enum { CARD_VOD, CARD_SERIES, CARD_COLLECTION, CARD_LIVE };
 enum { FMT_LANDSCAPE, FMT_POSTER };
 enum { SZ_SMALL, SZ_MEDIUM, SZ_LARGE };
 enum { M_HOME, M_LIVE, M_CATEGORIES, M_SEARCH, M_MYPAGE, M_LOGOUT };
-enum { V_HOME, V_BROWSE, V_DETAIL, V_SEARCH, V_LIVE, V_CATEGORIES, V_PROFILE };
+enum { V_HOME, V_BROWSE, V_DETAIL, V_SEARCH, V_LIVE, V_CATEGORIES, V_PROFILE, V_WHO };
+
+#define MAX_PROF 8
+typedef struct { char name[96], token[2048], id[64], avatar[1024]; bool kids; } Tv2Prof;
 enum { SF_ALL, SF_FILM, SF_SERIES };
 
 typedef struct {
@@ -92,6 +95,10 @@ typedef struct {
     char hist[MAX_HIST][240];
     int nhist;
     int profile_sel;
+    /* the account's profiles ("Hvem ser med?") */
+    Tv2Prof prof[MAX_PROF];
+    int nprof, who_sel;
+    bool force_pick; /* "Skift profil": always show the picker */
 } Tv2;
 
 typedef struct Tv2Req Tv2Req;
@@ -121,6 +128,7 @@ static const Color TV2_RED = {240, 40, 30, 255};
 static const Color TV2_MIDNIGHT = {0, 5, 35, 255};
 static const Color TV2_NAVY = {10, 15, 44, 255};
 static const Color TV2_SURFACE = {20, 25, 53, 255};
+static const Color TV2_SURFACE2 = {31, 35, 61, 255};
 static const Color TV2_TEXT = {255, 255, 255, 255};
 static const Color TV2_TEXT2 = {194, 195, 202, 255};
 static const Color TV2_TEXT3 = {112, 115, 132, 255};
@@ -663,7 +671,14 @@ static void ent_done(void *ud, cJSON *json, long status) {
 
 /* ---------- token storage ---------- */
 static void token_path(char *buf, size_t n) { snprintf(buf, n, "%s/apps/tv2/token", data_dir()); }
-static void progress_path(char *buf, size_t n) { snprintf(buf, n, "%s/apps/tv2/progress", data_dir()); }
+/* one resume file per TV 2 profile (progress-<id>), so people don't get each other's positions */
+static void progress_path(char *buf, size_t n) {
+    char id[64];
+    snprintf(id, sizeof id, "%s", cfg_get("tv2_profile_id", ""));
+    for (char *c = id; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '-' || *c == '_')) *c = '_';
+    if (id[0]) snprintf(buf, n, "%s/apps/tv2/progress-%s", data_dir(), id);
+    else snprintf(buf, n, "%s/apps/tv2/progress", data_dir());
+}
 
 static void ensure_app_dir(void) {
     char *base = str_printf("%s/apps", data_dir());
@@ -1459,6 +1474,29 @@ static void details_load(Tv2 *v, const char *path, const char *title, const char
     free(body);
 }
 
+static void profile_use(Tv2 *v, int i) {
+    if (i < 0 || i >= v->nprof) return;
+    Tv2Prof *p = &v->prof[i];
+    snprintf(v->profile, sizeof v->profile, "%s", p->token);
+    snprintf(v->profile_name, sizeof v->profile_name, "%s", p->name);
+    cfg_set("tv2_profile", v->profile);
+    cfg_set("tv2_profile_name", v->profile_name);
+    cfg_set("tv2_profile_id", p->id);
+}
+
+static void who_open(Tv2 *v) {
+    v->view = V_WHO;
+    v->state = S_READY;
+    v->nsec = 0;
+    v->nhero = 0;
+    v->msg[0] = 0;
+    v->who_sel = 0;
+    const char *cur = cfg_get("tv2_profile_id", "");
+    for (int i = 0; i < v->nprof; i++) if (*cur && !strcmp(v->prof[i].id, cur)) v->who_sel = i;
+}
+
+/* After login, refresh and "Skift profil": keep the chosen profile (fresh token), ask "Hvem ser med?" when the
+ * account has several and none is chosen yet. */
 static void profiles_done(void *ud, cJSON *json, long status) {
     Tv2 *v = ud;
     if (status == 401) { auth_failed(v); return; }
@@ -1466,26 +1504,36 @@ static void profiles_done(void *ud, cJSON *json, long status) {
         cJSON *data = cJSON_GetObjectItem(json, "data");
         cJSON *profiles = data ? cJSON_GetObjectItem(data, "profiles") : NULL;
         cJSON *nodes = profiles ? cJSON_GetObjectItem(profiles, "nodes") : NULL;
-        cJSON *node = cJSON_IsArray(nodes) ? cJSON_GetArrayItem(nodes, 0) : NULL;
-        if (cJSON_IsObject(node)) {
+        cJSON *node;
+        v->nprof = 0;
+        if (!cJSON_IsArray(nodes)) nodes = NULL;
+        cJSON_ArrayForEach(node, nodes) {
+            if (v->nprof >= MAX_PROF) break;
             char *pt = jstr(node, "profileToken");
-            char *name = jstr(node, "name");
-            char *id = jstr(node, "profileId");
-            if (pt) {
-                snprintf(v->profile, sizeof v->profile, "%s", pt);
-                cfg_set("tv2_profile", v->profile);
+            if (!pt || !*pt) { free(pt); continue; }
+            Tv2Prof *p = &v->prof[v->nprof++];
+            memset(p, 0, sizeof *p);
+            char *name = jstr(node, "name"), *id = jstr(node, "profileId");
+            snprintf(p->token, sizeof p->token, "%s", pt);
+            snprintf(p->name, sizeof p->name, "%s", name ? name : "");
+            snprintf(p->id, sizeof p->id, "%s", id ? id : "");
+            p->kids = cJSON_IsTrue(cJSON_GetObjectItem(node, "restricted"));
+            char *av = jstr(cJSON_GetObjectItem(node, "avatar"), "url");
+            if (av && *av) {
+                char *fx = img_url_fix(av);
+                snprintf(p->avatar, sizeof p->avatar, "%s", fx ? fx : av);
+                free(fx);
             }
-            if (name) {
-                snprintf(v->profile_name, sizeof v->profile_name, "%s", name);
-                cfg_set("tv2_profile_name", v->profile_name);
-            }
-            if (id) {
-                cfg_set("tv2_profile_id", id);
-                free(id);
-            }
-            free(pt); free(name);
+            free(av); free(pt); free(name); free(id);
         }
     }
+    const char *cur = cfg_get("tv2_profile_id", "");
+    int keep = -1;
+    for (int i = 0; i < v->nprof; i++) if (*cur && !strcmp(v->prof[i].id, cur)) keep = i;
+    bool pick = v->force_pick;
+    v->force_pick = false;
+    if (v->nprof > 1 && (pick || keep < 0)) { who_open(v); return; }
+    if (v->nprof) profile_use(v, keep >= 0 ? keep : 0);
     home_load(v);
 }
 
@@ -2051,13 +2099,42 @@ static void draw_profile(Tv2 *v) {
               v->profile_name[0] ? v->profile_name : T("Min profil"));
     text_draw(F_REG, TS_BODY, UI_W / 2, py + 168, TV2_TEXT2, AL_CENTER,
               T("Logget ind på TV 2 Play"));
-    const char *btn = T("Log ud");
-    float bw = text_width(F_SEMI, TS_BUTTON, btn) + 70;
-    float bx = UI_W / 2 - bw / 2, by = py + 320;
-    if (v->profile_sel == 0) fill_rrect(bx - 3, by - 3, bw + 6, 64, 32, TV2_TEXT);
-    fill_rrect(bx, by, bw, 58, 29, TV2_TEXT);
-    text_draw(F_SEMI, TS_BUTTON, UI_W / 2, by + 15, TV2_BLACK, AL_CENTER, btn);
+    const char *btn[2] = {T("Skift profil"), T("Log ud")};
+    float bw[2], gap = 30, tot = gap;
+    for (int i = 0; i < 2; i++) { bw[i] = text_width(F_SEMI, TS_BUTTON, btn[i]) + 70; tot += bw[i]; }
+    float bx = UI_W / 2 - tot / 2, by = py + 320;
+    for (int i = 0; i < 2; i++) {
+        bool f = v->profile_sel == i;
+        if (f) fill_rrect(bx - 3, by - 3, bw[i] + 6, 64, 32, TV2_TEXT);
+        fill_rrect(bx, by, bw[i], 58, 29, f ? TV2_TEXT : TV2_SURFACE2);
+        text_draw(F_SEMI, TS_BUTTON, bx + bw[i] / 2, by + 15, f ? TV2_BLACK : TV2_TEXT, AL_CENTER, btn[i]);
+        bx += bw[i] + gap;
+    }
     text_draw(F_REG, TS_SMALL, UI_W / 2, py + ph - 40, TV2_TEXT3, AL_CENTER, "TV 2 Play " APP_VERSION);
+}
+
+/* "Hvem ser med?": the account's profiles as round avatars with the name below */
+static void draw_who(Tv2 *v) {
+    text_draw(F_BOLD, TS_H1, UI_W / 2, 220, TV2_TEXT, AL_CENTER, T("Hvem ser med?"));
+    float d = 200, gap = 70, tot = v->nprof * d + (v->nprof - 1) * gap;
+    float x = UI_W / 2 - tot / 2, y = 380;
+    for (int i = 0; i < v->nprof; i++, x += d + gap) {
+        Tv2Prof *p = &v->prof[i];
+        bool f = i == v->who_sel;
+        float sc = f ? 1.08f : 1, dd = d * sc, xx = x - (dd - d) / 2, yy = y - (dd - d) / 2;
+        if (f) fill_rrect(xx - 6, yy - 6, dd + 12, dd + 12, (dd + 12) / 2, TV2_TEXT);
+        Image *im = p->avatar[0] ? img_get(p->avatar) : NULL;
+        if (!im || !img_draw_cover(im, xx, yy, dd, dd, dd / 2, f ? 1 : 0.75f)) {
+            fill_rrect(xx, yy, dd, dd, dd / 2, f ? TV2_RED : TV2_SURFACE2);
+            char ini[8] = {0};
+            int l = 1;
+            if (p->name[0] & 0x80) while (l < 4 && (p->name[l] & 0xC0) == 0x80) l++; /* one UTF-8 letter */
+            memcpy(ini, p->name[0] ? p->name : "?", p->name[0] ? l : 1);
+            text_draw(F_BOLD, 90, xx + dd / 2, yy + dd / 2 - 55, TV2_TEXT, AL_CENTER, ini);
+        }
+        text_draw_clip(F_SEMI, 30, x + d / 2, y + d + 30, d + gap, f ? TV2_TEXT : TV2_TEXT2, AL_CENTER, p->name);
+        if (p->kids) text_draw(F_REG, TS_SMALL, x + d / 2, y + d + 74, TV2_TEXT3, AL_CENTER, T("Børneprofil"));
+    }
 }
 
 static void hero_open(Tv2 *v) {
@@ -2190,7 +2267,11 @@ static void tv2_draw(Screen *s) {
     case V_PROFILE:
         draw_profile(v);
         draw_tv2_topbar(T("Min side"));
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Log ud"), NULL, NULL, NULL, T("Menu"));
+        draw_keybar(SIDE_W + 60, UI_H - 62, T("Vælg"), NULL, NULL, NULL, T("Menu"));
+        break;
+    case V_WHO:
+        draw_who(v);
+        draw_keybar(SIDE_W + 60, UI_H - 62, T("Vælg"), NULL, NULL, NULL, NULL);
         break;
     default:
         if (v->nsec) draw_sections(v);
@@ -2222,10 +2303,33 @@ static bool tv2_input(Screen *s, const InputEvent *ev) {
         return false;
     }
 
+    if (v->view == V_WHO) {
+        if (ev->a == A_LEFT && v->who_sel > 0) v->who_sel--;
+        else if (ev->a == A_RIGHT && v->who_sel + 1 < v->nprof) v->who_sel++;
+        else if ((ev->a == A_OK || ev->a == A_PLAYPAUSE || ev->a == A_PLAY) && !ev->repeat) {
+            profile_use(v, v->who_sel);
+            v->gen++;
+            home_load(v);
+        } else if (ev->a == A_BACK) {
+            if (v->profile[0]) profile_open(v); /* "Skift profil" cancelled: keep the current one */
+            else return false;                 /* no profile chosen yet: leave the app */
+        }
+        return true;
+    }
+
     if (v->view == V_PROFILE) {
-        if (ev->a == A_OK || ev->a == A_PLAYPAUSE || ev->a == A_PLAY) tv2_logout();
-        else if (ev->a == A_BACK) back_home(v);
-        else if (ev->a == A_MENU || ev->a == A_LEFT) side_open(&v->side);
+        if (ev->a == A_LEFT && v->profile_sel > 0) v->profile_sel--;
+        else if (ev->a == A_RIGHT && v->profile_sel < 1) v->profile_sel++;
+        else if ((ev->a == A_OK || ev->a == A_PLAYPAUSE || ev->a == A_PLAY) && !ev->repeat) {
+            if (v->profile_sel == 1) tv2_logout();
+            else {
+                v->force_pick = true;
+                v->gen++;
+                set_loading(v, T("Henter profiler…"));
+                load_profiles(v);
+            }
+        } else if (ev->a == A_BACK) back_home(v);
+        else if (ev->a == A_MENU || (ev->a == A_LEFT && v->profile_sel == 0)) side_open(&v->side);
         return true;
     }
 
@@ -2451,6 +2555,9 @@ static void tv2_forget(void) {
     char *p = app_file("progress");
     unlink(p);
     free(p);
+    p = app_dir();
+    run_cmd("rm -f '%s'/progress-* 2>/dev/null", p); /* one per profile */
+    free(p);
     p = app_file("serve.log");
     unlink(p);
     free(p);
@@ -2477,6 +2584,7 @@ static void tv2_forget(void) {
         live->profile[0] = 0;
         live->profile_name[0] = 0;
         live->nhist = 0;
+        live->nprof = 0;
         clear_hero(live);
         live->token_exp = 0;
         live->auth_retried = false;

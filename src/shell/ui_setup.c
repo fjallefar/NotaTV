@@ -131,6 +131,7 @@ static int guide_apps(GApp *out) {
     for (int i = 0; i < appcat_count() && n < MAX_GAPPS; i++) {
         const CatApp *c = appcat_at(i);
         if (app_find(c->id)) continue;
+        if (c->nonfree && strcmp(cfg_get("store_nonfree", "0"), "1")) continue; /* closed software: only via the App Store's check box */
         snprintf(out[n].id, sizeof out[n].id, "%s", c->id);
         out[n].app = NULL;
         out[n].cat = c;
