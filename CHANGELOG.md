@@ -18,6 +18,21 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.9
+
+> **In short:** TV 2 Play comes to the App Store as an opt-in app, behind a new check box for apps that need closed software.
+> - App Store: tick *Show apps that need closed software* at the bottom to see apps that need a DRM module
+> - TV 2 Play 1.0.0: sign in on the TV, front page, search, series, continue watching and subtitles
+
+<!-- tldr:da
+Kort: TV 2 Play kommer i App Store som en app, du selv vælger, bag et nyt flueben for apps, der kræver lukket software.
+- App Store: sæt flueben i *Vis apps, der kræver lukket software* nederst for at se apps, der kræver et DRM-modul
+- TV 2 Play 1.0.0: log ind på TV'et, forside, søgning, serier, fortsæt med at se og undertekster
+-->
+
+- App Store: a check box at the bottom, *Show apps that need closed software*. Apps that need a closed DRM module (TV 2 Play) are hidden until it is ticked.
+- New app: TV 2 Play 1.0.0 (opt-in, see above). The first time you play, it downloads Google's Widevine module from Raspberry Pi's archive (about 8 MB).
+
 ## 1.0.8
 
 > **In short:** Remove things from the row on the home screen, forget one Bluetooth device at a time, and Live TV shows the right channel name when you start from the home screen.

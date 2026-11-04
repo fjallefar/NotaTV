@@ -128,6 +128,7 @@ static void cat_done(void *arg) {
             c->fg = jcolor(cJSON_GetObjectItem(a, "fg"));
             c->order = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(a, "order"));
             c->def = cJSON_IsTrue(cJSON_GetObjectItem(a, "default"));
+            c->nonfree = cJSON_IsTrue(cJSON_GetObjectItem(a, "nonfree"));
             c->size = (long)cJSON_GetNumberValue(cJSON_GetObjectItem(a, "size"));
             cJSON *is = cJSON_GetObjectItem(a, "installed_size");
             c->isize = cJSON_IsNumber(is) ? (long)is->valuedouble : 0;

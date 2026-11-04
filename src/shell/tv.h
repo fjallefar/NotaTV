@@ -411,6 +411,7 @@ typedef struct {
     /* what is new in this version (manifest "changes", translated): one short line and a few points */
     char news[200], points[4][160];
     int n_points;
+    bool nonfree; /* needs closed software (e.g. a DRM module): only listed when cfg store_nonfree=1 */
 } CatApp;
 typedef enum { CAT_NONE, CAT_LOADING, CAT_OK, CAT_ERROR } CatState;
 CatState appcat_state(void);

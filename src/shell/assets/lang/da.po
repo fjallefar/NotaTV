@@ -1697,3 +1697,9 @@ msgstr "Hvilken enhed skal glemmes?"
 
 msgid "Choose a phone, controller or keyboard to forget - or all of them"
 msgstr "Vælg en telefon, controller eller et tastatur, der skal glemmes - eller dem alle"
+
+msgid "Show apps that need closed software"
+msgstr "Vis apps, der kræver lukket software"
+
+msgid "Some streaming services need a closed module from another company to play (DRM). It is not open source."
+msgstr "Nogle streamingtjenester kræver et lukket modul fra et andet firma for at afspille (DRM). Det er ikke open source."

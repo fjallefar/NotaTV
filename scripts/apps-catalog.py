@@ -54,6 +54,8 @@ def main():
             shutil.copytree(d, pkg)
             if strip:
                 subprocess.run([strip, '--strip-unneeded', os.path.join(pkg, 'app.so')], check=True)
+                for helper in m.get('helpers', []):  # programs the app runs (e.g. tv2's wvserve)
+                    subprocess.run([strip, '--strip-unneeded', os.path.join(pkg, helper)], check=True)
             name = f'{app_id}-{ver}-api{api}.tar.gz'
             out = os.path.join(dist, name)
             with tarfile.open(out, 'w:gz') as t:  # plain files and folders, relative paths, owned by root
@@ -66,7 +68,7 @@ def main():
                         with open(p, 'rb') as fh: t.addfile(ti, fh)
             unpacked = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(pkg) for f in fs)
         data = open(out, 'rb').read()
-        entry = {k: m[k] for k in ('id', 'version', 'name', 'desc', 'icon', 'c1', 'c2', 'fg', 'order', 'default', 'changes') if k in m}
+        entry = {k: m[k] for k in ('id', 'version', 'name', 'desc', 'icon', 'c1', 'c2', 'fg', 'order', 'default', 'nonfree', 'changes') if k in m}
         ch = m.get('changes') or {}
         assert isinstance(ch, dict) and isinstance(ch.get('summary', ''), str) and isinstance(ch.get('points', []), list), \
             f'{d}: "changes" must be {{"summary": "...", "points": ["...", ...]}}'

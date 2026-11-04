@@ -4,7 +4,7 @@ Everything on the NotaTV home screen is an app. The system (`src/shell`) has the
 drawing, the player, the on-screen keyboard and dialogs, network calls, settings, jobs and translations. An app only
 adds its own screens and logic.
 
-Every app is a package, i.e. a folder here in `src/apps/`: Live TV (`iptv`), Plex, Jellyfin, YouTube, Twitch,
+Every app is a package, i.e. a folder here in `src/apps/`: Live TV (`iptv`), Plex, Jellyfin, YouTube, Twitch, TV 2 Play (`tv2`),
 Seerr, Music, Radio, Games, Tesla and Media. Each one is built into its own `app.so`. Only Settings and the App Store are part of
 `tvshell` itself. The image comes without apps: they are downloaded from the App Store (the GitHub release `apps`)
 into `/data/notatv/apps-pkg/<id>/`.
@@ -20,7 +20,11 @@ src/apps/<id>/
                     name, desc, icon (tv, plex, youtube, play, star, music, film, folder ...), c1/c2/fg colors,
                     order and default (was on by default in NotaTV 1.0; only used to move
                     1.0 boxes to App Store apps - nothing is ticked beforehand in the setup guide),
-                    and changes: what is new in this version (see below)
+                    changes: what is new in this version (see below), and nonfree: true when the app
+                    needs closed software (e.g. a DRM module) - the App Store only lists it when the user
+                    ticks "Show apps that need closed software" (cfg store_nonfree)
+                    helpers: programs in the package besides app.so (built by <id>/app.mk via APP_EXTRA,
+                    stripped by apps-catalog.py), e.g. tv2's wvserve
   *.c, <id>.h       the app (any number of files; <id>.h has what the files share)
   lang/<code>.po    the app's translations (e.g. lang/da.po)
   app.mk            optional: extra compiler flags as CFLAGS_<id>

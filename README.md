@@ -57,6 +57,8 @@ Platform: **Raspberry Pi 4 and Pi 5** (one image for both; the Pi 5 support is n
 
 Everything that runs in Linux on the box is open source, so you can always check what data the box collects and sends. Closed software such as Spotify's SDK, Widevine or Google Cast is not used.
 
+The one opt-in exception: apps that need a closed module to play (DRM, e.g. TV 2 Play with Google's Widevine) are hidden in the App Store until you tick *Show apps that need closed software* at the bottom of the store. Nothing closed is on the box unless you choose it: the Widevine module is downloaded from Raspberry Pi's official archive the first time you play something, and it is deleted when you uninstall the app.
+
 **Network monitor** (*Settings → Network → Network monitor*) shows live which programs on the box have connections and where they go: the internet (orange), the local network (blue), and ports the box listens on (gray).
 
 The box only contacts outside services when you use a feature:
@@ -67,6 +69,8 @@ The box only contacts outside services when you use a feature:
 | Your Jellyfin server | Jellyfin app, "Play On" |
 | YouTube (via yt-dlp) | YouTube app |
 | api.twitch.tv, id.twitch.tv, irc.chat.twitch.tv | Twitch app (login, lists, anonymous chat) |
+| auth.tv2.dk, play.tv2api.dk, pages-graph.discovery.tv2api.dk + TV 2's video and license servers | TV 2 Play app, only when installed (login, pages, playback, Widevine license) |
+| archive.raspberrypi.com, deb.debian.org, snapshot.debian.org | TV 2 Play: the Widevine module and NSPR, once, the first time you play |
 | Your Seerr server, TMDB images | Seerr app |
 | netflix.com (public top 10 data file) | Seerr → Netflix top 10 |
 | Your IPTV provider | Live TV |
@@ -168,6 +172,7 @@ In the App Store on the home screen you can install more apps, update apps (*Upd
 | **Jellyfin** | Server address, username and password. Libraries, a series page with seasons and episodes, and "Continue watching" and "Next episode" (also on the home screen). Always plays the original file (no server transcoding), with the audio and subtitles chosen for your Jellyfin user. Playback progress is reported to the server, and the server sees the box under its own name. *Search subtitles* in the player menu finds subtitles on OpenSubtitles (see below). |
 | **YouTube** | yt-dlp with Node.js and mpv. Videos are resolved while they are in focus, so playback starts almost instantly. Quality up to 1080p on a Raspberry Pi (1440p and 4K are greyed out: YouTube only has them as VP9/AV1). Optional account via cookies from the phone page. Subscriptions can be imported from Google Takeout. |
 | **Twitch** | Sign in with a code or QR code at `twitch.tv/activate`. Following, Popular, Categories and Search. Chat is read anonymously and shown as a sidebar. Quality (1080p to 360p) in the player menu. |
+| **TV 2 Play** | Opt-in (closed software, see [Open source only](#open-source-only)). Sign in with a code on the TV. Front page, Live TV channel list, categories, search, series and episodes, continue watching (also in TV 2's own app) and subtitles. Needs your own TV 2 Play subscription. Live playback is not supported yet. |
 | **Seerr** | Find and request movies and shows (Overseerr/Jellyseerr) with Plex login. Season picker, trailers, "More like this" and Netflix top 10 for your country. |
 | **Music** | Receives music from your phone over **AirPlay** (iPhone/iPad/Mac) or **Bluetooth** (any phone). "Now playing" shows cover art, title and progress. |
 | **Radio** | Stations from radio-browser.info (free and open, no login). The country follows the one chosen in the setup guide (the stations of another country can be chosen in the app). Popular, genres, search, recently played and favourites (Yellow; the first nine get a number you press on the remote). Plays in the background while you use the rest of the box, with a *Now playing* box in the top bar and the station on the home screen; it stops by itself when a video or game starts. |

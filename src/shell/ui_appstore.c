@@ -4,7 +4,8 @@
  * OK on an installed app offers Open, Update (when the catalog has a newer version) and Uninstall. Uninstalling
  * deletes everything the app has saved on the box (see app_uninstall). Settings and the App Store are not shown.
  * When apps have updates, a bar at the top updates them all at once. Before an update, a card shows what is new
- * (the manifest's "changes", see scripts/apps-catalog.py). */
+ * (the manifest's "changes", see scripts/apps-catalog.py). A check box at the bottom lists apps that need closed
+ * software (manifest "nonfree", e.g. a DRM module); they are hidden until it is ticked (cfg store_nonfree). */
 #define _GNU_SOURCE /* nftw */
 #include "tv.h"
 #include <stdio.h>
@@ -19,6 +20,10 @@
 #define STORE_MAX 64
 #define STORE_BAR 120.0f /* the "Update all" bar */
 #define ALL_ID "*all"    /* its id in the layout (never an app id) */
+#define NF_ID "*nonfree" /* the check box for apps with closed software */
+#define NF_H 110.0f
+
+static bool show_nonfree(void) { return !strcmp(cfg_get("store_nonfree", "0"), "1"); }
 
 /* one app in the store: loaded (app) and/or in the catalog (cat) */
 typedef struct {
@@ -84,7 +89,7 @@ static int store_items(StoreItem *out) {
     }
     for (int i = 0; i < appcat_count() && n < STORE_MAX; i++) {
         const CatApp *c = appcat_at(i);
-        if (app_find(c->id)) continue;
+        if (app_find(c->id) || (c->nonfree && !show_nonfree())) continue;
         StoreItem *s = &out[n++];
         snprintf(s->id, sizeof s->id, "%s", c->id);
         s->app = NULL;
@@ -137,7 +142,28 @@ static void store_layout_build(StoreLayout *L) {
         row += r;
         y += (r ? r * STORE_PITCH : 80) + STORE_GAP;
     }
+    StoreCell *nf = &L->c[L->n++]; /* the check box, in its own row at the bottom */
+    memset(nf, 0, sizeof *nf);
+    snprintf(nf->it.id, sizeof nf->it.id, NF_ID);
+    nf->row = row++;
+    nf->y = y;
     L->rows = row;
+}
+
+/* [x] Show apps with closed software */
+static void draw_nonfree(float x, float y, float w, bool f) {
+    if (y > UI_H || y + NF_H < 190) return;
+    static const char nf_key[] = "nonfree";
+    float fa = focus_amt(nf_key, f), fc = fa < 0 ? 0 : fa > 1 ? 1 : fa;
+    focus_under(x, y, w, NF_H, 26, fa);
+    fill_rrect(x, y, w, NF_H, 26, color_mix(C_SURFACE, C_SURFACE2, fc));
+    bool on = show_nonfree();
+    fill_rrect(x + 30, y + 31, 48, 48, 12, on ? C_ACCENT : RGBA(255, 255, 255, 40));
+    if (on) draw_icon(ICON_CHECK, x + 54, y + 55, 30, C_TEXT);
+    text_draw(F_BOLD, 28, x + 104, y + 18, C_TEXT, AL_LEFT, T("Show apps that need closed software"));
+    text_draw_clip(F_REG, 22, x + 104, y + 62, w - 134, C_TEXT2, AL_LEFT,
+                   T("Some streaming services need a closed module from another company to play (DRM). It is not open source."));
+    focus_over(x, y, w, NF_H, 26, fa);
 }
 
 static int store_find(const StoreLayout *L, const char *id) {
@@ -230,6 +256,7 @@ static void store_draw(Screen *s) {
         float x = 96 + L.c[k].col * (cw + 30), y = top + L.c[k].y;
         bool f = k == sel;
         if (!strcmp(it->id, ALL_ID)) { draw_update_bar(96, y, UI_W - 192, f); continue; }
+        if (!strcmp(it->id, NF_ID)) { draw_nonfree(96, y, UI_W - 192, f); continue; }
         if (y > UI_H || y + ch < 190) continue;
         /* the card lifts like everywhere else (the key: the app, which outlives this frame's layout) */
         float fa = focus_amt(it->app ? (const void *)it->app : (const void *)it->cat, f), fc = fa < 0 ? 0 : fa > 1 ? 1 : fa;
@@ -369,6 +396,7 @@ static bool store_input(Screen *s, const InputEvent *ev) {
     case A_OK:
         if (ev->repeat || appcat_pending(c.it.id)) return true;
         if (!strcmp(c.it.id, ALL_ID)) { ask_update_all(); return true; }
+        if (!strcmp(c.it.id, NF_ID)) { cfg_set("store_nonfree", show_nonfree() ? "0" : "1"); return true; }
         snprintf(pending_id, sizeof pending_id, "%s", c.it.id);
         if (c.it.installed) {
             const char *items[3];

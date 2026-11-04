@@ -1,0 +1,15 @@
+{
+  "id": "tv2",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "TV 2 Play",
+  "desc": "Streaming fra TV 2 Play (Widevine)",
+  "icon": "film",
+  "c1": [240, 40, 30],
+  "c2": [140, 16, 12],
+  "fg": [255, 255, 255],
+  "order": 35,
+  "default": false,
+  "nonfree": true,
+  "helpers": ["wvserve"]
+}
