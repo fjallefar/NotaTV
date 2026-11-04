@@ -38,7 +38,16 @@ if [ -n "$share" ] && ! grep -q " $mnt " /proc/mounts; then
 	smb://*)
 		rest=${share#smb://}
 		cred=""; case "$rest" in *@*) cred=${rest%%@*}; rest=${rest#*@} ;; esac
-		user=${cred%%:*}; pass=""; case "$cred" in *:*) pass=${cred#*:} ;; esac
+		case "$cred" in
+		*:*)
+			user=${cred%%:*}; pass=${cred#*:}
+			;;
+		*)
+			# no password in the address: the username from the address, otherwise the one saved in Settings
+			user=${cred:-$(cfg_get media_share_user "")}
+			pass=$(cfg_get media_share_pass "")
+			;;
+		esac
 		host=${rest%%/*}; path=${rest#*/}
 		# the login in a file only root can read (not on the command line, and a comma in the password works)
 		C=$RUN/cifs.cred

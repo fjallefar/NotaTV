@@ -7,6 +7,7 @@ Screen *youtube_screen(void);
 /* YouTube cast (ytcast.c): DIAL + YouTube lounge ("Cast" and "Link with TV code" in the YouTube app) */
 void ytcast_tick(void);
 void ytcast_apply(void);
+void ytcast_forget(void);
 void ytcast_play_tick(void);
 char *ytcast_pairing_code(void);                        /* blocking; "123 456 789 012" or NULL */
 bool youtube_cast_play(const char *id, double start);   /* youtube.c; true = played to the end */

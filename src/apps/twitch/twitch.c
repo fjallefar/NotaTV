@@ -34,10 +34,12 @@ struct TReq {
     cJSON *json;
     long status;
     int token;
+    int signout; /* tw_signout when the request was made: replies from before a sign-out are dropped */
     void (*done)(void *ud, cJSON *json, long status);
     void *ud;
 };
-static int tw_gen; /* increased when the view changes: replies for old views are ignored */
+static int tw_gen;     /* increased when the view changes: replies for old views are ignored */
+static int tw_signout; /* increased on sign-out only: replies from before are ignored (tw_gen also changes on navigation) */
 
 static void treq_work(void *arg) {
     TReq *r = arg;
@@ -66,8 +68,11 @@ static void treq_free(TReq *r) {
 
 static void treq_done(void *arg) {
     TReq *r = arg;
+    /* signed out while this was on its way: do not use its reply (and do not renew tokens with it) */
+    if (r->token >= 0 && r->signout != tw_signout) { treq_free(r); return; }
     /* the access token lasts about 4 hours: renew it once and try again */
     if (r->status == 401 && !r->form && !r->retried && *cfg_get("tw_refresh", "")) { refresh_then(r); return; }
+    /* token < 0 is the token renewal: always delivered so that refreshed() can clean up the original */
     if (r->done && (r->token == tw_gen || r->token < 0)) r->done(r->ud, r->json, r->status);
     treq_free(r);
 }
@@ -81,6 +86,7 @@ static void tw_api(const char *path, void (*done)(void *, cJSON *, long), void *
     r->done = done;
     r->ud = ud;
     r->token = tw_gen;
+    r->signout = tw_signout;
     tw_submit(r);
 }
 
@@ -93,6 +99,7 @@ static void tw_form(const char *url, const char *body, void (*done)(void *, cJSO
     r->done = done;
     r->ud = ud;
     r->token = tw_gen;
+    r->signout = tw_signout;
     tw_submit(r);
 }
 
@@ -104,6 +111,10 @@ static char *js(cJSON *o, const char *k) {
 /* renewal: the refresh token can only be used once, so both are saved again */
 static void refreshed(void *ud, cJSON *json, long status) {
     TReq *orig = ud;
+    if (orig->signout != tw_signout) { /* signed out while the tokens were renewed: do not write them back */
+        treq_free(orig);
+        return;
+    }
     char *at = status == 200 ? js(json, "access_token") : NULL, *rt = status == 200 ? js(json, "refresh_token") : NULL;
     if (at) {
         cfg_set("tw_token", at);
@@ -133,6 +144,7 @@ static void refresh_then(TReq *r) {
     f->done = refreshed;
     f->ud = r;
     f->token = -1; /* always delivered: otherwise the original request is lost */
+    r->signout = tw_signout; /* remember when the renewal was started: a later sign-out drops the result */
     tw_submit(f);
     free(rt);
 }
@@ -374,6 +386,7 @@ static void start_login(Tw *v) {
 
 /* sign out: the token is revoked at Twitch, and everything about the login is forgotten here */
 static void twitch_forget(void) {
+    tw_signout++; /* replies from before the sign-out are ignored (tw_gen also changes on navigation) */
     if (*tw_token()) {
         char *b = str_printf("client_id=%s&token=%s", tw_client(), tw_token());
         static const char *const hdr[] = {"Content-Type: application/x-www-form-urlencoded", NULL};

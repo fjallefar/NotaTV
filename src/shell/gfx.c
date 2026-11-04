@@ -44,6 +44,14 @@ Color color_mix(Color a, Color b, float t) {
 static SDL_Renderer *R;
 /* debugging (shown together with FPS): draw calls and new textures since last time */
 static int st_geom, st_tex_new, st_imgs;
+/* time per frame in texture work (slow-frame log): glyph uploads, image uploads, mip passes; counts */
+static Uint64 ft_glyph, ft_glyph_up, ft_img, ft_mip; static int fn_glyph, fn_img, fn_mip;
+void gfx_frame_times(double *glyph_ms, double *img_ms, double *mip_ms, int *n_glyph, int *n_img, int *n_mip) {
+    *glyph_ms = (ft_glyph + ft_glyph_up) / 1e6; /* rasterizing + the upload at the start of the frame */
+    ft_glyph_up = 0; *img_ms = ft_img / 1e6; *mip_ms = ft_mip / 1e6;
+    *n_glyph = fn_glyph; *n_img = fn_img; *n_mip = fn_mip;
+    ft_glyph = ft_img = ft_mip = 0; fn_glyph = fn_img = fn_mip = 0;
+}
 void gfx_stats(int *geom, int *tex_new, int *imgs) {
     *geom = st_geom; *tex_new = st_tex_new; *imgs = st_imgs;
     st_geom = st_tex_new = st_imgs = 0;
@@ -494,17 +502,21 @@ void gfx_drift_end(float ox, float oy) {
 }
 
 /* ---------- Text ---------- */
-typedef struct { uint32_t cp; int16_t x, y, w, h, xoff, yoff; float adv; int glyph; } Glyph;
-#define ATLAS_SZ 1024      /* texture size for big text; small sizes (<= ATLAS_SMALL_PX) get 512 x 512 */
-#define ATLAS_SMALL_PX 30
+typedef struct { uint32_t cp; int16_t x, y, w, h, xoff, yoff; float adv; int glyph; bool ready; } Glyph;
+/* a new glyph waits here until the start of the next frame (gfx_frame_begin): updating the atlas texture while
+   this frame's draws use it makes the Pi's GPU finish the frame so far first (0.3-0.5 ms per glyph) */
+typedef struct { int slot; SDL_Rect r; uint32_t *px; } GlyphUp;
+#define ATLAS_SZ 1024      /* the largest atlas texture; an atlas starts small and grows when it is full */
+#define ATLAS_SMALL_PX 20  /* sizes up to this start at 256 x 256, bigger ones at 512 x 512 */
 #define GL_HASH 1024
 #define KERN_HASH 2048     /* kerning pairs looked up once (Inter's GPOS kerning is slow in stb_truetype) */
 typedef struct { int a, b; float k; } Kern;
 typedef struct {
     int px; FontId font; int gen, sz;
-    SDL_Texture *tex;
+    SDL_Texture *tex; int tex_sz; /* tex_sz < sz: the atlas has grown, the texture follows at the next frame start */
     int pen_x, pen_y, row_h;
     unsigned long last_used; /* atlas_tick when last asked for: the least recently used is thrown out */
+    GlyphUp *pend; int n_pend, cap_pend; /* glyphs waiting for upload */
     Glyph glyphs[GL_HASH];
     bool used[GL_HASH];
     Kern kern[KERN_HASH];
@@ -515,7 +527,7 @@ static unsigned long atlas_tick;
 
 static stbtt_fontinfo fonts[F_COUNT];
 static unsigned char *font_data[F_COUNT];
-#define MAX_ATLAS 24
+#define MAX_ATLAS 32
 static Atlas *atlases[MAX_ATLAS];
 static int n_atlas;
 
@@ -546,11 +558,144 @@ static bool load_font(FontId id, const char *file) {
     return stbtt_InitFont(&fonts[id], font_data[id], stbtt_GetFontOffsetForIndex(font_data[id], 0));
 }
 
+static void atlas_drop_pending(Atlas *a) {
+    for (int i = 0; i < a->n_pend; i++) free(a->pend[i].px);
+    a->n_pend = 0;
+}
+
+/* start of a frame, before anything is drawn: the glyphs made last frame go to their atlas textures */
+static void atlas_flush_all(void) {
+    for (int n = 0; n < n_atlas; n++) {
+        Atlas *a = atlases[n];
+        if (!a->n_pend || a->gen != g_generation) continue;
+        Uint64 t0 = SDL_GetTicksNS();
+        if (a->tex && a->tex_sz < a->sz) {
+            /* grown: the old texture is copied into the corner of a bigger one by the GPU (the glyphs keep their
+               place), before anything this frame draws with it */
+            SDL_Texture *nt = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, a->sz, a->sz);
+            if (nt) {
+                SDL_Texture *was = SDL_GetRenderTarget(R);
+                SDL_SetRenderTarget(R, nt);
+                SDL_SetTextureBlendMode(a->tex, SDL_BLENDMODE_NONE);
+                SDL_SetTextureColorMod(a->tex, 255, 255, 255);
+                SDL_SetTextureAlphaMod(a->tex, 255);
+                SDL_FRect r = {0, 0, (float)a->tex_sz, (float)a->tex_sz};
+                SDL_RenderTexture(R, a->tex, &r, &r);
+                SDL_SetRenderTarget(R, was);
+                SDL_DestroyTexture(a->tex);
+                SDL_SetTextureBlendMode(nt, SDL_BLENDMODE_BLEND);
+                SDL_SetTextureScaleMode(nt, SDL_SCALEMODE_LINEAR);
+                a->tex = nt;
+                a->tex_sz = a->sz;
+                st_tex_new++;
+            } else { /* no memory for a bigger one: start over at the old size */
+                atlas_drop_pending(a);
+                memset(a->used, 0, sizeof a->used);
+                a->pen_x = a->pen_y = a->row_h = 0;
+                a->sz = a->tex_sz;
+                continue;
+            }
+        }
+        if (!a->tex) {
+            a->tex = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, a->sz, a->sz);
+            if (!a->tex) { atlas_drop_pending(a); continue; }
+            a->tex_sz = a->sz;
+            SDL_SetTextureBlendMode(a->tex, SDL_BLENDMODE_BLEND);
+            SDL_SetTextureScaleMode(a->tex, SDL_SCALEMODE_LINEAR);
+            st_tex_new++;
+        }
+        for (int i = 0; i < a->n_pend; i++) {
+            GlyphUp *u = &a->pend[i];
+            SDL_UpdateTexture(a->tex, &u->r, u->px, u->r.w * 4);
+            free(u->px);
+            if (a->used[u->slot]) a->glyphs[u->slot].ready = true;
+        }
+        ft_glyph_up += SDL_GetTicksNS() - t0;
+        a->n_pend = 0;
+    }
+}
+#define IMG_UP_BUDGET (2L << 20) /* image bytes uploaded per frame (more only for the first one) */
+static long g_up_bytes;
+void gfx_frame_begin(void) { atlas_flush_all(); g_up_bytes = 0; }
+
+/* ---- text sizes learned across starts: their atlases are made in idle time after start (a new atlas costs
+   5-15 ms on a Pi 4 - otherwise that lands in the frame where an app opens) ---- */
+#define SEEN_MAX 20
+static struct { int font, px; } seen[SEEN_MAX];
+static int n_seen;
+static bool seen_loaded, seen_dirty, prewarm_done;
+static char seen_path[512];
+static void seen_load(void) {
+    if (seen_loaded) return;
+    seen_loaded = true;
+    snprintf(seen_path, sizeof seen_path, "%s/text-sizes", data_dir());
+    FILE *f = fopen(seen_path, "r");
+    if (!f) return;
+    int fo, px;
+    while (n_seen < SEEN_MAX && fscanf(f, "%d %d", &fo, &px) == 2)
+        if (fo >= 0 && fo < F_COUNT && px >= 6 && px <= 400) { seen[n_seen].font = fo; seen[n_seen].px = px; n_seen++; }
+    fclose(f);
+}
+static void atlas_seen(FontId f, int px) {
+    seen_load();
+    for (int i = 0; i < n_seen; i++)
+        if (seen[i].font == (int)f && seen[i].px == px) {
+            if (i > 0) { /* most recent first: the list keeps the sizes in use */
+                int fo = seen[i].font, p = seen[i].px;
+                memmove(seen + 1, seen, sizeof seen[0] * (size_t)i);
+                seen[0].font = fo; seen[0].px = p;
+                seen_dirty = true;
+            }
+            return;
+        }
+    if (n_seen < SEEN_MAX) n_seen++;
+    memmove(seen + 1, seen, sizeof seen[0] * (size_t)(n_seen - 1));
+    seen[0].font = f; seen[0].px = px;
+    seen_dirty = true;
+}
+static Atlas *atlas_get_px(FontId f, int px);
+static Glyph *glyph_get(Atlas *a, uint32_t cp);
+/* call once per frame: while nothing happens, one learned size per frame gets its atlas and the common letters */
+void gfx_idle_tick(void) {
+    static double t_save;
+    double now = app_time();
+    if (seen_dirty && now - t_save > 30) {
+        t_save = now;
+        seen_dirty = false;
+        char tmp[520];
+        snprintf(tmp, sizeof tmp, "%s.tmp", seen_path);
+        FILE *f = fopen(tmp, "w");
+        if (f) {
+            for (int i = 0; i < n_seen; i++) fprintf(f, "%d %d\n", seen[i].font, seen[i].px);
+            fclose(f);
+            rename(tmp, seen_path);
+        }
+    }
+    if (prewarm_done || !R || now < 2 || now - input_last_activity() < 0.7) return;
+    seen_load();
+    static int next, n_todo = -1;
+    static struct { int font, px; } todo[SEEN_MAX]; /* a copy: making an atlas moves its size to the front of seen */
+    if (n_todo < 0) { n_todo = n_seen; memcpy(todo, seen, sizeof todo[0] * (size_t)n_seen); }
+    if (next >= n_todo || n_atlas >= MAX_ATLAS - 4) { prewarm_done = true; return; }
+    Atlas *a = atlas_get_px((FontId)todo[next].font, todo[next].px);
+    next++;
+    if (!a) return;
+    a->last_used = 0; /* made in advance: the first to go if the atlases run out */
+    static const char common[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:-'()!?/&";
+    for (const char *c = common; *c; c++) glyph_get(a, (unsigned char)*c);
+    static const uint32_t dk[] = {0xE6, 0xF8, 0xE5, 0xC6, 0xD8, 0xC5, 0xE9, 0xB7};
+    for (size_t i = 0; i < sizeof dk / sizeof dk[0]; i++) glyph_get(a, dk[i]);
+}
+
 static Atlas *atlas_get(FontId f, float size) {
     /* body text (<= 32) a bit bigger than drawn - on the TV at a distance it was on the small side */
     if (size <= 32) size *= 1.06f;
     int px = (int)roundf(size * g_scale);
     if (px < 6) px = 6;
+    return atlas_get_px(f, px);
+}
+
+static Atlas *atlas_get_px(FontId f, int px) {
     atlas_tick++;
     for (int i = 0; i < n_atlas; i++) {
         Atlas *a = atlases[i];
@@ -558,6 +703,7 @@ static Atlas *atlas_get(FontId f, float size) {
             a->last_used = atlas_tick;
             if (a->gen != g_generation) { /* renderer genskabt */
                 a->tex = NULL;
+                atlas_drop_pending(a);
                 memset(a->used, 0, sizeof a->used);
                 a->pen_x = a->pen_y = a->row_h = 0;
                 a->gen = g_generation;
@@ -569,6 +715,8 @@ static Atlas *atlas_get(FontId f, float size) {
         int k = 0;
         for (int i = 1; i < n_atlas; i++) if (atlases[i]->last_used < atlases[k]->last_used) k = i;
         if (atlases[k]->tex && atlases[k]->gen == g_generation) SDL_DestroyTexture(atlases[k]->tex);
+        atlas_drop_pending(atlases[k]);
+        free(atlases[k]->pend);
         free(atlases[k]);
         memmove(atlases + k, atlases + k + 1, sizeof(Atlas *) * (size_t)(n_atlas - 1 - k));
         n_atlas--;
@@ -576,13 +724,14 @@ static Atlas *atlas_get(FontId f, float size) {
     Atlas *a = calloc(1, sizeof(Atlas));
     if (!a) return atlases[0];
     a->px = px; a->font = f; a->gen = g_generation; a->last_used = atlas_tick;
-    a->sz = px <= ATLAS_SMALL_PX ? 512 : ATLAS_SZ;
+    a->sz = px <= ATLAS_SMALL_PX ? 256 : 512; /* a new 1024 x 1024 texture costs 4-5 ms on a Pi 4, 512 x 512 about 1 ms */
     a->scale = stbtt_ScaleForPixelHeight(&fonts[f], (float)px);
     int asc, desc, gap;
     stbtt_GetFontVMetrics(&fonts[f], &asc, &desc, &gap);
     a->ascent = asc * a->scale;
     a->lineh = (asc - desc + gap) * a->scale;
     atlases[n_atlas++] = a;
+    atlas_seen(f, px);
     return a;
 }
 
@@ -605,30 +754,44 @@ static Glyph *glyph_get(Atlas *a, uint32_t cp) {
             g->w = skip ? 0 : w; g->h = skip ? 0 : hh; g->xoff = x0; g->yoff = y0;
             if (skip) { a->used[i] = true; return g; }
             if (w > 0 && hh > 0) {
-                if (!a->tex) {
-                    a->tex = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, a->sz, a->sz);
-                    SDL_SetTextureBlendMode(a->tex, SDL_BLENDMODE_BLEND);
-                    SDL_SetTextureScaleMode(a->tex, SDL_SCALEMODE_LINEAR);
-                    void *zero = calloc((size_t)a->sz * a->sz, 4);
-                    if (zero) SDL_UpdateTexture(a->tex, NULL, zero, a->sz * 4);
-                    free(zero);
-                }
                 if (a->pen_x + w + 2 > a->sz) { a->pen_x = 0; a->pen_y += a->row_h + 2; a->row_h = 0; }
+                if ((w + 2 > a->sz || hh + 2 > a->sz || a->pen_y + hh + 2 > a->sz) && a->sz < ATLAS_SZ) {
+                    /* full (or the glyph is bigger than it): the atlas doubles - the rows so far stay where they are, and
+                       the current row may now run on to the new width */
+                    a->sz *= 2;
+                    return glyph_get(a, cp);
+                }
                 if (w + 2 > a->sz || hh + 2 > a->sz) { a->used[i] = true; g->w = g->h = 0; return g; } /* larger than the atlas */
                 if (a->pen_y + hh + 2 > a->sz) {
                     /* atlas full: reset (rare) */
+                    SDL_Log("atlas fuld: font %d px %d", a->font, a->px);
+                    atlas_drop_pending(a);
                     memset(a->used, 0, sizeof a->used);
                     a->pen_x = a->pen_y = a->row_h = 0;
                     return glyph_get(a, cp);
                 }
+                Uint64 gt0 = SDL_GetTicksNS();
                 unsigned char *mono = malloc(w * hh);
                 stbtt_MakeGlyphBitmap(fi, mono, w, hh, w, a->scale, a->scale, gi);
-                uint32_t *rgba = malloc(w * hh * 4);
-                for (int k = 0; k < w * hh; k++) rgba[k] = 0x00FFFFFFu | ((uint32_t)mono[k] << 24);
-                SDL_Rect dst = {a->pen_x, a->pen_y, w, hh};
-                SDL_UpdateTexture(a->tex, &dst, rgba, w * 4);
-                free(mono); free(rgba);
-                g->x = a->pen_x; g->y = a->pen_y;
+                /* the glyph with a 1 px transparent border (its cell is w+2 x hh+2): the atlas is never cleared as a whole
+                   (4 MB on a Pi 4 = 10 ms per new atlas), and linear filtering only ever reads the border next to it */
+                int cw = w + 2, ch = hh + 2;
+                uint32_t *rgba = calloc((size_t)cw * ch, 4);
+                if (rgba)
+                    for (int yy = 0; yy < hh; yy++)
+                        for (int xx = 0; xx < w; xx++)
+                            rgba[(yy + 1) * cw + xx + 1] = 0x00FFFFFFu | ((uint32_t)mono[yy * w + xx] << 24);
+                free(mono);
+                if (!rgba) { a->used[i] = true; g->w = g->h = 0; return g; }
+                if (a->n_pend == a->cap_pend) {
+                    int nc = a->cap_pend ? a->cap_pend * 2 : 64;
+                    GlyphUp *np = realloc(a->pend, sizeof *np * (size_t)nc);
+                    if (!np) { free(rgba); a->used[i] = true; g->w = g->h = 0; return g; }
+                    a->pend = np; a->cap_pend = nc;
+                }
+                a->pend[a->n_pend++] = (GlyphUp){(int)i, {a->pen_x, a->pen_y, cw, ch}, rgba};
+                ft_glyph += SDL_GetTicksNS() - gt0; fn_glyph++;
+                g->x = a->pen_x + 1; g->y = a->pen_y + 1;
                 a->pen_x += w + 2;
                 if (hh > a->row_h) a->row_h = hh;
             }
@@ -695,7 +858,16 @@ static void draw_run(Atlas *a, float x, float y, Color c, const char *s, const c
     float base = roundf(y * g_scale + a->ascent);
     int prev = 0;
     c = out_col(c);
-    SDL_Texture *colored = NULL; /* the color is set once (again only if the first glyph made the texture) */
+    { /* a glyph made this frame is uploaded at the start of the next one: then the whole run is drawn (no half words) */
+        const char *q = s;
+        bool ok = a->tex != NULL;
+        while (*q && (!end || q < end)) {
+            Glyph *g = glyph_get(a, utf8_next(&q));
+            if (g && g->w > 0 && !g->ready) ok = false;
+        }
+        if (!ok) return;
+    }
+    SDL_Texture *colored = NULL;
     while (*s && (!end || s < end)) {
         uint32_t cp = utf8_next(&s);
         Glyph *g = glyph_get(a, cp);
@@ -803,12 +975,71 @@ struct Image {
     SDL_Texture *mip[4]; /* half, quarter ... size copies (made on the GPU when the image is drawn much smaller) */
     int gen;
     double last_used;
+    long long bytes; /* what the entry uses of IMG_CACHE_BYTES right now */
+    /* the biggest box it is drawn in (output pixels) and whether "cover" was used: the decoder scales big images down
+       to that (a 1000x1500 poster in a 250x375 tile is 16x less to upload - 8-12 ms per image on a Pi 4) */
+    SDL_AtomicInt hint_w, hint_h, hint_cover;
+    bool reduced;   /* decoded smaller than the file (because of the hint): decoded again if drawn bigger */
+    SDL_Texture *up_tex; /* a big image being uploaded a strip per frame (shown when up_row reaches h) */
+    int up_row, up_gen;
     struct Image *next;
 };
 static Image *img_list;
 static int img_count;
+static long long img_bytes;
 #define IMG_MAX_BYTES (16u << 20)        /* max file size for an image */
 #define IMG_MAX_PIXELS (4096L * 4096L)   /* max resolution (64 MB RGBA) */
+#define IMG_CACHE_BYTES (256LL << 20)    /* max decoded pixels/textures in RAM (LRU entries are evicted above this) */
+/* The UI is rendered at the output resolution (g_scale), so bigger images are scaled down when decoded to
+   (UI_W * g_scale) x (UI_H * g_scale), never below 1920x1080. gfx_init sets these on the main thread;
+   the image workers read them, hence the atomics. */
+static SDL_AtomicInt img_cap_w = {1920}, img_cap_h = {1080};
+
+/* the memory an entry holds now: decoded pixels, the HDR copy and the texture (the GPU copy replaces the pixels) */
+static long long img_mem(const Image *im) {
+    long long n = (long long)im->w * im->h * 4, b = 0;
+    if (im->pixels) b += n;
+    if (im->hdr_pixels) b += n;
+    if (im->tex && im->gen == g_generation) {
+        b += n;
+        for (int k = 0; k < 4; k++)
+            if (im->mip[k]) b += (long long)(im->w >> (k + 1)) * (im->h >> (k + 1)) * 4;
+    }
+    return b;
+}
+static void img_mem_update(Image *im) {
+    long long b = img_mem(im);
+    img_bytes += b - im->bytes;
+    im->bytes = b;
+}
+static void img_free(Image **pp) {
+    Image *im = *pp;
+    *pp = im->next;
+    if (im->tex && im->gen == g_generation) {
+        SDL_DestroyTexture(im->tex);
+        for (int k = 0; k < 4; k++) if (im->mip[k]) SDL_DestroyTexture(im->mip[k]);
+    }
+    if (im->up_tex && im->up_gen == g_generation) SDL_DestroyTexture(im->up_tex);
+    img_bytes -= im->bytes;
+    stbi_image_free(im->pixels);
+    free(im->hdr_pixels);
+    free(im->url);
+    free(im);
+    img_count--;
+}
+/* evict the least recently used entries until the cache fits the byte budget (the image just loaded is kept) */
+static void img_fit_budget(Image *keep) {
+    while (img_bytes > IMG_CACHE_BYTES) {
+        Image **pp = &img_list, **lru = NULL;
+        for (; *pp; pp = &(*pp)->next) {
+            Image *im = *pp;
+            if (im == keep || im->pending || (im->state == IMG_LOADING && !im->skipped)) continue;
+            if (!lru || im->last_used < (*lru)->last_used) lru = pp;
+        }
+        if (!lru) break; /* everything left is in use: try again on the next frame */
+        img_free(lru);
+    }
+}
 #define IMG_DISK_MAX (120LL << 20)       /* /tmp/tvimg is trimmed down to IMG_DISK_KEEP above this limit */
 #define IMG_DISK_KEEP (80LL << 20)
 
@@ -1086,7 +1317,65 @@ static unsigned char *ico_decode(const unsigned char *d, size_t len, int *ow, in
     return px;
 }
 
+/* scale a decoded image down to the biggest size the UI shows (output size, at least 1920x1080, same aspect);
+   box filter, alpha weighted */
+static unsigned char *img_downscale(unsigned char *px, int *pw, int *ph, int cap_w, int cap_h) {
+    int w = *pw, h = *ph;
+    if (w <= 0 || h <= 0 || cap_w <= 0 || cap_h <= 0) return px;
+    float s = fminf((float)cap_w / w, (float)cap_h / h);
+    if (s >= 1) return px;
+    int nw = (int)(w * s + 0.5f), nh = (int)(h * s + 0.5f);
+    if (nw < 1) nw = 1;
+    if (nh < 1) nh = 1;
+    unsigned char *out = malloc((size_t)nw * nh * 4);
+    if (!out) return px;
+    for (int y = 0; y < nh; y++) {
+        int sy0 = y * h / nh, sy1 = (y + 1) * h / nh;
+        if (sy1 <= sy0) sy1 = sy0 + 1;
+        if (sy1 > h) sy1 = h;
+        for (int x = 0; x < nw; x++) {
+            int sx0 = x * w / nw, sx1 = (x + 1) * w / nw;
+            if (sx1 <= sx0) sx1 = sx0 + 1;
+            if (sx1 > w) sx1 = w;
+            unsigned long ar = 0, ag = 0, ab = 0, aa = 0, cnt = 0;
+            for (int yy = sy0; yy < sy1; yy++)
+                for (int xx = sx0; xx < sx1; xx++) {
+                    const unsigned char *q = px + ((size_t)yy * w + xx) * 4;
+                    ar += q[0] * q[3]; ag += q[1] * q[3]; ab += q[2] * q[3]; aa += q[3]; cnt++;
+                }
+            unsigned char *d = out + ((size_t)y * nw + x) * 4;
+            d[0] = aa ? (unsigned char)(ar / aa) : 0;
+            d[1] = aa ? (unsigned char)(ag / aa) : 0;
+            d[2] = aa ? (unsigned char)(ab / aa) : 0;
+            d[3] = (unsigned char)(aa / cnt);
+        }
+    }
+    stbi_image_free(px);
+    *pw = nw;
+    *ph = nh;
+    return out;
+}
+
+/* the size to decode to for a box of bw x bh output pixels ("cover" fills the box, otherwise fits in it),
+   with room for the focus lift; 0 = keep */
+static void hint_size(int iw, int ih, int bw, int bh, bool cover, int *tw, int *th) {
+    *tw = *th = 0;
+    if (bw <= 0 || bh <= 0 || iw <= 0 || ih <= 0) return;
+    float sx = (float)bw / iw, sy = (float)bh / ih;
+    float k = (cover ? fmaxf(sx, sy) : fminf(sx, sy)) * 1.2f;
+    if (k >= 0.8f) return; /* close to the real size: not worth it (and keeps it sharp) */
+    *tw = (int)ceilf(iw * k); *th = (int)ceilf(ih * k);
+    if (*tw < 16 || *th < 16) *tw = *th = 0;
+}
+
+static unsigned char *img_fetch_hint(const char *url, int *ow, int *oh, unsigned char **hdr, int bw, int bh, bool cover, bool *reduced);
 static unsigned char *img_fetch(const char *url, int *ow, int *oh, unsigned char **hdr) {
+    return img_fetch_hint(url, ow, oh, hdr, 0, 0, false, NULL);
+}
+static unsigned char *img_fetch_hint(const char *url, int *ow, int *oh, unsigned char **hdr, int bw, int bh, bool cover, bool *reduced) {
+    if (reduced) *reduced = false;
+    /* read the cap once: gfx_init can change it, the image must use one consistent size */
+    int cap_w = SDL_GetAtomicInt(&img_cap_w), cap_h = SDL_GetAtomicInt(&img_cap_h);
     bool is_logo;
     url = logo_strip(url, &is_logo);
     unsigned char *data = NULL, *out = NULL;
@@ -1121,6 +1410,13 @@ static unsigned char *img_fetch(const char *url, int *ow, int *oh, unsigned char
             px = stbi_load_from_memory(data, (int)len, &w, &h, &n, 4);
         else px = ico_decode(data, len, &w, &h); /* favicons (radio stations, websites) are often .ico */
         if (px && is_logo) px = logo_clean(px, &w, &h);
+        if (px) px = img_downscale(px, &w, &h, cap_w, cap_h);
+        int tw, th;
+        if (px) hint_size(w, h, bw, bh, cover, &tw, &th);
+        if (px && tw > 0) {
+            px = img_downscale(px, &w, &h, tw, th);
+            if (reduced) *reduced = true;
+        }
         if (px) {
             out = px; *ow = w; *oh = h;
             /* HDR conversion here in the background thread - on the main thread scrolling stutters */
@@ -1132,25 +1428,46 @@ static unsigned char *img_fetch(const char *url, int *ow, int *oh, unsigned char
 }
 
 /* the worker only fills in the job; the Image itself is only changed on the main thread (img_done) */
-typedef struct { Image *im; char *url; bool skipped; unsigned char *px, *hdr; int w, h; } ImgJob;
+typedef struct { Image *im; char *url; bool skipped, reduced, upgrade; unsigned char *px, *hdr; int w, h; } ImgJob;
 
 static void img_work(void *arg) {
     ImgJob *j = arg;
     /* not shown for a while (scrolled away): skip, so the queue is not blocked - the image is requested
        again if it comes back on screen. (last_used is only read here; the Image stays while the job is pending.) */
     if (app_time() - j->im->last_used > 2.0) { j->skipped = true; return; }
-    j->px = img_fetch(j->url, &j->w, &j->h, &j->hdr);
+    /* the hint is set by the first draw, normally before the job gets here (atomics: the main thread writes them) */
+    j->px = img_fetch_hint(j->url, &j->w, &j->h, &j->hdr, SDL_GetAtomicInt(&j->im->hint_w), SDL_GetAtomicInt(&j->im->hint_h),
+                           SDL_GetAtomicInt(&j->im->hint_cover) != 0, &j->reduced);
 }
 
 static void img_done(void *arg) {
     ImgJob *j = arg;
     Image *im = j->im;
     im->pending--;
-    if (j->skipped) im->skipped = true; /* stays IMG_LOADING; img_get requests it again when needed */
+    if (j->upgrade) { /* decoded again bigger (drawn bigger than before): replaces the small one */
+        if (j->px && im->state == IMG_READY) {
+            if (im->tex && im->gen == g_generation) {
+                SDL_DestroyTexture(im->tex);
+                for (int k = 0; k < 4; k++) if (im->mip[k]) SDL_DestroyTexture(im->mip[k]);
+            }
+            im->tex = NULL;
+            memset(im->mip, 0, sizeof im->mip);
+            if (im->up_tex && im->up_gen == g_generation) SDL_DestroyTexture(im->up_tex);
+            im->up_tex = NULL;
+            stbi_image_free(im->pixels);
+            free(im->hdr_pixels);
+            im->pixels = j->px; im->hdr_pixels = j->hdr; im->w = j->w; im->h = j->h; im->reduced = j->reduced;
+            j->px = j->hdr = NULL;
+            img_mem_update(im);
+            img_fit_budget(im);
+        }
+    } else if (j->skipped) im->skipped = true; /* stays IMG_LOADING; img_get requests it again when needed */
     else if (im->state == IMG_LOADING && !im->pixels) {
-        im->pixels = j->px; im->hdr_pixels = j->hdr; im->w = j->w; im->h = j->h;
+        im->pixels = j->px; im->hdr_pixels = j->hdr; im->w = j->w; im->h = j->h; im->reduced = j->reduced;
         im->state = im->pixels ? IMG_READY : IMG_FAILED;
         j->px = j->hdr = NULL;
+        img_mem_update(im);
+        img_fit_budget(im);
     }
     stbi_image_free(j->px);
     free(j->hdr);
@@ -1202,17 +1519,41 @@ static SDL_Texture *img_tex(Image *im) {
     if (im->tex && im->gen == g_generation) return im->tex;
     if (!im->pixels) { /* the texture is gone (renderer made again, HDR switched): load the image again */
         im->tex = NULL;
+        img_mem_update(im);
         if (!im->pending) { im->state = IMG_LOADING; img_submit(im); }
         return NULL;
     }
+    /* upload budget per frame: a Pi 4 takes ~3 ms per MB, so a full-HD background (8 MB) in one go is a 24 ms
+       hitch. Small images go whole (always at least one per frame); a big one goes in strips over a few frames */
+    long need = (long)im->w * im->h * 4;
+    if (g_up_bytes > 0 && g_up_bytes + need > IMG_UP_BUDGET && !im->up_tex && need <= IMG_UP_BUDGET) return NULL; /* next frame */
+    if (im->up_tex && im->up_gen != g_generation) { im->up_tex = NULL; im->up_row = 0; }
+    Uint64 it0 = SDL_GetTicksNS();
+    if (!im->up_tex) {
+        im->up_tex = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, im->w, im->h);
+        if (!im->up_tex) return NULL;
+        im->up_row = 0;
+        im->up_gen = g_generation;
+        /* im->pixels stays SDR (also used for mpv's pause screen); the HDR copy is normally made when
+           loading, but may be missing if "always HDR" was turned on afterwards */
+        if (g_hdr && !im->hdr_pixels) im->hdr_pixels = hdr_copy(im->pixels, im->w, im->h);
+    }
+    const unsigned char *src = g_hdr && im->hdr_pixels ? im->hdr_pixels : im->pixels;
+    long left = IMG_UP_BUDGET - g_up_bytes, row = (long)im->w * 4;
+    int rows = left > 0 ? (int)(left / row) : 0;
+    if (g_up_bytes == 0 && rows < 64) rows = 64; /* progress every frame */
+    if (rows <= 0) return NULL;
+    if (rows > im->h - im->up_row) rows = im->h - im->up_row;
+    SDL_Rect r = {0, im->up_row, im->w, rows};
+    SDL_UpdateTexture(im->up_tex, &r, src + (size_t)im->up_row * row, (int)row);
+    im->up_row += rows;
+    g_up_bytes += rows * row;
+    ft_img += SDL_GetTicksNS() - it0; fn_img++;
+    if (im->up_row < im->h) return NULL; /* more strips next frame */
     st_tex_new++;
     memset(im->mip, 0, sizeof im->mip); /* the old ones went with the old renderer */
-    im->tex = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, im->w, im->h);
-    if (!im->tex) return NULL;
-    /* im->pixels stays SDR (also used for mpv's pause screen); the HDR copy is normally made when
-       loading, but may be missing if "always HDR" was turned on afterwards */
-    if (g_hdr && !im->hdr_pixels) im->hdr_pixels = hdr_copy(im->pixels, im->w, im->h);
-    SDL_UpdateTexture(im->tex, NULL, g_hdr && im->hdr_pixels ? im->hdr_pixels : im->pixels, im->w * 4);
+    im->tex = im->up_tex;
+    im->up_tex = NULL;
     SDL_SetTextureBlendMode(im->tex, SDL_BLENDMODE_BLEND);
     SDL_SetTextureScaleMode(im->tex, SDL_SCALEMODE_LINEAR);
     im->gen = g_generation;
@@ -1220,6 +1561,7 @@ static SDL_Texture *img_tex(Image *im) {
     stbi_image_free(im->pixels);
     free(im->hdr_pixels);
     im->pixels = im->hdr_pixels = NULL;
+    img_mem_update(im);
     return im->tex;
 }
 
@@ -1263,15 +1605,34 @@ void gfx_tex_rrect(SDL_Texture *t, float x, float y, float w, float h, float r, 
 /* the texture to draw an image with when it is shown dw x dh (UI units) big: a big image drawn small is sampled
    from a half/quarter-size copy, made once on the GPU (2x2 average) - without it a 1280 px picture or a big channel
    logo shown at 400 px looks grainy and jagged (the GPU only blends the 4 nearest pixels) */
+/* remember the biggest box the image is drawn in (logical pixels) - see Image.hint_w */
+static void img_hint(Image *im, float w, float h, bool cover) {
+    if (!im) return;
+    int bw = (int)ceilf(w * g_scale), bh = (int)ceilf(h * g_scale);
+    if (bw > SDL_GetAtomicInt(&im->hint_w)) SDL_SetAtomicInt(&im->hint_w, bw);
+    if (bh > SDL_GetAtomicInt(&im->hint_h)) SDL_SetAtomicInt(&im->hint_h, bh);
+    if (cover && !SDL_GetAtomicInt(&im->hint_cover)) SDL_SetAtomicInt(&im->hint_cover, 1);
+}
+
 static SDL_Texture *img_tex_sized(Image *im, float dw, float dh) {
     SDL_Texture *t = img_tex(im);
     if (!t) return NULL;
     float need_w = dw * g_scale, need_h = dh * g_scale;
+    if (im->reduced && !im->pending && (need_w > im->w * 1.25f || need_h > im->h * 1.25f)) {
+        /* drawn bigger than it was decoded for: decode again at the new size (the small one is shown meanwhile) */
+        ImgJob *j = calloc(1, sizeof *j);
+        if (j) {
+            j->im = im; j->url = str_dup(im->url); j->upgrade = true;
+            im->pending++;
+            job_submit_q(JQ_IMAGE, img_work, img_done, j);
+        }
+    }
     int w = im->w, h = im->h;
     for (int k = 0; k < 4; k++) {
         int nw = w / 2, nh = h / 2;
         if (nw < need_w || nh < need_h || nw < 8 || nh < 8) break; /* the next level would be too small */
         if (!im->mip[k]) {
+            Uint64 mt0 = SDL_GetTicksNS();
             SDL_Texture *m = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, nw, nh);
             if (!m) break;
             SDL_SetTextureBlendMode(m, SDL_BLENDMODE_BLEND);
@@ -1295,6 +1656,8 @@ static SDL_Texture *img_tex_sized(Image *im, float dw, float dh) {
             if (clipped) SDL_SetRenderClipRect(R, &clip);
             im->mip[k] = m;
             st_tex_new++;
+            img_mem_update(im);
+            ft_mip += SDL_GetTicksNS() - mt0; fn_mip++;
         }
         t = im->mip[k];
         w = nw; h = nh;
@@ -1303,6 +1666,7 @@ static SDL_Texture *img_tex_sized(Image *im, float dw, float dh) {
 }
 
 bool img_draw(Image *im, float x, float y, float w, float h, float radius, float alpha) {
+    img_hint(im, w, h, false);
     SDL_Texture *t = img_tex(im);
     if (!t) return false;
     /* bevar forhold: tilpas inden for rektanglet */
@@ -1315,6 +1679,7 @@ bool img_draw(Image *im, float x, float y, float w, float h, float radius, float
 }
 
 bool img_draw_cover(Image *im, float x, float y, float w, float h, float radius, float alpha) {
+    img_hint(im, w, h, true);
     SDL_Texture *t = img_tex(im);
     if (!t) return false;
     float ar = (float)im->w / im->h, br = w / h;
@@ -1410,28 +1775,29 @@ bool img_export_bgra_ex(const char *url, const char *path, int maxw, int maxh, i
     return ok;
 }
 
+/* drop everything held in memory (sign-out); images with a job on their way stay until it is done */
+void img_cache_clear(void) {
+    Image **pp = &img_list;
+    while (*pp) {
+        Image *im = *pp;
+        if (im->pending) { pp = &im->next; continue; }
+        img_free(pp);
+    }
+}
+
 void img_cache_trim(void) {
     /* keep the latest ~120 images in memory (textures), the rest are fetched again from /tmp/tvimg */
     tvimg_trim();
+    img_fit_budget(NULL);
     if (img_count < 150) return;
     double now = app_time();
     Image **pp = &img_list;
     while (*pp) {
         Image *im = *pp;
-        if (!im->pending && (im->state != IMG_LOADING || im->skipped) && now - im->last_used > 60) {
-            *pp = im->next;
-            if (im->tex && im->gen == g_generation) {
-                SDL_DestroyTexture(im->tex);
-                for (int k = 0; k < 4; k++) if (im->mip[k]) SDL_DestroyTexture(im->mip[k]);
-            }
-            stbi_image_free(im->pixels);
-            free(im->hdr_pixels);
-            free(im->url);
-            free(im);
-            img_count--;
-        } else {
+        if (!im->pending && (im->state != IMG_LOADING || im->skipped) && now - im->last_used > 60)
+            img_free(pp);
+        else
             pp = &im->next;
-        }
     }
 }
 
@@ -1588,6 +1954,12 @@ bool gfx_init(SDL_Renderer *r, int out_w, int out_h) {
     g_scale = (float)out_h / UI_H;
     if ((float)out_w / UI_W < g_scale) g_scale = (float)out_w / UI_W;
     if (g_scale <= 0) g_scale = 1;
+    /* cap for decoded images: what the output can actually show, at least 1920x1080 */
+    int cap_w = (int)ceilf(UI_W * g_scale), cap_h = (int)ceilf(UI_H * g_scale);
+    if (cap_w < 1920) cap_w = 1920;
+    if (cap_h < 1080) cap_h = 1080;
+    SDL_SetAtomicInt(&img_cap_w, cap_w);
+    SDL_SetAtomicInt(&img_cap_h, cap_h);
     SDL_SetRenderDrawBlendMode(R, SDL_BLENDMODE_BLEND);
     if (!font_data[F_REG]) {
         bool ok = load_font(F_REG, "Inter-Regular.ttf");
@@ -1602,7 +1974,7 @@ bool gfx_init(SDL_Renderer *r, int out_w, int out_h) {
 void gfx_lost(void) {
     /* textures belong to a renderer that is gone - forget them (without destroying) */
     g_generation++;
-    for (Image *im = img_list; im; im = im->next) im->tex = NULL;
+    for (Image *im = img_list; im; im = im->next) { im->tex = NULL; img_mem_update(im); }
     for (int i = 0; i < n_atlas; i++) atlases[i]->tex = NULL;
     clip_n = 0;
     R = NULL;

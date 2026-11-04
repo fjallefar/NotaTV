@@ -174,6 +174,7 @@ enum { SM_DISCOVER, SM_SEARCH, SM_RECENT, SM_MOVIES, SM_TV, SM_NETFLIX, SM_UPCOM
 
 typedef struct {
     int state; /* 0 setup, 1 signing in, 2 ready, 3 login failed */
+    bool relogin; /* a 401/403 has already triggered one re-login */
     char msg[200], user[128];
     SRow rows[SROWS];
     int n_rows, row, col, view;
@@ -503,12 +504,45 @@ static void me_done(void *ud, cJSON *json, long status) {
         snprintf(v->user, sizeof v->user, "%s", dn ? dn : "");
         free(dn);
         v->state = 2;
+        v->relogin = false;
         v->msg[0] = 0;
         build_side(v);
         show_discover(v);
-    } else login(v); /* the session has expired: sign in again */
+    } else if ((status == 401 || status == 403) && !v->relogin) {
+        v->relogin = true; /* the session has expired: sign in again once */
+        login(v);
+    } else {
+        v->state = 3;
+        if (status == 0) snprintf(v->msg, sizeof v->msg, T("Cannot reach Seerr at %s"), seerr_url());
+        else if (status == 401 || status == 403) snprintf(v->msg, sizeof v->msg, T("Your user has no access to Seerr - ask the administrator"));
+        else snprintf(v->msg, sizeof v->msg, T("Login failed (HTTP %ld)"), status);
+    }
 }
 
+/* local: localhost, a name without dots or ending in .local, or a private/loopback IPv4 address */
+static bool seerr_local_host(const char *t) {
+    const char *h = strstr(t, "://");
+    h = h ? h + 3 : t;
+    size_t hl = strcspn(h, ":/");
+    if (hl == 9 && !strncasecmp(h, "localhost", 9)) return true;
+    if (hl >= 6 && !strncasecmp(h + hl - 6, ".local", 6)) return true;
+    unsigned a, b, c, d;
+    int n = 0;
+    if (sscanf(h, "%u.%u.%u.%u%n", &a, &b, &c, &d, &n) == 4 && (size_t)n == hl &&
+        a < 256 && b < 256 && c < 256 && d < 256)
+        return a == 10 || a == 127 || (a == 192 && b == 168) || (a == 172 && b >= 16 && b <= 31);
+    return hl && !memchr(h, '.', hl);
+}
+/* any IPv4 literal (private or public): such servers rarely have TLS */
+static bool seerr_ipv4_literal(const char *t) {
+    const char *h = strstr(t, "://");
+    h = h ? h + 3 : t;
+    size_t hl = strcspn(h, ":/");
+    unsigned a, b, c, d;
+    int n = 0;
+    return sscanf(h, "%u.%u.%u.%u%n", &a, &b, &c, &d, &n) == 4 && (size_t)n == hl &&
+           a < 256 && b < 256 && c < 256 && d < 256;
+}
 static void url_done(void *ud, const char *text) {
     Seerr *v = ud;
     if (!text || !*text || v != live) return;
@@ -516,8 +550,12 @@ static void url_done(void *ud, const char *text) {
     str_trim(t);
     size_t n = strlen(t);
     while (n && t[n - 1] == '/') t[--n] = 0;
-    char *u = strstr(t, "://") ? str_dup(t) : str_printf("http://%s", t);
+    char *u;
+    if (strstr(t, "://")) u = str_dup(t);
+    else if (seerr_local_host(t) || seerr_ipv4_literal(t)) u = str_printf("http://%s", t);
+    else u = str_printf("https://%s", t);
     cfg_set("seerr_url", u);
+    if (!strncasecmp(u, "http://", 7) && !seerr_local_host(u)) app_toast(T("Warning: this connection is not encrypted"));
     free(t);
     free(u);
     char jar[512];
@@ -603,6 +641,7 @@ static void seerr_enter(Screen *s) {
     seerr_token++;
     side_init(&v->side, "Seerr", ICON_STAR, RGB(129, 140, 248));
     build_side(v);
+    v->relogin = false;
     if (!*seerr_url()) { v->state = 0; return; }
     v->state = 1;
     snprintf(v->msg, sizeof v->msg, T("Connecting…"));
@@ -793,7 +832,7 @@ static bool seerr_input(Screen *s, const InputEvent *ev) {
         if (buttons_nav(&v->btn, nb, ev)) return true;
         if (ev->a == A_OK) {
             if (ev->repeat) return true;
-            if (retry && v->btn == 0) login(v);
+            if (retry && v->btn == 0) { v->relogin = false; login(v); }
             else keyboard_open(T("Seerr address (e.g. 192.168.1.10:5055)"), seerr_url(), false, url_done, v);
             return true;
         }
@@ -803,9 +842,11 @@ static bool seerr_input(Screen *s, const InputEvent *ev) {
     SRow *gr = v->view == V_GRID && v->n_rows ? &v->rows[0] : NULL;
     switch (ev->a) {
     case A_UP:
+        if (gr && !gr->n) return true;
         if (v->row > 0) { v->row--; if (!gr) v->col = 0; } /* new row: start from the first title */
         return true;
     case A_DOWN:
+        if (gr && !gr->n) return true;
         if (gr) {
             if ((v->row + 1) * SCOLS < gr->n) v->row++;
             if (v->row * SCOLS + v->col >= gr->n) v->col = (gr->n - 1) % SCOLS;
@@ -819,12 +860,13 @@ static bool seerr_input(Screen *s, const InputEvent *ev) {
         else side_open(&v->side);
         return true;
     case A_RIGHT:
+        if (gr && !gr->n) return true;
         if (gr) { if (v->col < SCOLS - 1 && v->row * SCOLS + v->col + 1 < gr->n) v->col++; }
         else if (v->col < v->rows[v->row].n - 1) v->col++;
         return true;
     case A_OK: {
         SItem *it = NULL;
-        if (gr) { int i = v->row * SCOLS + v->col; if (i < gr->n) it = &gr->it[i]; }
+        if (gr) { int i = v->row * SCOLS + v->col; if (i >= 0 && i < gr->n) it = &gr->it[i]; }
         else if (v->row < v->n_rows && v->col < v->rows[v->row].n) it = &v->rows[v->row].it[v->col];
         if (it) app_push(seerr_detail(it));
         return true;

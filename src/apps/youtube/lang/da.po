@@ -240,6 +240,15 @@ msgstr "Henter kode fra YouTube …"
 msgid "YouTube cast"
 msgstr "YouTube-cast"
 
+msgid "Allow %s to cast YouTube?"
+msgstr "Tillad %s at caste YouTube?"
+
+msgid "Allow"
+msgstr "Tillad"
+
+msgid "Deny"
+msgstr "Afvis"
+
 msgid "The cast button in the YouTube app can play on NotaTV. Control goes through YouTube (Google)"
 msgstr "Cast-knappen i YouTube-appen kan afspille på NotaTV. Styringen går via YouTube (Google)"
 

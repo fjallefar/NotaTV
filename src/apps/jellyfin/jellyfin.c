@@ -184,8 +184,14 @@ static void item_label(const JItem *j, char *t, size_t tn, char *s, size_t sn) {
 
 /* title logo/title, metadata, rating and overview - shared by hero, focus and the detail page (like Plex). Returns the bottom */
 static void meta_add(char *m, size_t n, const char *fmt, ...) {
+    if (!n) return;
     size_t l = strlen(m);
-    if (l) l += snprintf(m + l, n - l, "  ·  ");
+    if (l >= n) l = n - 1;
+    if (l) {
+        int r = snprintf(m + l, n - l, "  ·  ");
+        if (r > 0) l += (size_t)r;
+        if (l > n - 1) l = n - 1;
+    }
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(m + l, n - l, fmt, ap);
@@ -687,26 +693,47 @@ static void user_done(void *ud, const char *u) {
     snprintf(login_user, sizeof login_user, "%s", u);
     keyboard_open(T("Jellyfin: password"), "", true, pw_done, ud);
 }
+/* local: localhost, a name without dots or ending in .local, or a private/loopback IPv4 address */
+static bool jf_local_host(const char *t) {
+    const char *h = strstr(t, "://");
+    h = h ? h + 3 : t;
+    size_t hl = strcspn(h, ":/");
+    if (hl == 9 && !strncasecmp(h, "localhost", 9)) return true;
+    if (hl >= 6 && !strncasecmp(h + hl - 6, ".local", 6)) return true;
+    unsigned a, b, c, d;
+    int n = 0;
+    if (sscanf(h, "%u.%u.%u.%u%n", &a, &b, &c, &d, &n) == 4 && (size_t)n == hl &&
+        a < 256 && b < 256 && c < 256 && d < 256)
+        return a == 10 || a == 127 || (a == 192 && b == 168) || (a == 172 && b >= 16 && b <= 31);
+    return hl && !memchr(h, '.', hl);
+}
+/* any IPv4 literal (private or public): such servers rarely have TLS */
+static bool jf_ipv4_literal(const char *t) {
+    const char *h = strstr(t, "://");
+    h = h ? h + 3 : t;
+    size_t hl = strcspn(h, ":/");
+    unsigned a, b, c, d;
+    int n = 0;
+    return sscanf(h, "%u.%u.%u.%u%n", &a, &b, &c, &d, &n) == 4 && (size_t)n == hl &&
+           a < 256 && b < 256 && c < 256 && d < 256;
+}
 static void url_done(void *ud, const char *text) {
     if (!text || !*text) return;
     char *t = str_dup(text);
     str_trim(t);
     size_t n = strlen(t);
     while (n && t[n - 1] == '/') t[--n] = 0;
-    /* without a scheme: IP address/local name -> http with Jellyfin's default port (8096) unless a port is
-       given; domain names (e.g. demo.jellyfin.org/stable) -> https */
+    /* without a scheme: local hosts and IPv4 addresses -> http with Jellyfin's default port (8096)
+       unless a port is given; other domain names (e.g. demo.jellyfin.org/stable) -> https */
     char *u;
     if (strstr(t, "://")) u = str_dup(t);
-    else {
+    else if (jf_local_host(t) || jf_ipv4_literal(t)) {
         size_t hl = strcspn(t, ":/");
-        bool ip = true, dot = false;
-        for (size_t i = 0; i < hl; i++) { if (t[i] == '.') dot = true; else if (t[i] < '0' || t[i] > '9') ip = false; }
-        bool local = ip || !dot;
-        if (!local) u = str_printf("https://%s", t);
-        else if (t[hl] == ':') u = str_printf("http://%s", t);
+        if (t[hl] == ':') u = str_printf("http://%s", t);
         else u = str_printf("http://%.*s:8096%s", (int)hl, t, t + hl);
-    }
+    } else u = str_printf("https://%s", t);
     cfg_set("jf_url", u);
+    if (!strncasecmp(u, "http://", 7) && !jf_local_host(u)) app_toast(T("Warning: this connection is not encrypted"));
     free(t);
     free(u);
     keyboard_open(T("Jellyfin: username"), cfg_get("jf_name", ""), false, user_done, ud);
@@ -1237,6 +1264,7 @@ static bool jf_input(Screen *s, const InputEvent *ev) {
     }
     switch (ev->a) {
     case A_UP:
+        if (gr && !gr->n) return true;
         if (gr) { if (v->row > 0) v->row--; }
         else {
             int r = next_row(v, v->row, -1);
@@ -1250,6 +1278,7 @@ static bool jf_input(Screen *s, const InputEvent *ev) {
         if (v->row > 0 || v->col > 0) { v->row = v->col = 0; return true; }
         return false;
     case A_DOWN:
+        if (gr && !gr->n) return true;
         if (gr) {
             if ((v->row + 1) * GCOLS < gr->n) v->row++;
             if (v->row * GCOLS + v->col >= gr->n) v->col = (gr->n - 1) % GCOLS;
@@ -1260,6 +1289,7 @@ static bool jf_input(Screen *s, const InputEvent *ev) {
         else side_open(&v->side);
         return true;
     case A_RIGHT:
+        if (gr && !gr->n) return true;
         if (gr) { if (v->col < GCOLS - 1 && v->row * GCOLS + v->col + 1 < gr->n) v->col++; }
         else if (v->n_rows && v->col < v->rows[v->row].n - 1) v->col++;
         return true;
@@ -1269,7 +1299,7 @@ static bool jf_input(Screen *s, const InputEvent *ev) {
         if (ev->repeat || !v->n_rows) return true;
         JRow *r = gr ? gr : &v->rows[v->row];
         int i = gr ? v->row * GCOLS + v->col : v->col;
-        if (i >= r->n) return true;
+        if (i < 0 || i >= r->n) return true;
         open_item(v, &r->it[i], ev->a != A_OK);
         return true;
     }

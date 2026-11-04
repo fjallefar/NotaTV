@@ -81,6 +81,7 @@ static void handle_item(unsigned type, unsigned code, const unsigned char *d, si
             break;
         case FOURCC('p', 'r', 's', 'm'): ms.active = ms.playing = true; ms.at = app_time(); break;
         case FOURCC('p', 'f', 'l', 's'): /* pause/spol */
+        case FOURCC('p', 'a', 'u', 's'): /* pause */
             if (ms.playing) { ms.pos += app_time() - ms.at; ms.at = app_time(); }
             ms.playing = false;
             break;

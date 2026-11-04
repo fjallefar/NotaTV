@@ -312,20 +312,27 @@ static char *scpd(const Act *a, int na, const Var *v, int nv) {
     size_t cap = 32768, n = 0;
     char *o = malloc(cap);
     n += snprintf(o + n, cap - n, "<?xml version=\"1.0\"?><scpd xmlns=\"urn:schemas-upnp-org:service-1-0\"><specVersion><major>1</major><minor>0</minor></specVersion><actionList>");
+    if (n > cap - 1) n = cap - 1;
     for (int i = 0; i < na; i++) {
         n += snprintf(o + n, cap - n, "<action><name>%s</name><argumentList>", a[i].name);
+        if (n > cap - 1) n = cap - 1;
         for (int k = 0; a[i].args[k]; k++) {
             char dir, an[64], rv[64];
             sscanf(a[i].args[k], "%c %63s %63s", &dir, an, rv);
             n += snprintf(o + n, cap - n, "<argument><name>%s</name><direction>%s</direction><relatedStateVariable>%s</relatedStateVariable></argument>",
                           an, dir == 'i' ? "in" : "out", rv);
+            if (n > cap - 1) n = cap - 1;
         }
         n += snprintf(o + n, cap - n, "</argumentList></action>");
+        if (n > cap - 1) n = cap - 1;
     }
     n += snprintf(o + n, cap - n, "</actionList><serviceStateTable>");
-    for (int i = 0; i < nv; i++)
+    if (n > cap - 1) n = cap - 1;
+    for (int i = 0; i < nv; i++) {
         n += snprintf(o + n, cap - n, "<stateVariable sendEvents=\"%s\"><name>%s</name><dataType>%s</dataType></stateVariable>",
                       v[i].events ? "yes" : "no", v[i].name, v[i].type);
+        if (n > cap - 1) n = cap - 1;
+    }
     snprintf(o + n, cap - n, "</serviceStateTable></scpd>");
     return o;
 }

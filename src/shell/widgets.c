@@ -75,6 +75,12 @@ static void kb_finish(Screen *s, bool ok) {
     free(txt);
 }
 
+static void kb_destroy(Screen *s) {
+    if (kb_screen == s) kb_screen = NULL;
+    free(s->st);
+    free(s);
+}
+
 static void kb_draw(Screen *s) {
     Kb *k = s->st;
     overlay_dim(s->anim);
@@ -217,6 +223,7 @@ void keyboard_open(const char *title, const char *initial, bool password, KbDone
     s->st = k;
     s->draw = kb_draw;
     s->input = kb_input;
+    s->destroy = kb_destroy;
     s->overlay = true;
     kb_screen = s;
     if (!input_evdev_active()) SDL_StartTextInput(SDL_GetKeyboardFocus());
@@ -224,7 +231,7 @@ void keyboard_open(const char *title, const char *initial, bool password, KbDone
 }
 
 void keyboard_inject(const char *text) {
-    if (!kb_screen) { app_toast(T("Open a text field on the TV first")); return; }
+    if (!kb_screen || app_top() != kb_screen) { app_toast(T("Open a text field on the TV first")); return; }
     Kb *k = kb_screen->st;
     snprintf(k->text, sizeof k->text, "%s", text);
     app_toast(T("Text received from phone"));

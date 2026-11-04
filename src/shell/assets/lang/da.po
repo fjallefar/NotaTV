@@ -271,6 +271,9 @@ msgstr "Kunne ikke forbinde til %s (forkert kodeord?)"
 msgid "Could not connect to %s - is Bluetooth on on the phone?"
 msgstr "Kunne ikke forbinde til %s - er Bluetooth tændt på telefonen?"
 
+msgid "Could not connect to the PC"
+msgstr "Kunne ikke forbinde til PC'en"
+
 msgid "Could not download subtitles"
 msgstr "Kunne ikke hente undertekster"
 
@@ -564,6 +567,9 @@ msgstr "Netværk"
 
 msgid "Network drive"
 msgstr "Netværksdrev"
+
+msgid "Network drive login"
+msgstr "Log ind på netværksdrev"
 
 msgid "Network monitor"
 msgstr "Netværksvagt"
@@ -1108,6 +1114,9 @@ msgstr "TV'et som Bluetooth-højttaler for telefoner"
 
 msgid "Username"
 msgstr "Brugernavn"
+
+msgid "Username (leave empty for guest)"
+msgstr "Brugernavn (tomt for gæst)"
 
 msgid "Version"
 msgstr "Version"

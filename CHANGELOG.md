@@ -18,6 +18,30 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.13
+
+> **In short:** Smoother on the Raspberry Pi 4, a softer channel change in Live TV, and network drives with a login.
+> - Pi 4: text, images and screen transitions are prepared in a way that does not stall the graphics chip - about a quarter of the stutter is left, and the worst frames are half as long
+> - Live TV: the channel banner fades in and out when you change channel, and the raw channel name in the top corner is gone
+> - Network drive: asks for a username and password (empty = guest), with a *Network drive login* item to change it
+
+<!-- tldr:da
+Kort: Mere glat på Raspberry Pi 4, et blødere kanalskift i Live TV og netværksdrev med login.
+- Pi 4: tekst, billeder og skærmskift forberedes, så grafikchippen ikke går i stå - omkring en fjerdedel af hakkene er tilbage, og de værste billeder er halvt så lange
+- Live TV: kanalbanneret toner ind og ud, når du skifter kanal, og det rå kanalnavn i hjørnet er væk
+- Netværksdrev: spørger efter brugernavn og adgangskode (tomt = gæst), med punktet Login til netværksdrev til at ændre det
+-->
+
+- Pi 4 smoothness: new glyphs are uploaded at the start of the next frame, text atlases start small and grow, learned text sizes are prepared in idle time, images are decoded at the size they are drawn (and again if drawn bigger), big images are uploaded in strips, and the transition textures are made in idle time. Measured on a Pi 4: seconds with stutter 10-11 -> 2-3, worst frame 67 -> 34 ms
+- After playback the graphics are set up once instead of twice
+- Live TV: the banner and channel logo fade in and out on a channel change; mpv's own title in the corner is no longer shown
+- Network drive: username and password (saved apart from the address), empty = guest
+- Sign out wipes more: rotated and helper logs, images in memory, late replies from Plex/YouTube/Twitch; the open troubleshooting log is emptied instead of deleted, so it keeps working
+- The phone page code never ends up in the log
+- Screensaver glides in over a second and fades quickly back out
+- Setup guide: the app list scrolls so Continue can always be reached
+- Fixes: no crash after playback (transition textures), keyboard pointer cleared with its screen
+
 ## 1.0.12
 
 > **In short:** Wi-Fi connects faster when the box starts, and a box set up in English stays in English.

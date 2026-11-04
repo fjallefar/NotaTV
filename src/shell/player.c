@@ -499,6 +499,7 @@ static void build_args(const PlayRequest *rq, const char *mode, char ***out, int
         add_arg(&argv, n, "--cache=yes");
         add_arg(&argv, n, "--demuxer-max-back-bytes=64MiB");
         add_arg(&argv, n, "--deinterlace=auto");
+        add_arg(&argv, n, "--osd-playing-msg="); /* the banner shows the channel: no raw title in the corner at every change */
     }
     /* yt-dlp only for what needs it (YouTube, Twitch: they pass --ytdl-... options or a ytdl:// address).
        Otherwise mpv's ytdl hook tries yt-dlp after a failed open - for a server that does not answer that is

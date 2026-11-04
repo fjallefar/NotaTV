@@ -129,6 +129,9 @@ msgstr "Indtast adresse"
 msgid "Change address"
 msgstr "Skift adresse"
 
+msgid "Warning: this connection is not encrypted"
+msgstr "Advarsel: forbindelsen er ikke krypteret"
+
 msgid "Left (from the first button): menu"
 msgstr "Venstre (fra første knap): menu"
 

@@ -72,6 +72,9 @@ msgstr "Jellyfin: brugernavn"
 msgid "Jellyfin address (e.g. 192.168.1.10:8096)"
 msgstr "Jellyfin-adresse (fx 192.168.1.10:8096)"
 
+msgid "Warning: this connection is not encrypted"
+msgstr "Advarsel: forbindelsen er ikke krypteret"
+
 msgid "No Jellyfin servers found on the network"
 msgstr "Ingen Jellyfin-servere fundet på netværket"
 

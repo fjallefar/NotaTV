@@ -34,11 +34,11 @@ static void pin_typed(void *ud, const char *t) {
     pin[n] = 0;
     if (n < 4) { app_toast(T("The code must be 4-8 digits")); return; }
     cfg_set("phone_pin", pin);
-    app_toast(T("New code: %s"), pin);
+    app_toast_secret(T("New code: %s"), pin);
     if (done) done();
 }
 static void pin_choice(void *ud, int idx) {
-    if (idx == 0) { phone_pin_new(); app_toast(T("New code: %s"), phone_pin()); if (ud) ((void (*)(void))ud)(); }
+    if (idx == 0) { phone_pin_new(); app_toast_secret(T("New code: %s"), phone_pin()); if (ud) ((void (*)(void))ud)(); }
     else if (idx == 1) keyboard_open(T("Phone page code (4-8 digits)"), "", false, pin_typed, ud);
 }
 void phone_pin_change(void (*done)(void)) {
@@ -58,6 +58,7 @@ void phone_pin_change(void (*done)(void)) {
 #define APP_COLS 3
 #define APP_H 136.0f
 #define APP_GAP 20.0f
+#define APP_VIEW_H 600.0f
 #define MAX_ROWS 8
 #define MAX_GAPPS 32
 
@@ -66,6 +67,7 @@ typedef struct {
     float fade, dir; /* fade-in of the step, and the side it slides in from */
     bool on_continue; /* apps: focus on the Continue button below the grid */
     bool installing;  /* apps: the chosen apps are being downloaded */
+    float appscroll;  /* apps: scroll in the app grid */
 } Setup;
 
 static Setup *live;
@@ -277,7 +279,16 @@ static void press(Setup *v) {
 static void setup_update(Screen *s, float dt) {
     Setup *v = s->st;
     v->fade = anim_to(v->fade, 1, dt, 7);
-    if (v->step == ST_APPS) init_chosen();
+    if (v->step == ST_APPS) {
+        init_chosen();
+        GApp g[MAX_GAPPS];
+        int n = guide_apps(g), rows = (n + APP_COLS - 1) / APP_COLS;
+        float content = rows ? rows * (APP_H + APP_GAP) - APP_GAP : 0;
+        float maxs = content > APP_VIEW_H ? content - APP_VIEW_H : 0;
+        float target = v->on_continue ? maxs : (v->sel / APP_COLS) * (APP_H + APP_GAP);
+        if (target > maxs) target = maxs;
+        v->appscroll = anim_to(v->appscroll, target, dt, 12);
+    }
     if (v->installing && !appcat_busy(NULL, NULL, NULL)) { v->installing = false; next_step(v); }
 }
 
@@ -344,10 +355,16 @@ static void draw_apps(const Setup *v, float x, float y, float a) {
         return;
     }
     float cw = (RIGHT_W - (APP_COLS - 1) * APP_GAP) / APP_COLS;
+    int rows = (n + APP_COLS - 1) / APP_COLS;
+    float content = rows * (APP_H + APP_GAP) - APP_GAP;
+    float view = content < APP_VIEW_H ? content : APP_VIEW_H;
+    float sy = y - v->appscroll;
+    clip_push(x, y, RIGHT_W, view);
     for (int i = 0; i < n; i++) {
         const NotaApp *ap = g[i].app;
         const CatApp *c = g[i].cat;
-        float cx = x + (i % APP_COLS) * (cw + APP_GAP), cy = y + (i / APP_COLS) * (APP_H + APP_GAP);
+        float cx = x + (i % APP_COLS) * (cw + APP_GAP), cy = sy + (i / APP_COLS) * (APP_H + APP_GAP);
+        if (cy > y + view || cy + APP_H < y) continue;
         bool f = !v->on_continue && v->sel == i, on = is_chosen(g[i].id);
         if (f) draw_shadow(cx, cy, cw, APP_H, 20, 22, a);
         fill_rrect(cx, cy, cw, APP_H, 20, color_alpha(f ? C_SURFACE2 : C_SURFACE, a));
@@ -362,8 +379,8 @@ static void draw_apps(const Setup *v, float x, float y, float a) {
         else stroke_rrect(bx - 16, by - 16, 32, 32, 16, 3, color_alpha(C_TEXT3, a));
         if (f) stroke_rrect(cx - 4, cy - 4, cw + 8, APP_H + 8, 24, 4, color_alpha(C_FOCUS, a));
     }
-    int rows = (n + APP_COLS - 1) / APP_COLS;
-    float by = y + rows * (APP_H + APP_GAP) + 10;
+    clip_pop();
+    float by = y + view + 10;
     Row cont = {T("Continue"), R_NEXT, false, 0};
     draw_row(x, by, RIGHT_W, &cont, v->on_continue, a);
 }

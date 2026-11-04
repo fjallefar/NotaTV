@@ -862,17 +862,40 @@ void wipe_dir(const char *dir) {
     }
     closedir(d);
 }
+/* as wipe_dir, but the file the open log points at stays and is only emptied */
+static void wipe_dir_except(const char *dir, const char *keep) {
+    DIR *d = opendir(dir);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        char p[1024];
+        snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
+        if (keep[0] && !strcmp(p, keep)) {
+            /* the log is opened in append mode, so it can be emptied without being unlinked */
+            int fd = open(p, O_WRONLY | O_TRUNC | O_CLOEXEC);
+            if (fd >= 0) close(fd);
+            continue;
+        }
+        struct stat st;
+        if (lstat(p, &st) == 0 && S_ISDIR(st.st_mode)) { wipe_dir_except(p, keep); rmdir(p); }
+        else wipe_file(p);
+    }
+    closedir(d);
+}
 /* leftovers in /tmp that can hold addresses, tokens or pictures from the account (mpv log, image cache, now playing) */
 void wipe_session_traces(void) {
     home_hidden_forget(NULL); /* titles removed from the home row */
+    img_cache_clear();        /* the images in memory */
     wipe_dir("/tmp/tvimg");
     /* mpv-out.log holds the stream URLs with tokens (Plex/Jellyfin), the yt-dlp log searches, and the subtitle
        files and channel logos show what was watched */
     /* notatv-iptv.m3u has every Live TV stream address (with the Xtream login), notatv-chan.json the channels */
-    static const char *const files[] = {"/tmp/mpv.log", "/tmp/mpv-out.log", "/tmp/yt-dlp-search.log", "/tmp/notatv-nowplaying.json",
-                                        "/tmp/notatv-subs.json", "/tmp/notatv-poster.bgra", "/tmp/notatv-poster-hdr.bgra",
-                                        "/tmp/notatv-iptv.m3u", "/tmp/notatv-chan.json", "/tmp/notatv-chan.json.part",
-                                        "/tmp/notatv-media.m3u", NULL};
+    static const char *const files[] = {"/tmp/mpv.log", "/tmp/mpv.log.1", "/tmp/mpv-out.log", "/tmp/yt-dlp-search.log",
+                                        "/tmp/notatv-nowplaying.json", "/tmp/notatv-subs.json", "/tmp/notatv-poster.bgra",
+                                        "/tmp/notatv-poster-hdr.bgra", "/tmp/notatv-iptv.m3u", "/tmp/notatv-chan.json",
+                                        "/tmp/notatv-chan.json.part", "/tmp/notatv-media.m3u", "/tmp/uxplay.log",
+                                        "/tmp/tvmoon.log", "/tmp/shairport-sync.log", NULL};
     for (int i = 0; files[i]; i++) wipe_file(files[i]);
     static const char *const pats[] = {"/tmp/notatv-sub-*.srt", "/tmp/notatv-logo-*.bgra", NULL};
     for (int i = 0; pats[i]; i++) {
@@ -881,5 +904,22 @@ void wipe_session_traces(void) {
         for (size_t k = 0; k < g.gl_pathc; k++) wipe_file(g.gl_pathv[k]);
         globfree(&g);
     }
+    /* the UI's own log is open right now: its old copies go, the open file is only emptied */
+    glob_t g;
+    if (glob("/tmp/tvshell.log*", 0, NULL, &g) == 0) {
+        for (size_t k = 0; k < g.gl_pathc; k++)
+            if (strcmp(g.gl_pathv[k], "/tmp/tvshell.log")) wipe_file(g.gl_pathv[k]);
+        globfree(&g);
+    }
+    /* O_TRUNC is safe because tvshell is started with >> (see the session script): it always writes at the end */
+    int lf = open("/tmp/tvshell.log", O_WRONLY | O_TRUNC | O_CLOEXEC);
+    if (lf >= 0) close(lf);
+    /* the kept troubleshooting logs (troubleshooting log on): the log stderr is writing to is only emptied */
+    char cur[512] = "";
+    ssize_t n = readlink("/proc/self/fd/2", cur, sizeof cur - 1);
+    if (n > 0) cur[n] = 0;
+    char logs[512];
+    snprintf(logs, sizeof logs, "%s/logs", data_dir());
+    wipe_dir_except(logs, cur);
     sync();
 }

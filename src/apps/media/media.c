@@ -15,6 +15,7 @@ typedef struct {
     int n, sel;
     float scroll;
     bool root;
+    bool loading;
 } Media;
 
 static const char *video_ext[] = {"mkv", "mp4", "m4v", "avi", "mov", "ts", "m2ts", "webm", "wmv", "mpg", "mpeg", "flv", "iso", NULL};
@@ -43,45 +44,96 @@ static void free_entries(Media *m) {
     m->n = 0;
 }
 
-static void load_dir(Media *m) {
-    free_entries(m);
-    m->sel = 0;
-    m->scroll = 0;
-    if (m->root) {
+static Media *live;
+static unsigned load_gen; /* a scan's result is used only while it is still the newest */
+
+typedef struct {
+    unsigned gen;
+    char path[2048];
+    bool root;
+    bool announce;
+    Entry *e;
+    int n;
+    bool failed;
+} Scan;
+
+static void scan_work(void *arg) {
+    Scan *s = arg;
+    if (s->root) {
         /* root level: mounted drives (automount runs in the background and the list is updated continuously) */
         DIR *d = opendir("/media");
         struct dirent *de;
         while (d && (de = readdir(d))) {
             if (de->d_name[0] == '.') continue;
-            m->e = realloc(m->e, sizeof(Entry) * (m->n + 1));
-            m->e[m->n++] = (Entry){str_dup(de->d_name), true, 0};
+            s->e = realloc(s->e, sizeof(Entry) * (s->n + 1));
+            s->e[s->n++] = (Entry){str_dup(de->d_name), true, 0};
         }
         if (d) closedir(d);
-        qsort(m->e, m->n, sizeof(Entry), ent_cmp);
-        return;
+    } else {
+        DIR *d = opendir(s->path);
+        if (!d) { s->failed = true; return; }
+        struct dirent *de;
+        while ((de = readdir(d))) {
+            if (de->d_name[0] == '.') continue;
+            char full[4096];
+            snprintf(full, sizeof full, "%s/%s", s->path, de->d_name);
+            struct stat st;
+            if (stat(full, &st) != 0) continue;
+            bool dir = S_ISDIR(st.st_mode);
+            if (!dir && !is_media(de->d_name)) continue;
+            s->e = realloc(s->e, sizeof(Entry) * (s->n + 1));
+            s->e[s->n++] = (Entry){str_dup(de->d_name), dir, (long long)st.st_size};
+        }
+        closedir(d);
     }
-    DIR *d = opendir(m->path);
-    if (!d) { app_toast(T("Cannot open the folder")); return; }
-    struct dirent *de;
-    while ((de = readdir(d))) {
-        if (de->d_name[0] == '.') continue;
-        char full[4096];
-        snprintf(full, sizeof full, "%s/%s", m->path, de->d_name);
-        struct stat st;
-        if (stat(full, &st) != 0) continue;
-        bool dir = S_ISDIR(st.st_mode);
-        if (!dir && !is_media(de->d_name)) continue;
-        m->e = realloc(m->e, sizeof(Entry) * (m->n + 1));
-        m->e[m->n++] = (Entry){str_dup(de->d_name), dir, (long long)st.st_size};
+    qsort(s->e, s->n, sizeof(Entry), ent_cmp);
+}
+
+static void scan_done(void *arg) {
+    Scan *s = arg;
+    Media *m = live;
+    if (m && s->gen == load_gen) {
+        if (s->failed) {
+            app_toast(T("Cannot open the folder"));
+        } else {
+            free_entries(m);
+            m->e = s->e;
+            m->n = s->n;
+            s->e = NULL;
+            s->n = 0;
+            m->sel = m->sel < m->n ? m->sel : 0;
+            if (s->announce) app_toast(T("Refreshed"));
+        }
+        m->loading = false;
     }
-    closedir(d);
-    qsort(m->e, m->n, sizeof(Entry), ent_cmp);
+    for (int i = 0; i < s->n; i++) free(s->e[i].name);
+    free(s->e);
+    free(s);
+}
+
+static void load_dir(Media *m, bool announce) {
+    Scan *s = calloc(1, sizeof *s);
+    if (!s) return;
+    s->gen = ++load_gen;
+    s->root = m->root;
+    s->announce = announce;
+    snprintf(s->path, sizeof s->path, "%s", m->path);
+    m->loading = true;
+    job_submit_q(JQ_SLOW, scan_work, scan_done, s);
 }
 
 static void media_enter(Screen *s) {
     Media *m = s->st;
+    live = m;
     if (m->root) run_cmd("%s/automount >/dev/null 2>&1 &", helper_path());
-    load_dir(m);
+    load_dir(m, false);
+}
+
+static void media_resume(Screen *s) {
+    Media *m = s->st;
+    if (live == m) return; /* still the same screen on top (e.g. only a menu was open) */
+    live = m;
+    if (m->loading) load_dir(m, false); /* the scan was dropped while another folder was on top */
 }
 
 static int count_media_dirs(void) {
@@ -94,17 +146,19 @@ static int count_media_dirs(void) {
 }
 
 static void media_destroy(Screen *s) {
-    free_entries(s->st);
-    free(s->st);
+    Media *m = s->st;
+    if (live == m) { live = NULL; load_gen++; }
+    free_entries(m);
+    free(m);
     free(s);
 }
 
 static void media_update(Screen *s, float dt) {
     Media *m = s->st;
     static double last_scan;
-    if (m->root && app_time() - last_scan > 2) {
+    if (m->root && !m->loading && app_time() - last_scan > 2) {
         last_scan = app_time();
-        if (count_media_dirs() != m->n) { int sel = m->sel; load_dir(m); m->sel = sel < m->n ? sel : 0; }
+        if (count_media_dirs() != m->n) load_dir(m, false);
         static double last_mount;
         if (app_time() - last_mount > 6) { last_mount = app_time(); run_cmd("%s/automount >/dev/null 2>&1 &", helper_path()); }
     }
@@ -118,7 +172,13 @@ static void media_draw(Screen *s) {
     draw_background();
     draw_topbar(T("Media"));
     text_draw_clip(F_REG, 24, 96, 118, 1500, C_TEXT3, AL_LEFT, m->root ? T("Drives") : m->path);
+    if (m->loading) draw_spinner(UI_W - 48, 118, 14, C_TEXT2);
     if (m->n == 0) {
+        if (m->loading) {
+            draw_spinner(UI_W / 2, UI_H / 2 - 30, 30, C_TEXT);
+            text_draw(F_REG, 24, UI_W / 2, UI_H / 2 + 20, C_TEXT3, AL_CENTER, T("Loading…"));
+            return;
+        }
         draw_empty(m->root ? T("No drives found") : T("Empty folder"),
                    m->root ? T("Plug a USB drive into the box, or add a network drive under Settings → Cast and sharing.") :
                              T("There are no movies, music or pictures in this folder."));
@@ -183,7 +243,7 @@ static void play_entry(Media *m, int idx) {
 }
 
 static void media_menu_cb(void *ud, int idx) { /* Red = menu */
-    if (idx == 0) { load_dir(ud); app_toast(T("Refreshed")); }
+    if (idx == 0) load_dir(ud, true);
 }
 
 static bool media_input(Screen *s, const InputEvent *ev) {
@@ -220,6 +280,7 @@ static Screen *media_at(const char *path) {
     s->name = "media";
     s->st = m;
     s->enter = media_enter;
+    s->resume = media_resume;
     s->update = media_update;
     s->draw = media_draw;
     s->input = media_input;

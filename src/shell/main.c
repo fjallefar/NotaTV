@@ -34,6 +34,7 @@ static char ip_str[64] = "";
 static double ip_checked = -100;
 static bool screensaver;
 static double ss_t;
+static float ss_fade; /* 0..1: the screensaver's alpha, glides in and out */
 
 double app_time(void) { return SDL_GetTicks() / 1000.0 - t0; }
 void app_quit(void) { running = false; }
@@ -42,13 +43,24 @@ int app_cfg_gen(void) { return ext_cfg_gen; }
 void app_cfg_changed(void) { ext_cfg_gen++; }
 void app_request_redraw(void) {}
 
+static void toast_set(const char *fmt, va_list ap) {
+    vsnprintf(toast_msg, sizeof toast_msg, fmt, ap);
+    toast_t = app_time();
+}
+
 void app_toast(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    vsnprintf(toast_msg, sizeof toast_msg, fmt, ap);
+    toast_set(fmt, ap);
     va_end(ap);
-    toast_t = app_time();
     SDL_Log("toast: %s", toast_msg);
+}
+
+void app_toast_secret(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    toast_set(fmt, ap);
+    va_end(ap);
 }
 
 static bool show_fps(void) {
@@ -88,6 +100,7 @@ const char *app_ip(void) {
 /* ---------- transitions ----------
    Opening: the new screen is drawn into a texture and fades in with a slight zoom on top of the old one.
    Closing: a snapshot of the screen is taken before it is torn down and fades out (zooming in slightly). */
+static double scr_draw_ms; /* time in the screens' own draw functions this frame (slow-frame log) */
 static SDL_Texture *tx_open, *tx_close, *tx_under;
 static Screen *under_for; /* tx_under holds what was under this screen when it was opened */
 static SDL_Renderer *tx_ren;
@@ -110,18 +123,34 @@ static void blit_from_rect(SDL_Texture *t, float alpha, float k, float x, float 
 
 static SDL_Texture *main_target(void) { return kms_present_active() ? kms_present_target() : ui_rt; }
 
+static bool tx_make(SDL_Texture **t) {
+    *t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, UI_W, UI_H);
+    if (!*t) return false;
+    SDL_SetTextureBlendMode(*t, SDL_BLENDMODE_BLEND);
+    SDL_SetTextureScaleMode(*t, SDL_SCALEMODE_LINEAR);
+    return true;
+}
+static SDL_Texture **tx_missing(void) {
+    if (tx_ren != ren) { tx_open = tx_close = tx_under = NULL; under_for = NULL; tx_ren = ren; } /* old renderer: the textures are gone */
+    return !tx_open ? &tx_open : !tx_close ? &tx_close : !tx_under ? &tx_under : NULL;
+}
 static bool tx_ensure(void) {
     if (!ren) return false;
-    if (tx_ren != ren) { tx_open = tx_close = tx_under = NULL; under_for = NULL; tx_ren = ren; } /* old renderer: the textures are gone */
-    for (int i = 0; i < 3; i++) {
-        SDL_Texture **t = i == 2 ? &tx_under : i ? &tx_close : &tx_open;
-        if (*t) continue;
-        *t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, UI_W, UI_H);
-        if (!*t) return false;
-        SDL_SetTextureBlendMode(*t, SDL_BLENDMODE_BLEND);
-        SDL_SetTextureScaleMode(*t, SDL_SCALEMODE_LINEAR);
-    }
+    for (SDL_Texture **t; (t = tx_missing());) if (!tx_make(t)) return false;
     return true;
+}
+/* the transition textures (3 x 8 MB, 15-20 ms each on a Pi 4) are made one per frame while nothing happens - after start
+   and after playback (the renderer is new) - instead of in the frame where the first screen opens or closes */
+static void tx_prewarm(void) {
+    if (!ren || app_time() < 2 || app_time() - fmax(input_last_activity(), 0) < 0.7) return;
+    if (close_t > 0.01f || ui_dim > 0.003f || (depth && stack[depth - 1]->anim < 0.995f)) return;
+    SDL_Texture **t = tx_missing();
+    if (!t || !tx_make(t)) return;
+    SDL_Texture *was = SDL_GetRenderTarget(ren); /* drawn into once, so the memory is really there */
+    SDL_SetRenderTarget(ren, *t);
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 0);
+    SDL_RenderClear(ren);
+    SDL_SetRenderTarget(ren, was);
 }
 
 /* the key bar (draw_keybar): the color keys' actions as buttons. ↓ from the bottom row moves focus
@@ -139,7 +168,7 @@ static unsigned long frame_no;
 static Screen *drawing; /* the screen being drawn right now */
 
 static void draw_screens(int from, int to) {
-    for (int i = from; i <= to; i++) if (stack[i]->draw) { drawing = stack[i]; stack[i]->draw(stack[i]); }
+    for (int i = from; i <= to; i++) if (stack[i]->draw) { drawing = stack[i]; double t0 = app_time(); stack[i]->draw(stack[i]); scr_draw_ms += (app_time() - t0) * 1000; }
     drawing = NULL;
 }
 
@@ -184,19 +213,34 @@ void app_push(Screen *s) {
     /* what is under the new screen is photographed once: while the new screen opens, the old one is not drawn
        again every frame (on the Pi's GPU that is what made the animation stutter) */
     under_for = NULL;
+    double pt0 = app_time();
     if (depth > 0 && tx_ensure()) {
         SDL_Texture *mt = main_target();
         SDL_SetRenderTarget(ren, tx_under);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
-        draw_screens(base_of(depth - 1), depth - 1);
+        static unsigned long pushed_in; /* frame_no of the last push: a second push in the same frame draws instead */
+        if (mt && pushed_in != frame_no + 1) {
+            /* the frame on screen already is that picture: one copy instead of drawing every screen again
+               (opening Live TV over the home screen: 27 ms -> ~1 ms on a Pi 4) */
+            SDL_BlendMode bm;
+            SDL_GetTextureBlendMode(mt, &bm);
+            SDL_SetTextureBlendMode(mt, SDL_BLENDMODE_NONE);
+            SDL_RenderTexture(ren, mt, NULL, NULL);
+            SDL_SetTextureBlendMode(mt, bm);
+        } else draw_screens(base_of(depth - 1), depth - 1);
+        pushed_in = frame_no + 1;
         SDL_SetRenderTarget(ren, mt);
         under_for = s;
     }
+    double pt1 = app_time();
     stack[depth++] = s;
     s->anim = 0;
     if (org_pending && !s->overlay) { org_screen = s; org_pending = false; }
     if (s->enter) s->enter(s);
+    double pt2 = app_time();
+    if (pt2 - pt0 > 0.010 && show_fps())
+        SDL_Log("åbn %s: billede af skærmen under %.1f ms, enter %.1f ms", s->name ? s->name : "?", (pt1 - pt0) * 1000, (pt2 - pt1) * 1000);
 }
 
 static void destroy_screen(Screen *s) {
@@ -257,6 +301,7 @@ void app_home(void) {
 /* ---------- video ---------- */
 static bool kms_failed; /* own presentation failed: use SDL's KMSDRM driver */
 
+static int out_w, out_h; /* the output size gfx was set up for */
 static bool video_init(void) {
     /* "always HDR": the TV is put in HDR10 before SDL takes the display, and the UI is drawn in PQ */
     bool hdr = hdr_cfg("hdr_always", 0);
@@ -314,6 +359,7 @@ static bool video_init(void) {
     SDL_HideCursor();
     int ow, oh;
     SDL_GetRenderOutputSize(ren, &ow, &oh);
+    out_w = ow; out_h = oh;
     if (target_mode && ow > UI_W) {
         ui_rt = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, UI_W, UI_H);
         if (ui_rt) {
@@ -326,6 +372,15 @@ static bool video_init(void) {
 }
 
 static void video_quit(void) {
+    /* the transition textures belong to this renderer: destroy them before it goes away */
+    if (ren && tx_ren == ren) {
+        if (tx_open) SDL_DestroyTexture(tx_open);
+        if (tx_close) SDL_DestroyTexture(tx_close);
+        if (tx_under) SDL_DestroyTexture(tx_under);
+    }
+    tx_open = tx_close = tx_under = NULL;
+    under_for = NULL;
+    tx_ren = NULL;
     gfx_lost();
     kms_present_quit();
     if (ui_rt) SDL_DestroyTexture(ui_rt);
@@ -405,11 +460,13 @@ bool app_video_suspend(void) {
     return true;
 }
 
+static double resume_t; /* when the UI came back after playback: the first frame after it is logged */
 void app_video_resume(void) {
     ui_dim = 1; /* fades in from black */
     close_t = 0;
     for (int i = 0; i < 20; i++) {
-        if (video_init()) return;
+        double t0 = app_time();
+        if (video_init()) { resume_t = app_time(); SDL_Log("video igen: init %.0f ms", (resume_t - t0) * 1000); return; }
         SDL_Log("video gen-init fejlede, prøver igen");
         video_quit();
         SDL_Delay(250);
@@ -830,8 +887,8 @@ static void draw_toast(void) {
     text_draw(F_BOLD, 28, UI_W / 2, y + 16, color_alpha(C_TEXT, a), AL_CENTER, toast_msg);
 }
 
-static void draw_screensaver(void) {
-    fill_rect(0, 0, UI_W, UI_H, RGB(0, 0, 0));
+static void draw_screensaver(float a) {
+    fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(255 * a)));
     double t = app_time() - ss_t;
     float x = UI_W / 2 + sinf((float)t * 0.05f) * 600, y = UI_H / 2 + sinf((float)t * 0.037f + 1) * 300;
     time_t now = time(NULL);
@@ -843,8 +900,8 @@ static void draw_screensaver(void) {
     static const char *mon[] = {N_("January"), N_("February"), N_("March"), N_("April"), N_("May"), N_("June"), N_("July"),
                                 N_("August"), N_("September"), N_("October"), N_("November"), N_("December")};
     snprintf(date, sizeof date, T("%1$s, %3$s %2$d"), T(days[tm.tm_wday]), tm.tm_mday, T(mon[tm.tm_mon]));
-    text_draw(F_SEMI, 120, x, y - 90, RGBA(255, 255, 255, 150), AL_CENTER, clk);
-    text_draw(F_REG, 36, x, y + 50, RGBA(255, 255, 255, 110), AL_CENTER, date);
+    text_draw(F_SEMI, 120, x, y - 90, RGBA(255, 255, 255, (uint8_t)(150 * a)), AL_CENTER, clk);
+    text_draw(F_REG, 36, x, y + 50, RGBA(255, 255, 255, (uint8_t)(110 * a)), AL_CENTER, date);
 }
 
 /* ---------- FPS display (Settings → System → Show FPS) ---------- */
@@ -884,11 +941,12 @@ static void draw_fps(void) {
 }
 
 static void draw_frame(void) {
+    gfx_frame_begin();
     if (kms_present_active()) SDL_SetRenderTarget(ren, kms_present_target());
     else if (ui_rt) SDL_SetRenderTarget(ren, ui_rt);
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
-    if (screensaver) { draw_screensaver(); return; }
+    if (screensaver && ss_fade >= 0.999f) { draw_screensaver(1); return; }
     int top = depth - 1;
     Screen *ts = stack[top];
     if (ts->anim < 0.995f && top > 0 && tx_ensure()) {
@@ -910,7 +968,7 @@ static void draw_frame(void) {
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 0);
         SDL_RenderClear(ren);
         drawing = ts;
-        if (ts->draw) ts->draw(ts);
+        if (ts->draw) { double t0 = app_time(); ts->draw(ts); scr_draw_ms += (app_time() - t0) * 1000; }
         drawing = NULL;
         SDL_SetRenderTarget(ren, mt);
         float e = ts->anim, a = e * 2.5f > 1 ? 1 : e * 2.5f; /* opaque early: no ghost of the screen underneath */
@@ -929,6 +987,7 @@ static void draw_frame(void) {
     draw_toast();
     draw_fps();
     if (ui_dim > 0.003f) fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(ui_dim * 255)));
+    if (ss_fade > 0.003f) draw_screensaver(ss_fade);
 }
 
 static void set_kd_graphics(void) {
@@ -1000,12 +1059,17 @@ int main(int argc, char **argv) {
     bool first_frame = true;
     int ss_minutes = cfg_int("screensaver_min", 10);
     while (running) {
+        double ph0 = app_time(); /* frame phases: logged for slow frames (Show FPS on) */
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) running = false;
             else if (e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED && ren) {
                 int ow, oh;
                 SDL_GetRenderOutputSize(ren, &ow, &oh);
+                /* also sent right after the display was set up again (after playback): same size = nothing to do,
+                   otherwise every texture and glyph is thrown away a second time (a 55 ms hitch on a Pi 4) */
+                if (ow == out_w && oh == out_h) continue;
+                out_w = ow; out_h = oh;
                 gfx_lost();
                 if (ui_rt) gfx_init(ren, UI_W, UI_H);
                 else gfx_init(ren, ow, oh);
@@ -1032,6 +1096,7 @@ int main(int argc, char **argv) {
         org_pending = false; /* an origin is only for a screen opened in the same frame */
         quick_tick();
 
+        double ph1 = app_time();
         InputEvent ev;
         while (input_next(&ev)) {
             if (screensaver) { screensaver = false; continue; }
@@ -1073,6 +1138,7 @@ int main(int argc, char **argv) {
             ss_t = now;
         }
 
+        double ph2 = app_time();
         for (int i = 0; i < depth; i++) {
             Screen *s = stack[i];
             if (i == depth - 1) s->anim = anim_to(s->anim, 1, dt, 13);
@@ -1080,8 +1146,16 @@ int main(int argc, char **argv) {
         }
         close_t = anim_to(close_t, 0, dt, 13);
         ui_dim = anim_to(ui_dim, 0, dt, 7);
+        if (screensaver) { /* ease-in-out fade in: glides in over a second */
+            float p = (float)((now - ss_t) / 1.0);
+            if (p > 1) p = 1;
+            ss_fade = p * p * (3 - 2 * p);
+        } else {
+            ss_fade = anim_to(ss_fade, 0, dt, 16); /* quick fade back to the UI */
+        }
         if (!ren) continue;
         double t_draw = app_time();
+        double ph3 = t_draw;
         frame_no++;
         draw_frame();
         draw_ms_sum += (app_time() - t_draw) * 1000;
@@ -1090,7 +1164,20 @@ int main(int argc, char **argv) {
             SDL_Surface *sf = SDL_RenderReadPixels(ren, NULL);
             if (sf) { SDL_SaveBMP(sf, shot); SDL_DestroySurface(sf); SDL_Log("screenshot: %s", shot); }
         }
+        double ph4 = app_time();
         present();
+        double ph5 = app_time();
+        double fg, fi, fm;
+        int ng, ni, nm;
+        gfx_frame_times(&fg, &fi, &fm, &ng, &ni, &nm);
+        if (ph5 - ph0 > 0.030 && show_fps()) {
+            Screen *ts = app_top();
+            SDL_Log("langsomt billede %.0f ms: før/baggrund %.1f, taster %.1f, update %.1f, tegning %.1f (skærme %.1f, glyffer %d/%.1f, billeder %d/%.1f, mip %d/%.1f), present %.1f (%s)",
+                    (ph5 - ph0) * 1000, (ph1 - ph0) * 1000, (ph2 - ph1) * 1000, (ph3 - ph2) * 1000, (ph4 - ph3) * 1000, scr_draw_ms,
+                    ng, fg, ni, fi, nm, fm, (ph5 - ph4) * 1000, ts && ts->name ? ts->name : "?");
+        }
+        scr_draw_ms = 0;
+        if (resume_t > 0) { SDL_Log("video igen: første billede efter %.0f ms", (app_time() - resume_t) * 1000); resume_t = 0; }
         fps_tick();
         if (first_frame) {
             first_frame = false;
@@ -1103,9 +1190,12 @@ int main(int argc, char **argv) {
             FILE *b = fopen("/tmp/notatv-boottime", "w");
             if (b) { fprintf(b, "%.2f\n", boot_time); fclose(b); }
         }
-        if (!target_mode) SDL_Delay(screensaver ? 50 : 1);
-        else if (screensaver) SDL_Delay(100);
+        bool ss_idle = screensaver && ss_fade >= 0.999f; /* full frame rate while it glides in/out */
+        if (!target_mode) SDL_Delay(ss_idle ? 50 : 1);
+        else if (ss_idle) SDL_Delay(100);
         img_cache_trim();
+        gfx_idle_tick();
+        tx_prewarm();
     }
     cfg_flush();
     while (depth) destroy_screen(stack[--depth]);

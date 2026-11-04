@@ -230,6 +230,52 @@ static void restart_music(void) { helper_bg("music restart"); }
 static void apply_name(void) { helper_bg("music restart"); helper_bg("cec setup"); bt_apply(); dlna_apply(); }
 void settings_apply_name(void) { apply_name(); }
 static void apply_share(void) { helper_bg("automount"); app_toast(T("Mounting network drive…")); }
+/* smb address with "user:password@" keeps the login in the address - otherwise ask and save it in the settings */
+static bool share_login_in(const char *s) {
+    const char *sch = strstr(s, "://");
+    if (!sch) return false;
+    const char *at = strchr(sch + 3, '@'), *sl = strchr(sch + 3, '/');
+    return at && (!sl || at < sl) && memchr(sch + 3, ':', at - (sch + 3)) != NULL;
+}
+/* a login in the address would still win - remove it so the saved login is used */
+static void share_strip_login(void) {
+    const char *s = cfg_get("media_share", "");
+    const char *sch = strstr(s, "://");
+    const char *at = sch ? strchr(sch + 3, '@') : NULL, *sl = sch ? strchr(sch + 3, '/') : NULL;
+    if (!at || (sl && at > sl)) return;
+    char *v = str_dup(s);
+    memmove(v + (sch - s) + 3, v + (at - s) + 1, strlen(at + 1) + 1);
+    cfg_set("media_share", v);
+    free(v);
+}
+static void share_pass_done(void *ud, const char *t) {
+    (void)ud;
+    if (!t) return;
+    share_strip_login();
+    char *v = str_dup(t);
+    cfg_set("media_share_pass", v);
+    free(v);
+    apply_share();
+}
+static void share_user_done(void *ud, const char *t) {
+    (void)ud;
+    if (!t) return;
+    char *v = str_dup(t);
+    str_trim(v);
+    cfg_set("media_share_user", v);
+    free(v);
+    keyboard_open(T("Password"), cfg_get("media_share_pass", ""), true, share_pass_done, NULL);
+}
+static void share_login_start(void) {
+    keyboard_open(T("Username (leave empty for guest)"), cfg_get("media_share_user", ""), false, share_user_done, NULL);
+}
+static void share_changed(void) {
+    const char *s = cfg_get("media_share", "");
+    if (!strncmp(s, "smb://", 6) && !share_login_in(s)) share_login_start();
+    else apply_share();
+}
+static const char *share_login_off(void) { return !strncmp(cfg_get("media_share", ""), "smb://", 6) ? NULL : ITEM_HIDDEN; }
+static void act_share_login(void) { share_login_start(); }
 static void apply_cec(void) { helper_bg("cec setup"); }
 
 /* --- audio devices --- */
@@ -455,7 +501,8 @@ static const Item cast_items[] = {
     {N_("DLNA (send from apps)"), IT_TOGGLE, "dlna_enabled", "1", onoff, .changed = dlna_apply, .help = N_("Apps like BubbleUPnP and \"Cast to Device\" in Windows can send video, music and pictures. Local network only")},
     {N_("AirPlay screen mirroring"), IT_TOGGLE, "airplay_mirror", "1", onoff, .changed = mirror_apply, .help = N_("iPhone/iPad/Mac can mirror the screen to the TV (shown as \"<name> (screen)\"). The first time, the phone asks for the code below")},
     {N_("AirPlay code"), IT_INFO, .value = airplay_pin, .locked = airplay_off},
-    {N_("Network drive"), IT_TEXT, "media_share", "", .changed = apply_share, .help = N_("smb://user:password@server/share or nfs://server/path")},
+    {N_("Network drive"), IT_TEXT, "media_share", "", .changed = share_changed, .help = N_("smb://user:password@server/share or nfs://server/path")},
+    {N_("Network drive login"), IT_ACTION, .action = act_share_login, .locked = share_login_off},
 };
 static const char *time_now(void) {
     static char b[96];

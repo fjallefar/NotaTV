@@ -46,6 +46,7 @@ static bool yt_play_at(Video *v, double start);
 #define yt_play(v) yt_play_at((v), 0)
 
 static int yt_token; /* increased when the screen closes, so late replies are ignored */
+static int yt_gen;   /* increased on sign-out, so replies from before are ignored */
 
 static char *shell_quote(const char *s) {
     size_t n = strlen(s);
@@ -72,7 +73,7 @@ static bool logged_in(void) {
     return cookie_file(ck, sizeof ck);
 }
 
-typedef struct { char *query; Video *v; int n; int token, seq; YRow *row; char cookies[512]; int count; bool channels; } SearchJob;
+typedef struct { char *query; Video *v; int n; int token, seq; YRow *row; char cookies[512]; int count; bool channels; int gen; } SearchJob;
 
 static void search_work(void *arg) {
     SearchJob *j = arg;
@@ -171,7 +172,7 @@ static Prefetch *pf_find(const char *id) {
     return p && p->video ? p : NULL;
 }
 
-typedef struct { char id[16]; char *video, *audio; char cookies[512]; int q; } PfJob;
+typedef struct { char id[16]; char *video, *audio; char cookies[512]; int q, gen; } PfJob;
 static void pf_work(void *arg) {
     PfJob *j = arg;
     char *fmt = yt_format_for(j->q);
@@ -192,6 +193,7 @@ static void pf_work(void *arg) {
 static void pf_done(void *arg) {
     PfJob *j = arg;
     pf_busy_id[0] = 0;
+    if (j->gen != yt_gen) { free(j->video); free(j->audio); free(j); return; } /* signed out: the URLs are not kept */
     Prefetch *p = NULL; /* the slot for this video (any quality: the old one is replaced) */
     for (int i = 0; i < 24 && !p; i++) if (pf[i].id[0] && !strcmp(pf[i].id, j->id)) p = &pf[i];
     if (!p) { p = &pf[pf_next]; pf_next = (pf_next + 1) % 24; }
@@ -214,6 +216,7 @@ static void pf_consider(const char *const *ids, int n) {
         PfJob *j = calloc(1, sizeof *j);
         snprintf(j->id, sizeof j->id, "%s", ids[i]);
         j->q = yt_quality();
+        j->gen = yt_gen;
         if (!cookie_file(j->cookies, sizeof j->cookies)) j->cookies[0] = 0;
         snprintf(pf_busy_id, sizeof pf_busy_id, "%s", ids[i]);
         job_submit_q(JQ_SLOW, pf_work, pf_done, j);
@@ -297,7 +300,7 @@ static void subs_load(void) {
 }
 
 /* one feed per channel is fetched in parallel in the image queue and merged by publish time */
-typedef struct { YRow *row; int seq, token, pending; Video *v; int n, cap; } RssAgg;
+typedef struct { YRow *row; int seq, token, pending; Video *v; int n, cap; int gen; } RssAgg;
 typedef struct { RssAgg *agg; char id[64], name[128]; Video *v; int n; } RssJob;
 
 static char *xml_between(const char *s, const char *end, const char *a, const char *b) {
@@ -369,6 +372,7 @@ static void rss_done(void *arg) {
     free(j->v);
     free(j);
     if (--g->pending > 0) return;
+    if (g->gen != yt_gen) { free_videos(g->v, g->n); free(g); return; } /* signed out: the list is not kept */
     qsort(g->v, g->n, sizeof(Video), by_published);
     int keep = g->n > 60 ? 60 : g->n;
     if (g->token == yt_token && g->seq == g->row->seq) {
@@ -390,6 +394,7 @@ static void rss_load(YRow *row) {
     g->row = row;
     g->seq = ++row->seq;
     g->token = yt_token;
+    g->gen = yt_gen;
     g->pending = n_subs;
     for (int i = 0; i < n_subs; i++) {
         RssJob *j = calloc(1, sizeof *j);
@@ -402,6 +407,12 @@ static void rss_load(YRow *row) {
 
 static void search_done(void *arg) {
     SearchJob *j = arg;
+    if (j->gen != yt_gen) { /* signed out: the list is not kept */
+        free_videos(j->v, j->n);
+        free(j->query);
+        free(j);
+        return;
+    }
     if (j->token == yt_token && j->seq == j->row->seq) {
         free_videos(j->row->v, j->row->n);
         j->row->v = j->v;
@@ -423,6 +434,7 @@ static void row_load(YRow *row, int count) {
     j->seq = ++row->seq;
     j->row = row;
     j->count = count;
+    j->gen = yt_gen;
     j->channels = strstr(row->query, "&sp=EgIQAg") != NULL;
     if (!cookie_file(j->cookies, sizeof j->cookies)) j->cookies[0] = 0;
     job_submit_q(JQ_SLOW, search_work, search_done, j);
@@ -1167,7 +1179,7 @@ typedef struct {
 } Info;
 static int info_token;
 
-typedef struct { int token; char id[16]; char cookies[512]; bool comments; char *out; } InfoJob;
+typedef struct { int token; char id[16]; char cookies[512]; bool comments; char *out; int gen; } InfoJob;
 
 static void info_work(void *arg) {
     InfoJob *j = arg;
@@ -1187,6 +1199,7 @@ static Info *live_info;
 static void info_done(void *arg) {
     InfoJob *j = arg;
     Info *in = live_info;
+    if (j->gen != yt_gen) { free(j->out); free(j); return; } /* signed out */
     if (in && j->token == in->token) {
         cJSON *root = cJSON_Parse(j->out);
         if (!j->comments) {
@@ -1229,7 +1242,7 @@ static void info_done(void *arg) {
 /* fast path: YouTube's own player API answers in a fraction of a second with description, date, views, length
    and channel, while yt-dlp (below) takes seconds on the Pi and waits behind the stream lookups in JQ_SLOW.
    yt-dlp still runs afterwards for the likes (and as the fallback if this fails). */
-typedef struct { int token; char id[16]; char *out; } QuickJob;
+typedef struct { int token; char id[16]; char *out; int gen; } QuickJob;
 static void quick_work(void *arg) {
     QuickJob *j = arg;
     char *body = str_printf("{\"context\":{\"client\":{\"clientName\":\"WEB\",\"clientVersion\":\"2.20251030.01.00\"}},"
@@ -1245,6 +1258,7 @@ static void quick_work(void *arg) {
 }
 static void quick_done(void *arg) {
     QuickJob *j = arg;
+    if (j->gen != yt_gen) { free(j->out); free(j); return; } /* signed out */
     Info *in = live_info;
     cJSON *root = j->out ? cJSON_Parse(j->out) : NULL;
     cJSON *vd = cJSON_GetObjectItem(root, "videoDetails");
@@ -1273,11 +1287,13 @@ static void info_fetch(Info *in, bool comments) {
     if (!comments) {
         QuickJob *q = calloc(1, sizeof *q);
         q->token = in->token;
+        q->gen = yt_gen;
         snprintf(q->id, sizeof q->id, "%s", in->v.id);
         job_submit_q(JQ_FAST, quick_work, quick_done, q);
     }
     InfoJob *j = calloc(1, sizeof *j);
     j->token = in->token;
+    j->gen = yt_gen;
     j->comments = comments;
     snprintf(j->id, sizeof j->id, "%s", in->v.id);
     if (!cookie_file(j->cookies, sizeof j->cookies)) j->cookies[0] = 0;
@@ -1422,6 +1438,7 @@ typedef struct {
     int col;    /* 1 = the "Remove" button on the row */
     int cfg_seen;
     char last_prof[128];
+    bool done; /* signed in: close when the screen is on top again */
 } Login;
 
 static void login_scan(Login *l) {
@@ -1454,14 +1471,18 @@ static void login_enter(Screen *s) {
 static void login_update(Screen *s, float dt) {
     (void)dt;
     Login *l = s->st;
+    if (l->done) { /* a dialog was on top when we signed in: close now that we are on top */
+        if (app_top() == s) app_pop();
+        return;
+    }
     if (l->cfg_seen != app_cfg_gen()) { /* account uploaded via the phone */
         l->cfg_seen = app_cfg_gen();
         login_scan(l);
         const char *p = cfg_get("yt_profile", "");
         if (*p && strcmp(p, l->last_prof)) {
             app_toast(T("Signed in as %s"), p);
-            if (app_close) app_close(s);
-            else if (app_top() == s) app_pop(); /* NotaTV 1.0.3 and older */
+            l->done = true;
+            if (app_top() == s) app_pop();
         }
     }
 }
@@ -1527,6 +1548,7 @@ static void login_draw(Screen *s) {
 
 /* sign out of all YouTube accounts: cookies, subscriptions, history and what was watched */
 void youtube_forget_all(void) {
+    yt_gen++; /* replies from before the sign-out are ignored */
     char p[600];
     snprintf(p, sizeof p, "%s/youtube", data_dir());
     wipe_dir(p);
@@ -1536,6 +1558,7 @@ void youtube_forget_all(void) {
         wipe_file(p);
     }
     cfg_set("yt_profile", "");
+    ytcast_forget(); /* no cast device stays approved */
     wipe_session_traces();
 }
 
@@ -1553,6 +1576,7 @@ static void remove_cb(void *ud, bool yes) {
 
 static bool login_input(Screen *s, const InputEvent *ev) {
     Login *l = s->st;
+    if (l->done) return false; /* waiting to be closed */
     switch (ev->a) {
     case A_UP: if (l->sel > 0) l->sel--; l->col = 0; return true;
     case A_DOWN: if (l->sel < l->n) l->sel++; l->col = 0; return true;

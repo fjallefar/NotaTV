@@ -13,6 +13,7 @@
 
 /* ---------- connection ---------- */
 static char client_id[64];
+static int plex_gen; /* increased on sign-out: replies from before are ignored */
 
 const char *plex_client_id(void) {
     if (client_id[0]) return client_id;
@@ -426,6 +427,7 @@ typedef struct Req {
     void (*cb)(void *ud, struct Req *r);
     void *ud;
     char *token;
+    int gen;
 } Req;
 
 static void req_work(void *arg) {
@@ -441,7 +443,7 @@ static void req_work(void *arg) {
 
 static void req_done(void *arg) {
     Req *r = arg;
-    if (!r->cancelled && r->cb) r->cb(r->ud, r);
+    if (r->gen == plex_gen && !r->cancelled && r->cb) r->cb(r->ud, r);
     cJSON_Delete(r->json);
     free(r->url);
     free(r->token);
@@ -456,6 +458,7 @@ static Req *req_send(const char *method, const char *url, const char *token, voi
     r->cb = cb;
     r->ud = ud;
     r->srv = -1;
+    r->gen = plex_gen;
     job_submit(req_work, req_done, r);
     return r;
 }
@@ -1030,12 +1033,14 @@ typedef struct {
     bool auto_pick;   /* first login: choose your own servers */
     char *found_uri[MAX_SRV];
     bool ok;
+    int gen;
 } DiscJob;
 
 static DiscJob *disc_new(void) {
     DiscJob *j = calloc(1, sizeof *j);
     memcpy(j->local, plex_local, sizeof plex_local);
     j->n_local = n_plex_local;
+    j->gen = plex_gen;
     return j;
 }
 
@@ -1166,6 +1171,7 @@ static Link *live_link;
 
 static void link_disc_done(void *arg) {
     DiscJob *j = arg;
+    if (j->gen != plex_gen) { disc_free(j); return; } /* signed out */
     Link *l = live_link;
     if (j->ok) disc_merge(j);
     if (l) {
@@ -1325,6 +1331,7 @@ static Servers *live_servers;
 
 static void srvlist_done(void *arg) {
     DiscJob *j = arg;
+    if (j->gen != plex_gen) { disc_free(j); return; } /* signed out */
     Servers *v = live_servers;
     if (j->ok) disc_merge(j);
     if (v) {
@@ -1336,6 +1343,7 @@ static void srvlist_done(void *arg) {
 
 static void toggle_done(void *arg) {
     DiscJob *j = arg;
+    if (j->gen != plex_gen) { disc_free(j); return; } /* signed out */
     Servers *v = live_servers;
     bool found = false;
     for (int i = 0; i < j->n; i++) found |= j->found_uri[i] != NULL;
@@ -2198,6 +2206,7 @@ static void open_item(PItem *it) {
 
 /* sign out: the login, the servers (with their tokens), what is shown on the home screen and the leftovers in memory and /tmp */
 void plex_forget(void) {
+    plex_gen++; /* replies from before the sign-out are ignored */
     cfg_set("plex_token", "");
     cfg_set("plex_server_uri", "");
     cfg_set("plex_server_token", "");
@@ -2454,6 +2463,18 @@ static int detail_buttons(Detail *d, BtnKind *k) {
     return n;
 }
 
+/* append to a fixed buffer without letting the offset run past the end */
+static int meta_add(char *m, size_t n, int o, const char *fmt, ...) {
+    if (!n) return 0;
+    size_t l = (size_t)o < n ? (size_t)o : n - 1;
+    va_list ap;
+    va_start(ap, fmt);
+    int r = vsnprintf(m + l, n - l, fmt, ap);
+    va_end(ap);
+    if (r > 0) l += (size_t)r;
+    return (int)(l < n ? l : n - 1);
+}
+
 static void detail_draw(Screen *s) {
     Detail *d = s->st;
     PItem *it = &d->it;
@@ -2471,10 +2492,10 @@ static void detail_draw(Screen *s) {
     text_draw_clip(F_BOLD, 68, x, y, 1300, C_TEXT, AL_LEFT, it->title);
     char meta[300] = "", dur[32];
     int o = 0;
-    if (it->year) o += snprintf(meta + o, sizeof meta - o, "%s   ", it->year);
-    if (it->duration > 0) o += snprintf(meta + o, sizeof meta - o, T("%d min   "), (int)(it->duration / 60));
-    if (it->rating) o += snprintf(meta + o, sizeof meta - o, "%s   ", it->rating);
-    if (it->offset > 0) o += snprintf(meta + o, sizeof meta - o, T("%s left   "), fmt_duration(it->duration - it->offset, dur, sizeof dur));
+    if (it->year) o = meta_add(meta, sizeof meta, o, "%s   ", it->year);
+    if (it->duration > 0) o = meta_add(meta, sizeof meta, o, T("%d min   "), (int)(it->duration / 60));
+    if (it->rating) o = meta_add(meta, sizeof meta, o, "%s   ", it->rating);
+    if (it->offset > 0) o = meta_add(meta, sizeof meta, o, T("%s left   "), fmt_duration(it->duration - it->offset, dur, sizeof dur));
     if (n_enabled() > 1 && srv_ok(it->srv)) snprintf(meta + o, sizeof meta - o, "·  %s", S[it->srv].name);
     text_draw(F_REG, 28, x, y + 100, C_TEXT2, AL_LEFT, meta);
     float rx = draw_ratings(x, y + 156, it->rt_critic, it->rt_audience, it->imdb10);

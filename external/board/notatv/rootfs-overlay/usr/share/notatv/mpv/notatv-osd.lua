@@ -336,9 +336,31 @@ local function hide_logo()
     if logo_shown then mp.command_native({"overlay-remove", 2}); logo_shown = nil end
 end
 
+-- the banner's opacity (0..1): it fades in and out instead of appearing and vanishing at once
+local banner_k, banner_t, banner_anim = 0, 0, false
+local BANNER_IN, BANNER_OUT = 0.18, 0.4
+
+-- scale every alpha in the parts by k (ASS alpha: 00 = solid, FF = invisible); parts without their own alpha get one
+local function fade_parts(parts, k)
+    if k >= 1 then return end
+    local function sc(a) return string.format("%02X", 255 - math.floor((255 - tonumber(a, 16)) * k + 0.5)) end
+    for i, p in ipairs(parts) do
+        local n
+        p, n = p:gsub("\\1a&H(%x%x)&", function(a) return "\\1a&H" .. sc(a) .. "&" end)
+        if n == 0 then p = p:gsub("^{", "{\\1a&H" .. sc("00") .. "&", 1) end
+        parts[i] = p
+    end
+end
+
 local function show_logo(x, y)
     if not chan or not chan.logo then hide_logo(); return end
     local file = (hdr and chan.logo_hdr) or chan.logo
+    local nf = chan.logo_fades or 0
+    if nf > 1 and banner_k < 1 then -- a copy of the logo at the banner's opacity (made by tvshell)
+        local lv = math.floor(banner_k * banner_k * (3 - 2 * banner_k) * nf + 0.5)
+        if lv <= 0 then hide_logo(); return end
+        if lv < nf then file = file .. "." .. lv end
+    end
     local key = file .. ":" .. chan.num
     if logo_shown == key then return end
     overlay_at(2, x, y, file, chan.logo_w, chan.logo_h)
@@ -451,9 +473,23 @@ function render()
         local zp = {}
         local zapping = render_zap(zp, now)
         set_ov(ovz, table.concat(zp, "\n"))
-        if not zapping and anim_timer then anim_timer:kill() end
+        -- the banner's opacity moves toward shown/hidden (dt is one frame when it starts moving: render is
+        -- also called by the slow timer, and a fade must not start with a jump)
+        local target = now <= visible_until and 1 or 0
+        local dt = banner_anim and math.min(0.1, now - banner_t) or 1 / 30
+        banner_t = now
+        if target > banner_k then banner_k = math.min(1, banner_k + dt / BANNER_IN)
+        elseif target < banner_k then banner_k = math.max(0, banner_k - dt / BANNER_OUT) end
+        banner_anim = banner_k ~= target
+        if anim_timer then
+            if zapping or banner_anim then anim_timer:resume() else anim_timer:kill() end
+        end
         local banner = {}
-        if now <= visible_until then render_banner(banner, now) else hide_logo() end
+        if banner_k > 0 then
+            render_banner(banner, now)
+            local e = banner_k * banner_k * (3 - 2 * banner_k)
+            fade_parts(banner, e)
+        else hide_logo() end
         set_ov(ov, table.concat(banner, "\n"))
         hide_poster()
         return

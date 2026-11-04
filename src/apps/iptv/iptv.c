@@ -3,6 +3,8 @@
 #include "vendor/cJSON.h"
 #include <ctype.h>
 #include <limits.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -533,6 +535,7 @@ static void rebuild_vis(void) {
     }
 }
 
+static void iptv_after_load(void);
 static void load_done(void *arg) {
     LoadJob *j = arg;
     D.loading = false;
@@ -563,6 +566,7 @@ static void load_done(void *arg) {
         D.gen++;
         build_countries();
         rebuild_vis();
+        iptv_after_load();
         int with_sid = 0;
         for (int i = 0; i < D.n_ch; i++) with_sid += D.ch[i].sid > 0;
         D.short_epg = !*cfg_get("iptv_epg", "") && with_sid > D.n_ch / 2;
@@ -604,6 +608,12 @@ static void iptv_load(bool force) {
 }
 
 /* ---------- EPG (XMLTV) ---------- */
+/* limits: a big XMLTV guide must not exhaust memory on the Pi */
+#define EPG_MAX_PER_CH 300        /* programmes kept per channel (the ones nearest to now) */
+#define EPG_MAX_TOTAL 200000      /* total programmes: parsing stops adding at this point */
+#define EPG_PAST (3 * 3600)       /* drop programmes that ended more than 3 h ago */
+#define EPG_AHEAD (24 * 3600)     /* ... or start more than 24 h ahead (as before) */
+
 typedef struct { char *id; int idx; } IdMap;
 static int idmap_cmp(const void *a, const void *b) { return strcmp(((const IdMap *)a)->id, ((const IdMap *)b)->id); }
 
@@ -735,6 +745,13 @@ static time_t parse_xmltv_time(const char *s) {
     return t;
 }
 
+/* distance from now to a programme: 0 while it is on */
+static time_t prog_dist(time_t a, time_t b, time_t now) {
+    if (now < a) return a - now;
+    if (now > b) return now - b;
+    return 0;
+}
+
 static void xml_unescape(char *s) {
     char *w = s;
     for (char *r = s; *r;) {
@@ -761,7 +778,7 @@ static char *xml_attr(const char *tag, const char *end, const char *key) {
     return strndup(p, e - p);
 }
 
-static void epg_handle(EpgJob *j, const char *el, const char *el_end, time_t lo, time_t hi) {
+static void epg_handle(EpgJob *j, const char *el, const char *el_end, time_t lo, time_t hi, time_t now) {
     map_sort(j);
     const char *tag_end = strchr(el, '>');
     if (!tag_end || tag_end > el_end) return;
@@ -782,6 +799,7 @@ static void epg_handle(EpgJob *j, const char *el, const char *el_end, time_t lo,
     if (!te || te > el_end) return;
     char *title = strndup(t, te - t);
     xml_unescape(title);
+    time_t nd = prog_dist(a, b, now);
     /* the same tvg-id can be used by several channels: m points to the first; go through all */
     int first = (int)(m - j->map);
     while (first > 0 && !strcmp(j->map[first - 1].id, m->id)) first--;
@@ -790,6 +808,21 @@ static void epg_handle(EpgJob *j, const char *el, const char *el_end, time_t lo,
         int ci = j->map[k].idx;
         /* name matching is only used if the channel's own tvg-id is not in the guide */
         if (j->exact[ci] && (!j->tvgids[ci] || strcmp(j->tvgids[ci], m->id))) continue;
+        if (j->total >= EPG_MAX_TOTAL) break; /* total cap: stop adding */
+        if (j->n_progs[ci] >= EPG_MAX_PER_CH) {
+            /* full: replace the programme furthest from now if this one is closer */
+            int worst = 0;
+            time_t wd = prog_dist(j->progs[ci][0].start, j->progs[ci][0].stop, now);
+            for (int q = 1; q < j->n_progs[ci]; q++) {
+                time_t d = prog_dist(j->progs[ci][q].start, j->progs[ci][q].stop, now);
+                if (d > wd) { wd = d; worst = q; }
+            }
+            if (nd >= wd) continue;
+            free(j->progs[ci][worst].title);
+            j->progs[ci][worst] = (Prog){a, b, used ? strdup(title) : title};
+            used = true;
+            continue;
+        }
         if (j->n_progs[ci] == j->cap_progs[ci]) {
             j->cap_progs[ci] = j->cap_progs[ci] ? j->cap_progs[ci] * 2 : 32;
             j->progs[ci] = realloc(j->progs[ci], sizeof(Prog) * (size_t)j->cap_progs[ci]);
@@ -808,7 +841,7 @@ static int prog_cmp(const void *a, const void *b) {
 
 /* ---- cache of the parsed guide: parsing 100 MB of XMLTV takes a long time on the Pi, so the result is stored
    compactly and reused as long as epg.xml and the channel list are the same ---- */
-#define EPG_CACHE_MAGIC 0x54564547u /* "TVEG" */
+#define EPG_CACHE_MAGIC 0x54564548u /* "TVEH" (bumped: older caches have no programme caps) */
 typedef struct { uint32_t magic, n_ch; int64_t mtime, size; uint64_t names; } EpgCacheHdr;
 
 static bool epg_cache_load(EpgJob *j, const char *cpath, const struct stat *xs) {
@@ -885,7 +918,7 @@ static void epg_work(void *arg) {
     gzFile gz = gzopen(path, "rb"); /* reads both .gz and uncompressed */
     if (!gz) return;
     gzbuffer(gz, 1 << 17);
-    time_t now = time(NULL), lo = now - 3 * 3600, hi = now + 24 * 3600;
+    time_t now = time(NULL), lo = now - EPG_PAST, hi = now + EPG_AHEAD;
     size_t cap = 1 << 20, len = 0;
     char *buf = malloc(cap + 1);
     int n;
@@ -907,7 +940,7 @@ static void epg_work(void *arg) {
             if (!e) { p = s; break; }
             *e = 0;
             if (is_ch) epg_channel(j, s, e);
-            else epg_handle(j, s, e, lo, hi);
+            else epg_handle(j, s, e, lo, hi, now);
             p = e + strlen(endtag);
         }
         size_t rest = len - (p - buf);
@@ -1103,8 +1136,8 @@ static bool sepg_drain(int watch) {
 static const Prog *prog_at(const Channel *c, time_t t, int offset);
 
 /* request program data for a channel if it is missing or outdated */
-static void epg_want(int ci) {
-    if (!D.short_epg || ci < 0 || ci >= D.n_ch) return;
+static void epg_want(int gen, int ci) {
+    if (!D.short_epg || gen != D.gen || ci < 0 || ci >= D.n_ch) return;
     Channel *c = &D.ch[ci];
     if (c->sid <= 0 || c->epg_busy || D.sepg_busy >= 16) return;
     double age = app_time() - c->epg_t;
@@ -1118,7 +1151,7 @@ static void epg_want(int ci) {
     j->url = str_printf("%.*s/player_api.php?username=%.*s&password=%.*s&action=get_short_epg&stream_id=%d&limit=8",
                         (int)(lv - c->url), c->url, (int)(p - u), u, (int)(e - p - 1), p + 1, c->sid);
     j->ci = ci;
-    j->gen = D.gen;
+    j->gen = gen;
     c->epg_busy = true;
     D.sepg_busy++;
     job_submit(sepg_work, NULL, j);
@@ -1138,6 +1171,7 @@ typedef struct {
     int col;          /* 0 = groups, 1 = channels */
     int gsel, csel;   /* chosen group / channel (in the filtered list) */
     bool moving;      /* moves a favorite with up/down */
+    bool user_moved;  /* the user has already navigated: do not move the selection from under them */
     float gscroll, cscroll;
     int *list;        /* index into D.ch for the current group */
     int n_list;
@@ -1169,7 +1203,24 @@ static const char *group_name(int g) {
     return n;
 }
 
+/* the left column can be shorter than gsel (the groups are not loaded yet, or the playlist has none):
+   use an "All channels" entry if the playlist has one, otherwise Favorites (0) */
+static void clamp_gsel(Iptv *v) {
+    if (v->gsel >= 0 && v->gsel < n_groups_ui()) return;
+    for (int g = 2; g < n_groups_ui(); g++)
+        if (ui_group(g) >= 0 && !strcmp(group_name(g), "All channels")) { v->gsel = g; return; }
+    v->gsel = 0;
+}
+
+/* never leave the focus on a column that has nothing in it */
+static void fix_focus(Iptv *v) {
+    clamp_gsel(v);
+    if (v->col == 1 && v->n_list == 0) v->col = 0;
+}
+
 static void build_list(Iptv *v) {
+    if (v->built_gen != D.gen) v->csel = 0; /* new channel list: the old index does not fit */
+    if (v->gsel >= n_groups_ui()) { v->gsel = 0; v->csel = 0; }
     free(v->list);
     v->list = malloc(sizeof(int) * (D.n_ch + n_favs + 1));
     v->n_list = 0;
@@ -1192,11 +1243,27 @@ static void build_list(Iptv *v) {
 static void iptv_enter(Screen *s) {
     Iptv *v = s->st;
     favs_load();
-    v->gsel = n_favs > 0 || n_groups_ui() <= 2 ? 0 : 2; /* no favorites: the first country/group */
+    v->gsel = n_favs > 0 ? 0 : 2; /* no favorites: the first country/group (clamped below while the groups load) */
+    v->user_moved = false;
     v->col = 1;
     v->cfg_seen = app_cfg_gen();
     if (D.n_ch == 0 || D.status[0]) iptv_load(false);
+    clamp_gsel(v);
     build_list(v);
+    fix_focus(v);
+}
+
+/* the new channel list is in (D.ch/D.n_vis): correct a selection it no longer has */
+static void iptv_after_load(void) {
+    Screen *s = app_top();
+    if (!s || !s->name || strcmp(s->name, "iptv") || !s->st) return;
+    Iptv *v = s->st;
+    /* first start: while the groups loaded, clamp_gsel() put the selection on Favorites,
+       which is empty. Move to the first country/group unless the user has already moved. */
+    if (n_favs == 0 && v->gsel == 0 && !v->user_moved && n_groups_ui() > 2) v->gsel = 2;
+    clamp_gsel(v);
+    build_list(v);
+    fix_focus(v);
 }
 
 static void iptv_update(Screen *s, float dt) {
@@ -1207,7 +1274,9 @@ static void iptv_update(Screen *s, float dt) {
         v->cfg_seen = app_cfg_gen();
         iptv_load(true);
     }
+    clamp_gsel(v);
     if (v->built_gen != D.gen || v->built_g != v->gsel || (v->gsel <= 1 && v->fav_count != n_favs)) build_list(v);
+    fix_focus(v);
     if (v->gsel == 1) { /* TV guide: the chosen time never lies in the past; the window follows it */
         time_t now = time(NULL), base = now - now % 1800;
         if (v->gtime < now) v->gtime = now;
@@ -1253,6 +1322,40 @@ static void draw_setup(void) {
 
 /* TV guide: the favorites on a 2-hour timeline (program data from get_short_epg, about 8 programs ahead) */
 #define GUIDE_SPAN (120 * 60)
+typedef struct { time_t start, stop; const Prog *p; } GuideProg;
+static int guide_prog_cmp(const void *a, const void *b) {
+    time_t x = ((const GuideProg *)a)->start, y = ((const GuideProg *)b)->start;
+    return x < y ? -1 : x > y;
+}
+static int guide_time_cmp(const void *a, const void *b) {
+    time_t x = *(const time_t *)a, y = *(const time_t *)b;
+    return x < y ? -1 : x > y;
+}
+static bool guide_tile(const Prog *p, time_t a, time_t b, time_t v0, time_t v1,
+                       float gx, float y, float h, float pps, time_t now, bool me) {
+    a = a > v0 ? a : v0;
+    b = b < v1 ? b : v1;
+    if (b <= a) return false;
+    float x = gx + (float)(a - v0) * pps, w = (float)(b - a) * pps - 6;
+    if (w < 4) return true;
+    bool on = p->start <= now && p->stop > now;
+    float fp = ui_focus(p, me), fc = fp < 0 ? 0 : fp > 1 ? 1 : fp; /* the program in focus lights up (no lift in the grid) */
+    if (fc > 0.01f) ui_focus_under(x, y, w, h, 10, fc);
+    fill_rrect(x, y, w, h, 10, color_mix(on ? RGBA(255, 255, 255, 30) : RGBA(255, 255, 255, 14), RGB(66, 76, 98), fc));
+    if (fc > 0.01f) ui_focus_over(x, y, w, h, 10, fc);
+    if (w > 40) {
+        text_draw_clip(F_SEMI, 24, x + 14, y + 14, w - 24, me || on ? C_TEXT : C_TEXT2, AL_LEFT, p->title);
+        char span[24], t1[8], t2[8];
+        struct tm ta, tb;
+        localtime_r(&p->start, &ta);
+        localtime_r(&p->stop, &tb);
+        strftime(t1, sizeof t1, "%H:%M", &ta);
+        strftime(t2, sizeof t2, "%H:%M", &tb);
+        snprintf(span, sizeof span, "%s-%s", t1, t2);
+        text_draw_clip(F_REG, 20, x + 14, y + 50, w - 24, C_TEXT3, AL_LEFT, span);
+    }
+    return true;
+}
 static void draw_guide(Iptv *v, float cx, float cy, float cw, float rh) {
     time_t now = time(NULL), v0 = v->gview, v1 = v0 + GUIDE_SPAN;
     float nw = 250, gx = cx + nw, gw = cw - nw, top = cy + 46;
@@ -1281,7 +1384,7 @@ static void draw_guide(Iptv *v, float cx, float cy, float cw, float rh) {
         float y = top + i * rh - v->cscroll;
         if (y < top - rh || y > UI_H) continue;
         Channel *c = &D.ch[v->list[i]];
-        epg_want(v->list[i]);
+        epg_want(v->built_gen, v->list[i]);
         bool row = v->col == 1 && v->csel == i;
         float h = rh - 12;
         /* channel cell */
@@ -1290,33 +1393,56 @@ static void draw_guide(Iptv *v, float cx, float cy, float cw, float rh) {
         snprintf(num, sizeof num, "%d", i + 1);
         text_draw(F_SEMI, 22, cx + 16, y + h / 2 - 14, row ? C_TEXT : C_TEXT3, AL_LEFT, num);
         text_draw_clip(F_SEMI, 24, cx + 58, y + h / 2 - 16, nw - 84, row ? C_TEXT : C_TEXT2, AL_LEFT, DNAME(c));
-        /* programs */
+        /* programs: build a non-overlapping row (the provider's guide has duplicates and overlaps) */
         const Prog *selp = row ? prog_at(c, v->gtime, 0) : NULL;
         bool any = false;
-        for (int k = 0; k < c->n_progs; k++) {
-            const Prog *p = &c->progs[k];
-            time_t a = p->start > v0 ? p->start : v0, b = p->stop < v1 ? p->stop : v1;
-            if (b <= a) continue;
-            any = true;
-            float x = gx + (float)(a - v0) * pps, w = (float)(b - a) * pps - 6;
-            if (w < 4) continue;
-            bool on = p->start <= now && p->stop > now, me = p == selp;
-            float fp = ui_focus(p, me), fc = fp < 0 ? 0 : fp > 1 ? 1 : fp; /* the program in focus lights up (no lift in the grid) */
-            if (fc > 0.01f) ui_focus_under(x, y, w, h, 10, fc);
-            fill_rrect(x, y, w, h, 10, color_mix(on ? RGBA(255, 255, 255, 30) : RGBA(255, 255, 255, 14), RGB(66, 76, 98), fc));
-            if (fc > 0.01f) ui_focus_over(x, y, w, h, 10, fc);
-            if (w > 40) {
-                text_draw_clip(F_SEMI, 24, x + 14, y + 14, w - 24, me || on ? C_TEXT : C_TEXT2, AL_LEFT, p->title);
-                char span[24], t1[8], t2[8];
-                struct tm ta, tb;
-                localtime_r(&p->start, &ta);
-                localtime_r(&p->stop, &tb);
-                strftime(t1, sizeof t1, "%H:%M", &ta);
-                strftime(t2, sizeof t2, "%H:%M", &tb);
-                snprintf(span, sizeof span, "%s-%s", t1, t2);
-                text_draw_clip(F_REG, 20, x + 14, y + 50, w - 24, C_TEXT3, AL_LEFT, span);
+        GuideProg *gp = c->n_progs > 0 ? malloc(sizeof *gp * (size_t)c->n_progs) : NULL;
+        time_t *tt = NULL;
+        int ng = 0;
+        if (gp) {
+            for (int k = 0; k < c->n_progs; k++)
+                gp[k] = (GuideProg){c->progs[k].start, c->progs[k].stop, &c->progs[k]};
+            if (c->n_progs > 1) qsort(gp, (size_t)c->n_progs, sizeof *gp, guide_prog_cmp);
+            for (int k = 0; k < c->n_progs; k++) {
+                const Prog *p = gp[k].p;
+                if (p->stop <= p->start) continue;
+                /* a duplicate starts within 2 minutes of a program already kept */
+                if (ng > 0 && p->start - gp[ng - 1].p->start <= 120) continue;
+                gp[ng++] = (GuideProg){p->start, p->stop, p};
             }
+            if (ng > 0) tt = malloc(sizeof *tt * (size_t)(2 * ng));
         }
+        if (tt) {
+            int nt = 0;
+            for (int k = 0; k < ng; k++) {
+                tt[nt++] = gp[k].start;
+                tt[nt++] = gp[k].stop;
+            }
+            qsort(tt, (size_t)nt, sizeof *tt, guide_time_cmp);
+            int nu = 0;
+            for (int k = 0; k < nt; k++)
+                if (nu == 0 || tt[k] != tt[nu - 1]) tt[nu++] = tt[k];
+            /* each interval shows the covering program with the latest start */
+            const Prog *runp = NULL;
+            time_t runa = 0, runb = 0;
+            for (int k = 0; k + 1 < nu; k++) {
+                time_t a = tt[k], b = tt[k + 1];
+                const Prog *best = NULL;
+                for (int j = 0; j < ng; j++) {
+                    const Prog *p = gp[j].p;
+                    if (p->start <= a && p->stop >= b && (!best || p->start > best->start)) best = p;
+                }
+                if (best != runp) {
+                    if (runp) any |= guide_tile(runp, runa, runb, v0, v1, gx, y, h, pps, now, runp == selp);
+                    runp = best;
+                    runa = a;
+                }
+                runb = b;
+            }
+            if (runp) any |= guide_tile(runp, runa, runb, v0, v1, gx, y, h, pps, now, runp == selp);
+        }
+        free(tt);
+        free(gp);
         if (!any) {
             fill_rrect(gx, y, gw - 6, h, 10, RGBA(255, 255, 255, 8));
             if (row) { ui_focus_under(gx, y, gw - 6, h, 10, 1); fill_rrect(gx, y, gw - 6, h, 10, RGB(52, 60, 78)); ui_focus_over(gx, y, gw - 6, h, 10, 1); }
@@ -1385,7 +1511,7 @@ static void iptv_draw(Screen *s) {
         float y = cy + i * rh - v->cscroll;
         if (y < cy - rh || y > UI_H) continue;
         Channel *c = &D.ch[v->list[i]];
-        epg_want(v->list[i]);
+        epg_want(v->built_gen, v->list[i]);
         bool f = v->col == 1 && v->csel == i;
         bool sel = v->csel == i;
         if (f) { draw_shadow(cx, y, cw, rh - 10, 16, 16, 1); fill_rrect(cx, y, cw, rh - 10, 16, RGB(52, 60, 78)); }
@@ -1450,7 +1576,37 @@ static void iptv_draw(Screen *s) {
 }
 
 /* ---------- playback ---------- */
-typedef struct { int *list; int n, cur, shown; } PlayCtx; /* shown: the channel the banner shows */
+typedef struct { int *list; int n, cur, shown; int gen; } PlayCtx; /* shown: the channel the banner shows */
+
+/* a playlist's indexes into D.ch are only valid for the channel list (D.gen) they were made for */
+static bool pc_index(const PlayCtx *pc, int idx) {
+    return pc->gen == D.gen && idx >= 0 && idx < pc->n && pc->list && pc->list[idx] >= 0 && pc->list[idx] < D.n_ch;
+}
+
+/* copies of the logo at 1/8 .. 7/8 opacity (path.1 .. path.7) - the OSD script steps through them while the banner fades
+   (mpv's overlay-add has no opacity of its own). The pixels are premultiplied, so all four channels are scaled */
+#define LOGO_FADES 8
+static void logo_fades(const char *path, int w, int h) {
+    size_t n = (size_t)w * h * 4;
+    uint8_t *src = malloc(n), *dst = malloc(n);
+    FILE *f = src && dst ? fopen(path, "rb") : NULL;
+    bool ok = f && fread(src, 1, n, f) == n;
+    if (f) fclose(f);
+    for (int lv = 1; ok && lv < LOGO_FADES; lv++) {
+        unsigned k = lv * 256 / LOGO_FADES;
+        for (size_t i = 0; i < n; i++) dst[i] = (uint8_t)(src[i] * k >> 8);
+        char p[96], tmp[100];
+        snprintf(p, sizeof p, "%s.%d", path, lv);
+        snprintf(tmp, sizeof tmp, "%s.part", p);
+        FILE *o = fopen(tmp, "wb");
+        if (!o) break;
+        bool w_ok = fwrite(dst, 1, n, o) == n;
+        fclose(o);
+        if (w_ok) rename(tmp, p); else unlink(tmp);
+    }
+    free(src);
+    free(dst);
+}
 
 /* the channel logo for the banner - only if it has already been fetched (network here would block channel changes) */
 static void osd_logo(cJSON *o, const char *logo, int slot) {
@@ -1463,11 +1619,17 @@ static void osd_logo(cJSON *o, const char *logo, int slot) {
     if (!logo_card()) cJSON_AddTrueToObject(o, "logo_clean"); /* no light card in the banner, logo or not */
     if (logo && *logo && img_cached(lu) && img_export_bgra(lu, lp, 220, 120, &lw, &lh)) {
         cJSON_AddStringToObject(o, "logo", lp);
+        logo_fades(lp, lw, lh);
         if (hdr_cfg("hdr_always", 0)) { /* the TV in HDR: the OSD script uses this one */
             char hp[64];
+            int hw, hh;
             snprintf(hp, sizeof hp, "/tmp/notatv-logo-%d-hdr.bgra", slot);
-            if (img_export_bgra_ex(lu, hp, 220, 120, &lw, &lh, true)) cJSON_AddStringToObject(o, "logo_hdr", hp);
+            if (img_export_bgra_ex(lu, hp, 220, 120, &hw, &hh, true) && hw == lw && hh == lh) {
+                cJSON_AddStringToObject(o, "logo_hdr", hp);
+                logo_fades(hp, hw, hh);
+            }
         }
+        cJSON_AddNumberToObject(o, "logo_fades", LOGO_FADES);
         cJSON_AddNumberToObject(o, "logo_w", lw);
         cJSON_AddNumberToObject(o, "logo_h", lh);
     }
@@ -1490,10 +1652,11 @@ static void osd_write(cJSON *o, const char *mode) {
 /* the channel banner + browse panel are drawn by notatv-osd.lua from /tmp/notatv-chan.json */
 /* mode: "show" (after a channel change), "zap" (browsing), "update" (new program info - does not change visibility) */
 static void osd_channel(PlayCtx *pc, int idx, const char *mode) {
+    if (!pc_index(pc, idx)) return;
     bool zapping = !strcmp(mode, "zap");
     if (strcmp(mode, "update")) pc->shown = idx;
     Channel *c = &D.ch[pc->list[idx]];
-    epg_want(pc->list[idx]);
+    epg_want(pc->gen, pc->list[idx]);
     time_t now = time(NULL);
     const Prog *p = prog_at(c, now, 0), *nx = prog_at(c, now, 1);
     cJSON *o = cJSON_CreateObject();
@@ -1537,7 +1700,7 @@ static void osd_channel(PlayCtx *pc, int idx, const char *mode) {
 
 static void on_channel(void *ud, int idx) {
     PlayCtx *pc = ud;
-    if (idx < 0 || idx >= pc->n) return;
+    if (!pc_index(pc, idx)) return;
     int ci = pc->list[idx];
     recent_add(&D.ch[ci]);
     pc->cur = idx;
@@ -1546,16 +1709,19 @@ static void on_channel(void *ud, int idx) {
 
 static void on_preview(void *ud, int idx) {
     PlayCtx *pc = ud;
-    if (idx >= 0 && idx < pc->n) osd_channel(pc, idx, "zap");
+    if (pc_index(pc, idx)) osd_channel(pc, idx, "zap");
 }
 
 static void on_tick(void *ud) {
     PlayCtx *pc = ud;
+    if (!pc_index(pc, pc->shown)) { sepg_drain(-1); return; }
     if (sepg_drain(pc->list[pc->shown])) osd_channel(pc, pc->shown, "update");
 }
 
-static void play_list(int *list, int n, int start) {
-    if (n <= 0) return;
+static void play_list(int *list, int n, int start, int gen) {
+    if (n <= 0 || gen != D.gen) return;
+    for (int i = 0; i < n; i++) if (list[i] < 0 || list[i] >= D.n_ch) return;
+    if (start < 0 || start >= n) start = 0;
     const char *path = "/tmp/notatv-iptv.m3u";
     FILE *f = fopen(path, "w");
     if (!f) return;
@@ -1580,6 +1746,7 @@ static void play_list(int *list, int n, int start) {
     static const char *extra[] = {"--loop-playlist=inf", "--prefetch-playlist=no", "--user-agent=" IPTV_UA, NULL};
     rq.extra = extra;
     pc.cur = start;
+    pc.gen = gen;
     rq.tick = on_tick;
     osd_channel(&pc, start, "show"); /* the banner for the first channel (mpv is not running yet - read at file-loaded) */
     player_run(&rq);
@@ -1600,7 +1767,7 @@ void iptv_play_recent(int idx) {
             int *all = malloc(sizeof(int) * D.n_ch);
             if (all) {
                 for (int i = 0; i < D.n_ch; i++) all[i] = i;
-                play_list(all, D.n_ch, start);
+                play_list(all, D.n_ch, start, D.gen);
                 free(all);
                 return;
             }
@@ -1646,6 +1813,9 @@ static void epg_entered(void *ud, const char *text) {
     unlink(path);
     free(D.epg_url);
     D.epg_url = epg_url_cfg();
+    int with_sid = 0;
+    for (int i = 0; i < D.n_ch; i++) with_sid += D.ch[i].sid > 0;
+    D.short_epg = !*cfg_get("iptv_epg", "") && with_sid > D.n_ch / 2;
     epg_start();
 }
 
@@ -1995,10 +2165,11 @@ static void setup_done(void *ud, int idx) {
 }
 
 static void play_current(Iptv *v) {
-    if (!v->n_list) return;
+    if (v->built_gen != D.gen) build_list(v); /* called before the frame's rebuild: the old list is invalid */
+    if (!v->n_list || v->csel < 0 || v->csel >= v->n_list) return;
     int *copy = malloc(sizeof(int) * v->n_list);
     memcpy(copy, v->list, sizeof(int) * v->n_list);
-    play_list(copy, v->n_list, v->csel);
+    play_list(copy, v->n_list, v->csel, D.gen);
     free(copy);
 }
 
@@ -2026,7 +2197,9 @@ static void show_guide(Channel *c) {
 
 static void ch_menu_done(void *ud, int idx) {
     Iptv *v = ud;
-    if (v != menu_owner || !v->n_list) return;
+    if (v != menu_owner) return;
+    if (v->built_gen != D.gen) build_list(v); /* the channel list changed while the menu was open */
+    if (!v->n_list || v->csel < 0 || v->csel >= v->n_list) return;
     Channel *c = &D.ch[v->list[v->csel]];
     if (idx == 0) play_current(v);
     else if (idx == 1) app_toast(toggle_fav(c->url) ? T("%s added to favorites") : T("%s removed from favorites"), DNAME(c));
@@ -2076,6 +2249,9 @@ static bool iptv_input(Screen *s, const InputEvent *ev) {
         }
         return false;
     }
+    if (ev->a == A_UP || ev->a == A_DOWN || ev->a == A_LEFT || ev->a == A_RIGHT ||
+        ev->a == A_CHUP || ev->a == A_CHDOWN) v->user_moved = true;
+    if (v->built_gen != D.gen) build_list(v); /* new channel list: the indexes from the old one must not be used */
     if (v->moving) { /* move mode: up/down moves the favorite, anything else ends it */
         if (v->gsel != 0 || v->col != 1) v->moving = false;
         else if (ev->a == A_UP && v->csel > 0) { fav_swap(v, v->csel, v->csel - 1); v->csel--; return true; }
@@ -2128,7 +2304,7 @@ static bool iptv_input(Screen *s, const InputEvent *ev) {
         if (v->col == 1 && v->n_list) open_channel_menu(v);
         return true;
     case A_YELLOW:
-        if (v->col == 1 && v->n_list) {
+        if (v->col == 1 && v->n_list && !ev->repeat) {
             Channel *c = &D.ch[v->list[v->csel]];
             app_toast(toggle_fav(c->url) ? T("%s added to favorites") : T("%s removed from favorites"), DNAME(c));
         }

@@ -11,10 +11,10 @@ KEEP=/data/notatv/logs
 CONF=/data/notatv/notatv.conf
 
 # masking: values of secret URL parameters, Authorization/token headers and fields, Xtream paths,
-# smb://user:password@ and http://user:password@, cookies
+# smb://user:password@ and http://user:password@, cookies, codes in toast text and settings
 mask() {
 	sed -E \
-		-e 's#([?&;](api_key|apikey|ApiKey|X-Plex-Token|x-plex-token|token|Token|access_token|refresh_token|password|pass|username|user|auth|key|sig|signature)=)[^&" ]*#\1***#g' \
+		-e 's#([?&;](api_key|apikey|ApiKey|X-Plex-Token|x-plex-token|token|Token|access_token|refresh_token|password|pass|username|user|auth|key|sig|n|pot|signature)=)[^&" ]*#\1***#g' \
 		-e 's#(Token|token|Bearer|X-Plex-Token|X-Emby-Token|X-MediaBrowser-Token)([=:] *"?)[A-Za-z0-9._~+/=-]{6,}#\1\2***#g' \
 		-e 's#(Authorization: *)[^"]*#\1***#g' \
 		-e 's#(Bearer|OAuth) +[A-Za-z0-9._~+/=-]+#\1 ***#g' \
@@ -22,7 +22,9 @@ mask() {
 		-e 's#/(live|movie|series|timeshift)/[^/ ]+/[^/ ]+/#/\1/***/***/#g' \
 		-e 's#(://)[^/@ :]+:[^/@ ]+@#\1***:***@#g' \
 		-e 's#(Cookie: *)[^"]*#\1***#g' \
-		-e 's#(-pin +)[0-9]{4}#\1****#g' |
+		-e 's#(-pin +)[0-9]{4}#\1****#g' \
+		-e 's#((New code|Ny kode): )[0-9]+#\1***#g' \
+		-e 's#((phone|airplay)_pin=)[0-9]+#\1***#g' |
 	secrets
 }
 
@@ -33,7 +35,7 @@ secrets() {
 		BEGIN {
 			while ((getline line < conf) > 0) {
 				k = tolower(substr(line, 1, index(line, "=") - 1)); v = substr(line, index(line, "=") + 1)
-				if (k ~ /token|pass|key|secret|cookie|xtream_user|_user$|apikey/ && length(v) >= 5) s[++n] = v
+				if ((k ~ /token|pass|key|secret|cookie|xtream_user|_user$|apikey/ && length(v) >= 5) || (k ~ /pin$/ && length(v) >= 4)) s[++n] = v
 			}
 		}
 		{

@@ -6,6 +6,9 @@ msgstr ""
 msgid "Cannot open the folder"
 msgstr "Kan ikke åbne mappen"
 
+msgid "Loading…"
+msgstr "Indlæser…"
+
 msgid "Media"
 msgstr "Medier"
 

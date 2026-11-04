@@ -25,6 +25,7 @@
 #define APP_NAME "NotaTV"
 
 /* ---------- delt tilstand ---------- */
+#define CAST_APPROVED_MAX 16
 enum { Y_NONE, Y_PLAY, Y_PAUSE, Y_RESUME, Y_STOP, Y_SEEK, Y_NEXT, Y_PREV, Y_VOLUME };
 typedef struct { int cmd; double arg; } YCmd;
 typedef struct { char sc[32]; char k[10][24]; char v[10][256]; int n; } YMsg;
@@ -56,6 +57,15 @@ static struct {
     YMsg out[32];
     int nout;
     bool rebind;
+    /* cast devices approved on the TV (by IP) */
+    char approved[CAST_APPROVED_MAX][64];
+    int napproved;
+    char ask_ip[64];          /* a new device waits for Allow/Deny on the TV */
+    bool ask;
+    double asked_t;           /* when the question was shown; 0 = none, expires after 60 s */
+    /* devices denied on the TV (by IP), remembered for 10 minutes */
+    struct { char ip[64]; double t; } denied[CAST_APPROVED_MAX];
+    int ndenied;
 } Y = {.volume = 100, .state = -1, .cur = -1};
 
 static void push(int cmd, double arg) {
@@ -428,11 +438,14 @@ static int out_thread(void *arg) {
         }
         char *body = malloc(cap);
         len += (size_t)snprintf(body + len, cap - len, "count=%d&ofs=%ld", n, ofs);
+        if (len > cap - 1) len = cap - 1;
         for (int i = 0; i < n; i++) {
             len += (size_t)snprintf(body + len, cap - len, "&req%d__sc=%s", i, msgs[i].sc);
+            if (len > cap - 1) len = cap - 1;
             for (int k = 0; k < msgs[i].n; k++) {
                 char *v = enc(msgs[i].v[k]);
                 len += (size_t)snprintf(body + len, cap - len, "&req%d_%s=%s", i, msgs[i].k[k], v);
+                if (len > cap - 1) len = cap - 1;
                 free(v);
             }
         }
@@ -534,6 +547,58 @@ static void register_pairing(const char *code) {
 typedef struct { int fd; } DConn;
 #define DIAL_MAX_CONN 8 /* connections served at a time (one thread each) */
 static SDL_AtomicInt dial_n;
+
+/* a device is allowed if it has been approved on the TV (localhost always is) */
+static bool cast_approved(const char *ip) {
+    if (!strcmp(ip, "127.0.0.1") || !strcmp(ip, "::1")) return true;
+    bool ok = false;
+    SDL_LockMutex(mu);
+    for (int i = 0; i < Y.napproved; i++)
+        if (!strcmp(Y.approved[i], ip)) { ok = true; break; }
+    SDL_UnlockMutex(mu);
+    return ok;
+}
+/* mu locked: drop denials older than 10 minutes and say whether ip was denied recently */
+static bool cast_denied(const char *ip) {
+    const double forget_after = 600; /* 10 minutes */
+    double now = app_time();
+    bool no = false;
+    for (int i = 0; i < Y.ndenied; ) {
+        if (now - Y.denied[i].t >= forget_after) { Y.denied[i] = Y.denied[--Y.ndenied]; continue; }
+        if (!strcmp(Y.denied[i].ip, ip)) no = true;
+        i++;
+    }
+    return no;
+}
+/* mu locked: remember a denial for 10 minutes */
+static void cast_deny(const char *ip) {
+    if (!ip[0]) return;
+    for (int i = 0; i < Y.ndenied; i++)
+        if (!strcmp(Y.denied[i].ip, ip)) { Y.denied[i].t = app_time(); return; }
+    if (Y.ndenied < CAST_APPROVED_MAX) {
+        int i = Y.ndenied++;
+        snprintf(Y.denied[i].ip, sizeof Y.denied[i].ip, "%s", ip);
+        Y.denied[i].t = app_time();
+    } else { /* full: forget the oldest */
+        int old = 0;
+        for (int i = 1; i < Y.ndenied; i++)
+            if (Y.denied[i].t < Y.denied[old].t) old = i;
+        snprintf(Y.denied[old].ip, sizeof Y.denied[old].ip, "%s", ip);
+        Y.denied[old].t = app_time();
+    }
+}
+/* a new device: let the main thread ask on the TV (once at a time) */
+static void cast_ask(const char *ip) {
+    if (!ip[0]) return;
+    SDL_LockMutex(mu);
+    bool pending = Y.asked_t > 0 && app_time() - Y.asked_t < 60; /* Home can close the question without an answer */
+    if (!Y.ask && !pending && !cast_denied(ip)) {
+        snprintf(Y.ask_ip, sizeof Y.ask_ip, "%s", ip);
+        Y.ask = true;
+    }
+    SDL_UnlockMutex(mu);
+}
+
 static int dial_conn(void *arg) {
     DConn *dc = arg;
     int fd = dc->fd;
@@ -565,6 +630,15 @@ static int dial_conn(void *arg) {
             inet_ntop(AF_INET6, &((struct sockaddr_in6 *)&me)->sin6_addr, ip, sizeof ip);
             if (!strncmp(ip, "::ffff:", 7)) memmove(ip, ip + 7, strlen(ip + 7) + 1);
         } else inet_ntop(AF_INET, &((struct sockaddr_in *)&me)->sin_addr, ip, sizeof ip);
+    }
+    struct sockaddr_storage peer;
+    socklen_t pl = sizeof peer;
+    char cip[64] = "";
+    if (getpeername(fd, (struct sockaddr *)&peer, &pl) == 0) {
+        if (peer.ss_family == AF_INET6) {
+            inet_ntop(AF_INET6, &((struct sockaddr_in6 *)&peer)->sin6_addr, cip, sizeof cip);
+            if (!strncmp(cip, "::ffff:", 7)) memmove(cip, cip + 7, strlen(cip + 7) + 1);
+        } else inet_ntop(AF_INET, &((struct sockaddr_in *)&peer)->sin_addr, cip, sizeof cip);
     }
     if (!SDL_GetAtomicInt(&enabled)) { reply(fd, "404 Not Found", "text/plain", NULL, ""); goto done; }
     /* CSRF: a random web site must not start/control. The DIAL spec: apps send "Origin: package:<app>"
@@ -599,18 +673,21 @@ static int dial_conn(void *arg) {
         reply(fd, "200 OK", "application/xml", ex, b);
         free(b);
     } else if (!strncmp(path, "/apps/YouTube", 13)) {
+        bool ok = cast_approved(cip);
         if (!strcmp(method, "GET")) {
             SDL_LockMutex(mu);
-            bool running = Y.connected || Y.playing_now;
+            bool running = ok && (Y.connected || Y.playing_now);
+            char add[1024] = "";
+            if (ok) snprintf(add, sizeof add, "<additionalData><screenId>%s</screenId><loungeToken>%s</loungeToken>"
+                                              "<loungeTokenRefreshInterval>1500000</loungeTokenRefreshInterval></additionalData>", screen_id, Y.token);
             char *b = str_printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?><service xmlns=\"urn:dial-multiscreen-org:schemas:dial\" dialVer=\"2.1\">"
-                                 "<name>YouTube</name><options allowStop=\"true\"/><state>%s</state>%s"
-                                 "<additionalData><screenId>%s</screenId><loungeToken>%s</loungeToken>"
-                                 "<loungeTokenRefreshInterval>1500000</loungeTokenRefreshInterval></additionalData></service>",
-                                 running ? "running" : "stopped", running ? "<link rel=\"run\" href=\"run\"/>" : "", screen_id, Y.token);
+                                 "<name>YouTube</name><options allowStop=\"true\"/><state>%s</state>%s%s</service>",
+                                 running ? "running" : "stopped", running ? "<link rel=\"run\" href=\"run\"/>" : "", add);
             SDL_UnlockMutex(mu);
             reply(fd, "200 OK", "application/xml", NULL, b);
             free(b);
         } else if (!strcmp(method, "POST")) {
+            if (!ok) { cast_ask(cip); reply(fd, "403 Forbidden", "text/plain", NULL, ""); goto done; }
             char *body = strstr(buf, "\r\n\r\n"), code[64] = "";
             if (body) {
                 char *pc = strstr(body + 4, "pairingCode=");
@@ -621,6 +698,7 @@ static int dial_conn(void *arg) {
             snprintf(ex, sizeof ex, "Location: http://%s:%d/apps/YouTube/run\r\n", ip, DIAL_PORT);
             reply(fd, "201 Created", "text/plain", ex, "");
         } else if (!strcmp(method, "DELETE")) {
+            if (!ok) { reply(fd, "403 Forbidden", "text/plain", NULL, ""); goto done; }
             push(Y_STOP, 0);
             reply(fd, "200 OK", "text/plain", NULL, "");
         } else reply(fd, "405 Method Not Allowed", "text/plain", NULL, "");
@@ -681,12 +759,37 @@ char *ytcast_pairing_code(void) { /* blocking (background job); malloc'ed "123 4
 /* ---------- main thread ---------- */
 void ytcast_apply(void) { SDL_SetAtomicInt(&enabled, cfg_int("ytcast_enabled", 1) && app_on("youtube")); }
 
+/* sign out: no cast device is approved any more */
+void ytcast_forget(void) {
+    if (!mu) return;
+    SDL_LockMutex(mu);
+    Y.napproved = 0;
+    Y.ndenied = 0;
+    Y.ask = false;
+    Y.asked_t = 0;
+    SDL_UnlockMutex(mu);
+}
+
 static void new_id(char *out, size_t n) {
     snprintf(out, n, "%08x-%04x-4%03x-a%03x-%08x%04x", (unsigned)SDL_rand_bits(), (unsigned)SDL_rand_bits() & 0xffff,
              (unsigned)SDL_rand_bits() & 0xfff, (unsigned)SDL_rand_bits() & 0xfff, (unsigned)SDL_rand_bits(), (unsigned)SDL_rand_bits() & 0xffff);
 }
 
 static void play_current(void);
+
+/* the viewer allowed or denied a new cast device */
+static void cast_allow_cb(void *ud, bool yes) {
+    (void)ud;
+    SDL_LockMutex(mu);
+    Y.asked_t = 0; /* answered: a new POST may ask again */
+    if (Y.ask_ip[0]) {
+        if (yes) {
+            if (Y.napproved < CAST_APPROVED_MAX)
+                snprintf(Y.approved[Y.napproved++], sizeof Y.approved[0], "%s", Y.ask_ip);
+        } else cast_deny(Y.ask_ip);
+    }
+    SDL_UnlockMutex(mu);
+}
 
 void ytcast_tick(void) {
     if (!started) {
@@ -708,6 +811,13 @@ void ytcast_tick(void) {
         return;
     }
     SDL_LockMutex(mu);
+    bool ask = Y.ask;
+    char ask_ip[64];
+    if (ask) {
+        snprintf(ask_ip, sizeof ask_ip, "%s", Y.ask_ip);
+        Y.ask = false;
+        Y.asked_t = app_time(); /* pending until answered or 60 s pass */
+    }
     if (screen_id[0] && strcmp(screen_id, cfg_get("yt_screen_id", ""))) cfg_set("yt_screen_id", screen_id); /* fixed screen id: phones remember the box */
     const char *nm = cfg_get("device_name", "NotaTV");
     if (strcmp(nm, name)) { snprintf(name, sizeof name, "%s", nm); Y.rebind = true; }
@@ -723,6 +833,11 @@ void ytcast_tick(void) {
     memcpy(q, Y.q, sizeof(YCmd) * n);
     Y.qn = 0;
     SDL_UnlockMutex(mu);
+    if (ask) {
+        char msg[160];
+        snprintf(msg, sizeof msg, T("Allow %s to cast YouTube?"), ask_ip);
+        confirm_open(T("YouTube cast"), msg, T("Allow"), T("Deny"), cast_allow_cb, NULL);
+    }
     if (announce) app_toast(T("YouTube: %s is connected"), remote);
     (void)q;
     (void)n; /* outside playback: only new content does anything */

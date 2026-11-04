@@ -62,6 +62,9 @@ void gfx_set_hdr(bool on);
 bool gfx_get_hdr(void);
 void fill_vgrad_dither(float x, float y, float w, float h, Color top, Color bot); /* without banding */
 void gfx_stats(int *geom, int *tex_new, int *imgs);
+void gfx_frame_begin(void); /* start of every drawn frame: uploads the glyphs made last frame */
+void gfx_idle_tick(void);   /* once per frame: makes the learned text sizes' atlases in idle time */
+void gfx_frame_times(double *glyph_ms, double *img_ms, double *mip_ms, int *n_glyph, int *n_img, int *n_mip); /* this frame's texture work (and reset) */
 /* own display presentation on the Pi (kms_present.c): UI in 1080p, scaled by the display hardware */
 bool kms_present_init(SDL_Renderer *ren, int w, int h);
 void kms_present_quit(void);
@@ -107,6 +110,7 @@ bool img_draw(Image *im, float x, float y, float w, float h, float radius, float
 /* draw with "cover" cropping (fills the whole rectangle) */
 bool img_draw_cover(Image *im, float x, float y, float w, float h, float radius, float alpha);
 void img_cache_trim(void);
+void img_cache_clear(void);
 /* save an image (from the cache or fetched now) as raw BGRA scaled to max w*h - for the mpv overlay */
 bool img_export_bgra(const char *url, const char *path, int maxw, int maxh, int *ow, int *oh);
 bool img_export_bgra_ex(const char *url, const char *path, int maxw, int maxh, int *ow, int *oh, bool hdr);
@@ -288,6 +292,7 @@ void app_set_overlay(const char *app_id, void (*draw)(void)) NOTA_NEW;
    in this frame (so they never overlap). w may grow while it fades in, so the others slide aside */
 float app_overlay_place(float right, float w) NOTA_NEW;
 void app_toast(const char *fmt, ...);
+void app_toast_secret(const char *fmt, ...); /* shown on screen, but not written to the log (codes) */
 void app_request_redraw(void);
 double app_time(void);
 bool app_video_suspend(void);

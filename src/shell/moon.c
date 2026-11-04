@@ -11,8 +11,19 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+/* SIGTERM first; tvmoon up to 1.0.10 ignores it while waiting for a PIN, so SIGKILL after 2 s */
+static void moon_kill(pid_t pid) {
+    kill(pid, SIGTERM);
+    for (int i = 0; i < 40; i++) {
+        if (waitpid(pid, NULL, WNOHANG) == pid) return;
+        SDL_Delay(50);
+    }
+    kill(pid, SIGKILL);
+    waitpid(pid, NULL, 0);
+}
+
 /* run tvmoon with the display; argv[0] is ignored. Each line from tvmoon's stdout is given to on_line.
-   Returns tvmoon's exit code (-1 on error). */
+   Returns tvmoon's exit code (-1 on error), or 0 if the user cancelled the connection. */
 int moon_run(char *const *argv, void (*on_line)(const char *line, void *ud), void *ud) {
     int pfd[2];
     if (pipe2(pfd, O_CLOEXEC) != 0) return -1;
@@ -33,10 +44,13 @@ int moon_run(char *const *argv, void (*on_line)(const char *line, void *ud), voi
     }
     close(pfd[1]);
     int status = -1;
+    bool cancelled = false, timed_out = false;
     if (pid > 0) {
         SDL_Log("moon: tvmoon startet (pid %d)", pid);
         char buf[1024];
         size_t len = 0;
+        bool connected = false;
+        Uint64 t0 = SDL_GetTicks();
         for (;;) {
             /* tvmoon reads controllers/keyboard/remote itself; we just empty our own queue */
             struct pollfd p[40];
@@ -45,9 +59,20 @@ int moon_run(char *const *argv, void (*on_line)(const char *line, void *ud), voi
             for (int i = 0; i < nf; i++) p[i] = (struct pollfd){fds[i], POLLIN, 0};
             p[nf] = (struct pollfd){pfd[0], POLLIN, 0};
             poll(p, (nfds_t)nf + 1, 200);
+            /* while connecting, keep the UI events flowing so Back/Home can cancel */
+            if (!connected) {
+                SDL_Event e;
+                while (SDL_PollEvent(&e)) input_handle_sdl(&e);
+            }
             input_poll();
             InputEvent ev;
-            while (input_next(&ev)) {}
+            while (input_next(&ev))
+                if (!connected && (ev.a == A_BACK || ev.a == A_HOME)) cancelled = true;
+            if (cancelled) {
+                SDL_Log("moon: forbindelsen afbrudt");
+                moon_kill(pid);
+                break;
+            }
             if (p[nf].revents & (POLLIN | POLLHUP)) {
                 ssize_t r = read(pfd[0], buf + len, sizeof buf - 1 - len);
                 if (r > 0) {
@@ -57,12 +82,19 @@ int moon_run(char *const *argv, void (*on_line)(const char *line, void *ud), voi
                     while ((nl = strchr(buf, '\n'))) {
                         *nl = 0;
                         SDL_Log("moon: %s", buf);
+                        if (!strcmp(buf, "status\tstreaming")) connected = true;
                         if (on_line) on_line(buf, ud);
                         len -= (size_t)(nl + 1 - buf);
                         memmove(buf, nl + 1, len + 1);
                     }
                     if (len >= sizeof buf - 1) len = 0;
                 }
+            }
+            if (!connected && SDL_GetTicks() - t0 >= 30000) {
+                SDL_Log("moon: tvmoon svarede ikke");
+                timed_out = true;
+                moon_kill(pid);
+                break;
             }
             if (waitpid(pid, &status, WNOHANG) == pid) break;
         }
@@ -73,6 +105,8 @@ int moon_run(char *const *argv, void (*on_line)(const char *line, void *ud), voi
     InputEvent ev;
     while (input_next(&ev)) {}
     run_cmd("%s/music resume >/dev/null 2>&1", helper_path());
+    if (timed_out) app_toast(T("Could not connect to the PC"));
+    if (cancelled || timed_out) return 0;
     return pid > 0 && WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 

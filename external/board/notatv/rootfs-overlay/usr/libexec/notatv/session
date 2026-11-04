@@ -27,4 +27,4 @@ if [ -f $V ] && [ -x /usr/libexec/notatv/update ]; then
 fi
 # keep the previous log after a crash
 [ -f /tmp/tvshell.log ] && mv /tmp/tvshell.log /tmp/tvshell.log.1
-exec /usr/bin/tvshell > /tmp/tvshell.log 2>&1
+exec /usr/bin/tvshell >> /tmp/tvshell.log 2>&1
