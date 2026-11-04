@@ -41,6 +41,7 @@ Kort: Mere glat på Raspberry Pi 4, et blødere kanalskift i Live TV og netværk
 - Screensaver glides in over a second and fades quickly back out
 - Setup guide: the app list scrolls so Continue can always be reached
 - Fixes: no crash after playback (transition textures), keyboard pointer cleared with its screen
+- Apps in the App Store (they also work on 1.0.12): Live TV 1.0.6 (TV guide without overlapping programmes, fading banner), Jellyfin 1.0.4 and Seerr 1.0.5 (https by default, warning for unencrypted sign-in), Media 1.0.2 (slow drives no longer freeze the screen), Music 1.0.3, Plex 1.0.5, Twitch 1.0.6, YouTube 1.0.6 (a new device must be allowed on the TV before it can cast)
 
 ## 1.0.12
 

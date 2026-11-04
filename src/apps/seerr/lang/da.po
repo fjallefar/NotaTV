@@ -453,11 +453,17 @@ msgstr "Netflix-rækkerne"
 msgid "The rows are fetched from Netflix's public top lists: the top 10 for your country and the worldwide top 20. Nothing about you is sent"
 msgstr "Rækkerne hentes fra Netflix' offentlige toplister: top 10 for dit land og top 20 for hele verden. Intet om dig sendes med"
 
-msgid "A calmer, smoother look"
-msgstr "Et roligere og blødere udseende"
 
-msgid "What you choose lifts gently toward you with a soft glow instead of a white frame"
-msgstr "Det, du vælger, løfter sig blødt frem med en svag glød i stedet for en hvid ramme"
 
-msgid "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
-msgstr "Det nye udseende kræver NotaTV 1.0.5 - på ældre versioner ser det ud som før"
+
+msgid "Safer sign-in, and fewer sign-in prompts"
+msgstr "Mere sikkert login og færre login-beskeder"
+
+msgid "When the server rejects the session, Seerr signs in again only once"
+msgstr "Når serveren afviser sessionen, logger Seerr kun ind igen én gang"
+
+msgid "Server names use https by default, IP addresses and local names http - and you are warned when a sign-in would not be encrypted"
+msgstr "Servernavne bruger https som standard, IP-adresser og lokale navne http - og du får en advarsel, hvis et login ikke bliver krypteret"
+
+msgid "Down and OK in an empty list no longer closes the app"
+msgstr "Ned og OK i en tom liste lukker ikke længere appen"

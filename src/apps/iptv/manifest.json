@@ -1,6 +1,6 @@
 {
   "id": "iptv",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "api": 2,
   "name": "Live TV",
   "desc": "Watch live TV and channels from your IPTV provider",
@@ -11,10 +11,12 @@
   "order": 10,
   "default": true,
   "changes": {
-    "summary": "The right channel name when you start from the home screen",
+    "summary": "A tidier TV guide and a softer channel change",
     "points": [
-      "A channel started from the home screen shows its own name in the banner - before it could show the channel you watched last",
-      "Channels from the home screen are also found when your provider has given them new addresses, so you can change channel from there"
+      "TV guide: programmes the provider lists on top of each other are laid out side by side, and each time slot shows the programme that started last",
+      "Changing channel: the banner and the channel logo fade in and out (needs NotaTV 1.0.13)",
+      "Reloading the channel list can no longer play the wrong channel, and on the first start the focus lands on the first group",
+      "A new guide address works at once, a very large guide can no longer fill the memory, and holding Yellow changes a favourite only once"
     ]
   }
 }

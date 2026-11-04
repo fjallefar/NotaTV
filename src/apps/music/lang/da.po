@@ -112,14 +112,12 @@ msgstr "Afbryd forbindelse"
 msgid "AirPlay disconnected"
 msgstr "AirPlay afbrudt"
 
-msgid "A Disconnect button, and burn-in protection that glides"
-msgstr "En knap til at afbryde, og beskyttelse mod indbrænding, der glider"
 
-msgid "Disconnect: a button below the player ends AirPlay or Bluetooth (Down, then OK)"
-msgstr "Afbryd forbindelse: en knap under afspilleren afbryder AirPlay eller Bluetooth (Ned og så OK)"
 
-msgid "Burn-in protection moves the screen smoothly instead of a pixel at a time (needs NotaTV 1.0.6)"
-msgstr "Beskyttelsen mod indbrænding flytter skærmen blødt i stedet for en pixel ad gangen (kræver NotaTV 1.0.6)"
 
-msgid "The Now playing box no longer hides behind Tesla's cars on the home screen (needs NotaTV 1.0.6)"
-msgstr "Spiller nu-boksen gemmer sig ikke længere bag Teslas biler på forsiden (kræver NotaTV 1.0.6)"
+
+msgid "AirPlay pause is shown correctly"
+msgstr "Pause i AirPlay vises rigtigt"
+
+msgid "When you pause AirPlay on your phone, Music shows it as paused"
+msgstr "Når du sætter AirPlay på pause på telefonen, viser Musik det som sat på pause"

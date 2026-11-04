@@ -37,8 +37,10 @@ msgid "Movies, music and pictures from USB and network"
 msgstr "Film, musik og billeder fra USB og netværk"
 
 
-msgid "Folders with odd file names play correctly"
-msgstr "Mapper med mærkelige filnavne afspilles korrekt"
 
-msgid "A file name with a line break no longer breaks the playlist of a folder"
-msgstr "Et filnavn med linjeskift ødelægger ikke længere en mappes afspilningsliste"
+
+msgid "A slow drive no longer freezes the screen"
+msgstr "Et langsomt drev fryser ikke længere skærmen"
+
+msgid "Folders are read in the background with a spinner, so a slow or hung network drive does not freeze the box"
+msgstr "Mapper læses i baggrunden med en ventecirkel, så et langsomt eller hængt netværksdrev ikke fryser boksen"

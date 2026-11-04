@@ -1,6 +1,6 @@
 {
   "id": "media",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "api": 2,
   "name": "Media",
   "desc": "Movies, music and pictures from USB and network",
@@ -11,9 +11,9 @@
   "order": 90,
   "default": true,
   "changes": {
-    "summary": "Folders with odd file names play correctly",
+    "summary": "A slow drive no longer freezes the screen",
     "points": [
-      "A file name with a line break no longer breaks the playlist of a folder"
+      "Folders are read in the background with a spinner, so a slow or hung network drive does not freeze the box"
     ]
   }
 }

@@ -1,6 +1,6 @@
 {
   "id": "plex",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": 2,
   "name": "Plex",
   "desc": "Movies and shows from your Plex server",
@@ -11,12 +11,9 @@
   "order": 20,
   "default": true,
   "changes": {
-    "summary": "A calmer, smoother look",
+    "summary": "Signing out leaves nothing behind",
     "points": [
-      "What you choose lifts gently toward you with a soft glow instead of a white frame",
-      "Sharper pictures in the row on the home screen",
-      "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before",
-      "Plex cast is removed for now: the new Plex app only casts to Chromecast. It will come back in a form that works"
+      "Replies from Plex that arrive after you sign out are thrown away, so nothing of the account is kept"
     ]
   }
 }

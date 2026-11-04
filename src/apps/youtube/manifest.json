@@ -1,6 +1,6 @@
 {
   "id": "youtube",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "api": 2,
   "name": "YouTube",
   "desc": "Search and watch videos on YouTube",
@@ -11,9 +11,11 @@
   "order": 40,
   "default": true,
   "changes": {
-    "summary": "Ready for the Raspberry Pi 5",
+    "summary": "Casting to the TV needs your approval",
     "points": [
-      "On a Raspberry Pi 5 the quality also stops at 1080p - YouTube has 1440p and 4K only in formats the Pi 5 cannot decode in hardware"
+      "A new phone or computer must be allowed on the TV before it can cast",
+      "Signing out removes more traces, also replies from YouTube that arrive afterwards",
+      "The sign-in screen only closes itself when it is on top"
     ]
   }
 }

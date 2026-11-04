@@ -1,6 +1,6 @@
 {
   "id": "jellyfin",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "api": 2,
   "name": "Jellyfin",
   "desc": "Movies and shows from your Jellyfin server",
@@ -11,11 +11,10 @@
   "order": 30,
   "default": false,
   "changes": {
-    "summary": "A calmer, smoother look",
+    "summary": "Safer sign-in, and no crash in an empty list",
     "points": [
-      "What you choose lifts gently toward you with a soft glow instead of a white frame",
-      "Sharper pictures in the row on the home screen",
-      "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
+      "Server names use https by default, IP addresses and local names http - and you are warned when a sign-in would not be encrypted",
+      "Down and OK in an empty list no longer closes the app"
     ]
   }
 }

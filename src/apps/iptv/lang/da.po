@@ -321,11 +321,20 @@ msgstr "Ingen programinfo"
 msgid "Loading…"
 msgstr "Indlæser…"
 
-msgid "The right channel name when you start from the home screen"
-msgstr "Det rigtige kanalnavn, når du starter fra forsiden"
 
-msgid "A channel started from the home screen shows its own name in the banner - before it could show the channel you watched last"
-msgstr "En kanal startet fra forsiden viser sit eget navn i banneret - før kunne den vise den kanal, du så sidst"
 
-msgid "Channels from the home screen are also found when your provider has given them new addresses, so you can change channel from there"
-msgstr "Kanaler fra forsiden findes også, når din udbyder har givet dem nye adresser, så du kan skifte kanal derfra"
+
+msgid "A tidier TV guide and a softer channel change"
+msgstr "En mere overskuelig TV-guide og et blødere kanalskift"
+
+msgid "TV guide: programmes the provider lists on top of each other are laid out side by side, and each time slot shows the programme that started last"
+msgstr "TV-guide: programmer, som udbyderen lægger oven i hinanden, står nu ved siden af hinanden, og hvert tidspunkt viser det program, der startede sidst"
+
+msgid "Changing channel: the banner and the channel logo fade in and out (needs NotaTV 1.0.13)"
+msgstr "Kanalskift: banneret og kanallogoet toner ind og ud (kræver NotaTV 1.0.13)"
+
+msgid "Reloading the channel list can no longer play the wrong channel, and on the first start the focus lands on the first group"
+msgstr "En genindlæst kanalliste kan ikke længere spille den forkerte kanal, og ved første start står fokus på den første gruppe"
+
+msgid "A new guide address works at once, a very large guide can no longer fill the memory, and holding Yellow changes a favourite only once"
+msgstr "En ny guide-adresse virker med det samme, en meget stor guide kan ikke længere fylde hukommelsen, og holder du Gul nede, ændres en favorit kun én gang"
