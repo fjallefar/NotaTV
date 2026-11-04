@@ -121,7 +121,7 @@ static uint32_t key_char(int code, bool shift) {
         {KEY_SEMICOLON, 0xE6, 0xC6}, {KEY_APOSTROPHE, 0xF8, 0xD8}, {KEY_BACKSLASH, '\'', '*'}, {KEY_GRAVE, 0xBD, 0xA7},
         {KEY_LEFTBRACE, 0xE5, 0xC5}, {KEY_RIGHTBRACE, 0xA8, '^'}, {KEY_102ND, '<', '>'},
     };
-    bool dk = !strcmp(i18n_lang(), "da");
+    bool dk = kb_layout_da();
     if (code >= KEY_1 && code <= KEY_0) {
         static const char *row1 = "1234567890", *row1_us = "!@#$%^&*()";
         static const uint32_t row1_da[] = {'!', '"', '#', 0xA4, '%', '&', '/', '(', ')', '='};

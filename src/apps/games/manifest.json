@@ -1,6 +1,6 @@
 {
   "id": "games",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "Games",
   "desc": "Play games from your PC via Sunshine (Moonlight)",
@@ -11,9 +11,10 @@
   "order": 80,
   "default": true,
   "changes": {
-    "summary": "Ready for the Raspberry Pi 5",
+    "summary": "Pairing fixes",
     "points": [
-      "On a Raspberry Pi 5 games always stream in HEVC, because the Pi 5 has no H.264 decoder - the Codec choice is locked there (needs NotaTV 1.0.7)"
+      "Back (or Esc) now cancels pairing while the code is shown",
+      "The pairing screen points to https://localhost:47990 on the PC - Sunshine rejects the PIN when its page is opened on the PC's IP address"
     ]
   }
 }

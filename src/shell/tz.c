@@ -194,3 +194,11 @@ const char *tz_country_name(const char *code) {
     for (int i = 0; i < TZ_N_COUNTRIES; i++) if (!strcmp(tz_countries[i].code, code)) return tz_cname(&tz_countries[i]);
     return code;
 }
+
+/* Danish keyboard layout (on-screen keyboard and physical keyboards): when the UI is Danish, or the
+ * country is Denmark, Greenland or the Faroe Islands - someone in Denmark with English menus most likely
+ * still has a Danish keyboard. Read on every key, so a change of language/country applies at once. */
+bool kb_layout_da(void) {
+    const char *c = cfg_get("tz_country", "");
+    return tz_da() || !strcmp(c, "DK") || !strcmp(c, "GL") || !strcmp(c, "FO");
+}

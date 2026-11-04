@@ -237,9 +237,9 @@ static void games_draw(Screen *s) {
     pthread_mutex_lock(&g->mu);
     if (g->mode == M_PAIR) {
         draw_topbar(T("Games - pairing"));
-        char t[200];
-        snprintf(t, sizeof t, T("Open https://%s:47990 on the PC → PIN"), g->host);
-        text_draw(F_SEMI, 32, UI_W / 2, 300, C_TEXT, AL_CENTER, t);
+        /* localhost, not the PC's IP: Sunshine's CSRF check only accepts its default origins (localhost),
+         * so typing the PIN on https://<ip>:47990 fails unless csrf_allowed_origins lists that address */
+        text_draw(F_SEMI, 32, UI_W / 2, 300, C_TEXT, AL_CENTER, T("On the PC, open https://localhost:47990 → PIN"));
         if (g->pin[0]) text_draw(F_BOLD, 140, UI_W / 2, 400, C_TEXT, AL_CENTER, g->pin);
         else draw_spinner(UI_W / 2, 480, 30, C_TEXT2);
         text_draw(F_REG, 26, UI_W / 2, 640, C_TEXT3, AL_CENTER, T("Enter the code on Sunshine's page. Back = cancel"));
@@ -319,7 +319,8 @@ static bool games_input(Screen *s, const InputEvent *ev) {
     if (g->mode == M_PAIR) {
         if (ev->a == A_BACK || ev->a == A_LEFT) {
             pthread_mutex_lock(&g->mu);
-            if (g->pair_pid > 0) kill(g->pair_pid, SIGTERM);
+            /* SIGKILL: tvmoon up to 1.0.10 catches SIGTERM and kept waiting for the PIN, so Back did nothing */
+            if (g->pair_pid > 0) kill(g->pair_pid, SIGKILL);
             pthread_mutex_unlock(&g->mu);
         }
         return true;

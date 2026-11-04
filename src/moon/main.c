@@ -493,6 +493,13 @@ int main(int argc, char **argv) {
     }
     if (argc < 2) { usage(); return 1; }
     const char *cmd = argv[1];
+    /* only stream/videotest stop cleanly on a signal (got_signal ends their loop); the short commands must
+     * die at once - "pair" waits in gs_pair until the PIN is typed on the PC, and Back on the TV sends SIGTERM */
+    if (strcmp(cmd, "stream") && strcmp(cmd, "videotest")) {
+        signal(SIGTERM, SIG_DFL);
+        signal(SIGINT, SIG_DFL);
+        signal(SIGHUP, SIG_DFL);
+    }
     if (!strcmp(cmd, "discover")) return cmd_discover(argc > 2 ? atoi(argv[2]) : 1500, argc > 3 && !strcmp(argv[3], "scan"));
     if (argc < 3) { usage(); return 1; }
     if (!strcmp(cmd, "info")) return cmd_info(argv[2]);

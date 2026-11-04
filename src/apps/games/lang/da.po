@@ -15,8 +15,8 @@ msgstr "Parring afbrudt"
 msgid "Games - pairing"
 msgstr "Spil - parring"
 
-msgid "Open https://%s:47990 on the PC → PIN"
-msgstr "Åbn https://%s:47990 på PC'en → PIN"
+msgid "On the PC, open https://localhost:47990 → PIN"
+msgstr "Åbn https://localhost:47990 på PC'en → PIN"
 
 msgid "Enter the code on Sunshine's page. Back = cancel"
 msgstr "Skriv koden på Sunshines side. Tilbage = annullér"
@@ -114,8 +114,11 @@ msgstr "Spil fra din PC via Sunshine (Moonlight)"
 msgid "HEVC (the Pi 5 has no H.264 decoder)"
 msgstr "HEVC (Pi 5 har ingen H.264-dekoder)"
 
-msgid "Ready for the Raspberry Pi 5"
-msgstr "Klar til Raspberry Pi 5"
+msgid "Pairing fixes"
+msgstr "Rettelser til parring"
 
-msgid "On a Raspberry Pi 5 games always stream in HEVC, because the Pi 5 has no H.264 decoder - the Codec choice is locked there (needs NotaTV 1.0.7)"
-msgstr "På en Raspberry Pi 5 streames spil altid i HEVC, fordi Pi 5 ikke har en H.264-dekoder - Codec-valget er låst dér (kræver NotaTV 1.0.7)"
+msgid "Back (or Esc) now cancels pairing while the code is shown"
+msgstr "Tilbage (eller Esc) afbryder nu parringen, mens koden vises"
+
+msgid "The pairing screen points to https://localhost:47990 on the PC - Sunshine rejects the PIN when its page is opened on the PC's IP address"
+msgstr "Parringsskærmen henviser til https://localhost:47990 på PC'en - Sunshine afviser PIN'en, når siden åbnes på PC'ens IP-adresse"

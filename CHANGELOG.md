@@ -18,6 +18,18 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.11
+
+> **In short:** A Danish keyboard when the box is set to Denmark, and pairing a PC for games can be cancelled.
+> - Keyboard: the on-screen keyboard and physical keyboards use the Danish layout when the country is Denmark, Greenland or the Faroe Islands, also with English menus
+> - Games: Back (or Esc) cancels pairing while the code is shown
+
+<!-- tldr:da
+Kort: Dansk tastatur når boksen er sat til Danmark, og parring af en PC til spil kan afbrydes.
+- Tastatur: skærmtastaturet og fysiske tastaturer bruger dansk layout, når landet er Danmark, Grønland eller Færøerne - også med engelske menuer
+- Spil: Tilbage (eller Esc) afbryder parringen, mens koden vises
+-->
+
 ## 1.0.10
 
 > **In short:** TV 2 Play lets you choose who is watching, and apps with closed software only show up where you chose them.

@@ -23,7 +23,7 @@ static const char *kb_rows_lo_da[] = {"1234567890", "qwertyuiopå", "asdfghjklæ
 static const char *kb_rows_hi_da[] = {"1234567890", "QWERTYUIOPÅ", "ASDFGHJKLÆØ", "ZXCVBNM-_.@", ":/?&=#%+~!,"};
 static const char *kb_rows_lo_en[] = {"1234567890", "qwertyuiop'", "asdfghjkl()", "zxcvbnm-_.@", ":/?&=#%+~!,"};
 static const char *kb_rows_hi_en[] = {"1234567890", "QWERTYUIOP\"", "ASDFGHJKL[]", "ZXCVBNM-_.@", ":/?&=#%+~!,"};
-#define kb_da (!strcmp(i18n_lang(), "da"))
+#define kb_da kb_layout_da()
 #define kb_rows_lo (kb_da ? kb_rows_lo_da : kb_rows_lo_en)
 #define kb_rows_hi (kb_da ? kb_rows_hi_da : kb_rows_hi_en)
 #define KB_ROWS 5

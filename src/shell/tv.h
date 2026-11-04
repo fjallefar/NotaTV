@@ -555,6 +555,7 @@ void tz_init(void);
 void tz_apply(void);
 const char *tz_label(void);
 const char *tz_country_name(const char *code);
+bool kb_layout_da(void); /* Danish keyboard layout: Danish UI or country DK/GL/FO */
 bool tz_zone_has_dst(const char *zone);
 void tz_pick(void (*done)(void *ud, bool ok), void *ud); /* country -> region; saves and applies */
 

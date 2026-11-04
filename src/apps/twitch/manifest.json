@@ -1,6 +1,6 @@
 {
   "id": "twitch",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": 2,
   "name": "Twitch",
   "desc": "Live streams from the channels you follow and all of Twitch",
@@ -11,10 +11,10 @@
   "order": 50,
   "default": true,
   "changes": {
-    "summary": "A calmer, smoother look",
+    "summary": "Signing in now says NotaTV",
     "points": [
-      "What you choose lifts gently toward you with a soft glow instead of a white frame",
-      "Needs NotaTV 1.0.5 for the new look - on older versions it looks as before"
+      "Twitch now shows NotaTV when you sign in on twitch.tv",
+      "If you were signed in, sign in again once"
     ]
   }
 }
