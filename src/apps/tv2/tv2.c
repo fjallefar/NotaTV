@@ -71,7 +71,7 @@ typedef struct {
 typedef struct {
     int state, view;
     char msg[320], heading[240], query[240], path[512];
-    char token[4096], refresh[4096], profile[2048], profile_name[160];
+    char token[4096], refresh[4096], profile[2048], profile_name[160], profile_avatar[1024];
     double token_exp;
     bool polling, auth_retried;
     char device_code[256], user_code[64], verify_uri[512], verify_complete[2048];
@@ -1482,6 +1482,9 @@ static void profile_use(Tv2 *v, int i) {
     cfg_set("tv2_profile", v->profile);
     cfg_set("tv2_profile_name", v->profile_name);
     cfg_set("tv2_profile_id", p->id);
+    snprintf(v->profile_avatar, sizeof v->profile_avatar, "%s", p->avatar);
+    cfg_set("tv2_profile_avatar", p->avatar);
+    snprintf(v->side.subtitle, sizeof v->side.subtitle, "%s", p->name);
 }
 
 static void who_open(Tv2 *v) {
@@ -1874,6 +1877,34 @@ static void build_side(Tv2 *v) {
 }
 
 /* ---------- drawing ---------- */
+/* one UTF-8 letter of s (the initial on a profile without an avatar) */
+static void initial_of(const char *s, char out[8]) {
+    int l = 1;
+    memset(out, 0, 8);
+    if (!s || !*s) { out[0] = '?'; return; }
+    if (s[0] & 0x80) while (l < 4 && (s[l] & 0xC0) == 0x80) l++;
+    memcpy(out, s, l);
+}
+
+/* the side menu, with the chosen profile's avatar instead of the gear on "Min side" (drawn on top of it; the
+   rows are laid out like side_draw in widgets.c: from y 190, 72 apart, no gaps in this menu) */
+static void tv2_side_draw(Tv2 *v) {
+    side_draw(&v->side);
+    if (!v->profile_name[0] && !v->profile_avatar[0]) return;
+    int k = -1;
+    for (int i = 0; i < v->side.n && i < 8; i++) if (v->side_map[i] == M_MYPAGE) k = i;
+    if (k < 0) return;
+    float cx = SIDE_W / 2, cy = 190 - v->side.scroll + k * 72 + 31, d = 44;
+    if (cy < 180 || cy > UI_H - 40) return;
+    Image *im = v->profile_avatar[0] ? img_get(v->profile_avatar) : NULL;
+    if (!im || !img_draw_cover(im, cx - d / 2, cy - d / 2, d, d, d / 2, 1)) {
+        char ini[8];
+        initial_of(v->profile_name, ini);
+        fill_rrect(cx - d / 2, cy - d / 2, d, d, d / 2, TV2_RED);
+        text_draw(F_BOLD, 24, cx, cy - 15, TV2_TEXT, AL_CENTER, ini);
+    }
+}
+
 static void draw_tv2_topbar(const char *title) {
     float x = SIDE_W + 60;
     if (title) text_draw(F_BOLD, 44, x, 56, TV2_TEXT, AL_LEFT, title);
@@ -2126,10 +2157,8 @@ static void draw_who(Tv2 *v) {
         Image *im = p->avatar[0] ? img_get(p->avatar) : NULL;
         if (!im || !img_draw_cover(im, xx, yy, dd, dd, dd / 2, f ? 1 : 0.75f)) {
             fill_rrect(xx, yy, dd, dd, dd / 2, f ? TV2_RED : TV2_SURFACE2);
-            char ini[8] = {0};
-            int l = 1;
-            if (p->name[0] & 0x80) while (l < 4 && (p->name[l] & 0xC0) == 0x80) l++; /* one UTF-8 letter */
-            memcpy(ini, p->name[0] ? p->name : "?", p->name[0] ? l : 1);
+            char ini[8];
+            initial_of(p->name, ini);
             text_draw(F_BOLD, 90, xx + dd / 2, yy + dd / 2 - 55, TV2_TEXT, AL_CENTER, ini);
         }
         text_draw_clip(F_SEMI, 30, x + d / 2, y + d + 30, d + gap, f ? TV2_TEXT : TV2_TEXT2, AL_CENTER, p->name);
@@ -2228,7 +2257,7 @@ static void tv2_draw(Screen *s) {
             text_draw(F_REG, 22, cx, UI_H - 70, TV2_TEXT3, AL_CENTER, T("Venstre: menu"));
         }
         draw_tv2_topbar("TV 2 Play");
-        side_draw(&v->side);
+        tv2_side_draw(v);
         return;
     }
 
@@ -2281,7 +2310,7 @@ static void tv2_draw(Screen *s) {
         draw_keybar(SIDE_W + 60, UI_H - 62, T("Vælg"), NULL, NULL, T("Søg"), T("Menu"));
         break;
     }
-    side_draw(&v->side);
+    tv2_side_draw(v);
 }
 
 /* ---------- input / screen ---------- */
@@ -2474,6 +2503,8 @@ static void tv2_enter(Screen *s) {
     snprintf(v->refresh, sizeof v->refresh, "%s", cfg_get("tv2_refresh", ""));
     snprintf(v->profile, sizeof v->profile, "%s", cfg_get("tv2_profile", ""));
     snprintf(v->profile_name, sizeof v->profile_name, "%s", cfg_get("tv2_profile_name", ""));
+    snprintf(v->profile_avatar, sizeof v->profile_avatar, "%s", cfg_get("tv2_profile_avatar", ""));
+    snprintf(v->side.subtitle, sizeof v->side.subtitle, "%s", v->profile_name);
     v->token_exp = atof(cfg_get("tv2_token_exp", "0"));
     v->view = V_HOME;
     v->nsec = 0;
@@ -2575,6 +2606,7 @@ static void tv2_forget(void) {
     cfg_set("tv2_profile", "");
     cfg_set("tv2_profile_name", "");
     cfg_set("tv2_profile_id", "");
+    cfg_set("tv2_profile_avatar", "");
     if (http_cookies_forget) http_cookies_forget();
     wipe_session_traces();
     if (live) {
@@ -2583,6 +2615,8 @@ static void tv2_forget(void) {
         live->refresh[0] = 0;
         live->profile[0] = 0;
         live->profile_name[0] = 0;
+        live->profile_avatar[0] = 0;
+        live->side.subtitle[0] = 0;
         live->nhist = 0;
         live->nprof = 0;
         clear_hero(live);

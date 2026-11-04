@@ -1,0 +1,100 @@
+# App Store only: push a tag like apps-2026-11-05 (or press "Run workflow" on GitHub) and the build machine
+# builds just the app packages and updates the release "apps". No new NotaTV version, no image, no update package.
+#
+# It uses the build folder /opt/notatv that release.yml keeps, so a system release must have been built there
+# before. Only tvshell is built again (the apps are built with it, against its tv.h); nothing is installed.
+# If src/shell/tv.h changed since the latest system release, the apps could need a tvshell the boxes do not
+# have yet - then it stops: make a system release (v*) instead, it publishes the apps too.
+# Remember to raise "version" in the manifest.json of each app that changed, or the boxes see no update.
+name: Apps
+
+on:
+  push:
+    tags: ["apps-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release # never at the same time as a system release (same build folder)
+  cancel-in-progress: false
+
+env:
+  TREE: /opt/notatv
+  REPO_URL: https://github.com/${{ github.repository }}.git
+
+jobs:
+  apps:
+    runs-on: [self-hosted, linux, notatv]
+    timeout-minutes: 120
+    steps:
+      - name: Fetch the code into /opt/notatv
+        run: |
+          set -e
+          cd "$TREE"
+          test -d output-rpi4 || { echo "No earlier build in $TREE - make a system release (v*) first"; exit 1; }
+          git remote set-url origin "$REPO_URL"
+          git fetch --force --tags origin
+          git checkout --force --detach "$GITHUB_SHA"
+          git clean -fd
+          LAST=$(git tag -l 'v*' --sort=-v:refname --merged HEAD | head -1)
+          echo "Latest system release: $LAST"
+          if ! git diff --quiet "$LAST" HEAD -- src/shell/tv.h; then
+            echo "src/shell/tv.h changed since $LAST - the apps may need a newer tvshell. Make a system release instead."
+            exit 1
+          fi
+
+      - name: Client IDs
+        env:
+          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+          TV2_CLIENT_ID: ${{ secrets.TV2_CLIENT_ID }}
+        run: |
+          mkdir -p "$TREE/secrets"
+          if [ -n "$TWITCH_CLIENT_ID" ]; then printf '%s\n' "$TWITCH_CLIENT_ID" > "$TREE/secrets/twitch-client-id"
+          else echo "::warning::The TWITCH_CLIENT_ID secret is not set - Twitch login will not work"; fi
+          if [ -n "$TV2_CLIENT_ID" ]; then printf '%s\n' "$TV2_CLIENT_ID" > "$TREE/secrets/tv2-client-id"
+          else echo "::warning::The TV2_CLIENT_ID secret is not set - TV 2 Play login will not work"; fi
+
+      - name: Build the apps (log in /opt/notatv/apps-build.log)
+        shell: bash
+        run: |
+          cd "$TREE"
+          make -C buildroot O=$TREE/output-rpi4 BR2_EXTERNAL=$TREE/external tvshell-dirclean tvshell-build \
+            > apps-build.log 2>&1 || { tail -80 apps-build.log; exit 1; }
+          rm -rf dist-apps
+          python3 scripts/apps-catalog.py output-rpi4/build/tvshell-1.0/apps-out dist-apps --strip output-rpi4/host/bin/aarch64-linux-strip
+          ls -la dist-apps
+
+      - name: Publish to the App Store
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd "$TREE"
+          python3 - <<'EOF'
+          import json, os, urllib.error, urllib.request
+          repo, tok = os.environ["GITHUB_REPOSITORY"], os.environ["GH_TOKEN"]
+          hdr = {"Authorization": "Bearer " + tok, "Accept": "application/vnd.github+json"}
+          def call(url, data=None, method=None, ctype="application/json"):
+              req = urllib.request.Request(url, data=data, method=method, headers=dict(hdr, **{"Content-Type": ctype}))
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+          api = f"https://api.github.com/repos/{repo}/releases"
+          # same as in release.yml: replace files with the same name, packages first, the catalog last
+          try:
+              store = call(f"{api}/tags/apps")
+          except urllib.error.HTTPError as e:
+              if e.code != 404: raise
+              store = call(api, json.dumps({"tag_name": "apps", "target_commitish": os.environ["GITHUB_SHA"],
+                                            "name": "NotaTV App Store", "prerelease": True, "make_latest": "false",
+                                            "body": "App packages for the NotaTV App Store. Boxes download them from here - do not delete."}).encode())
+          files = sorted(os.listdir("dist-apps"))
+          for a in store.get("assets", []):
+              if a["name"] in files:
+                  urllib.request.urlopen(urllib.request.Request(f"{api}/assets/{a['id']}", method="DELETE", headers=hdr))
+          for n in sorted(files, key=lambda f: f.endswith(".json")):
+              with open(os.path.join("dist-apps", n), "rb") as f:
+                  call(f"https://uploads.github.com/repos/{repo}/releases/{store['id']}/assets?name={n}",
+                       data=f.read(), ctype="application/octet-stream")
+              print("app store:", n)
+          EOF

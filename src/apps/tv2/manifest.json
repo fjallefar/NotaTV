@@ -1,6 +1,6 @@
 {
   "id": "tv2",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "api": 2,
   "name": "TV 2 Play",
   "desc": "Streaming fra TV 2 Play (Widevine)",
@@ -13,11 +13,10 @@
   "nonfree": true,
   "helpers": ["wvserve"],
   "changes": {
-    "summary": "Profiles: choose who is watching",
+    "summary": "Your profile in the menu",
     "points": [
-      "With several TV 2 profiles you choose who is watching after signing in",
-      "Switch profile on My page",
-      "Continue watching on the box is kept per profile"
+      "The menu shows your TV 2 profile picture and name",
+      "Choose who is watching, and switch profile on My page"
     ]
   }
 }
