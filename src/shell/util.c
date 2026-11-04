@@ -762,11 +762,11 @@ int run_cmd(const char *fmt, ...) {
     return WIFEXITED(rc) ? WEXITSTATUS(rc) : -1;
 }
 
-/* Language: the config key language (en/da/de/es/fr). Boxes from before the language choice existed ran in Danish:
- * if the setup guide has run but no language is chosen, Danish is kept. Otherwise English is the default. */
+/* Language: the config key language (en/da/de/es/fr); none saved = English. (Up to 1.0.11 a box with the setup
+ * done but no language was taken for an old pre-language WispOS box and switched to Danish - but the setup guide
+ * did not save English when it was already active, so boxes set up in English turned Danish after a restart.) */
 void lang_init(void) {
     const char *l = cfg_get("language", "");
-    if (!*l && cfg_int("setup_done", 0)) { cfg_set("language", "da"); l = "da"; }
     if (!i18n_load(asset_dir(), *l ? l : "en")) SDL_Log("sprog: kunne ikke indlæse %s", l);
     setenv("NOTATV_LANG", i18n_lang(), 1); /* tvmoon and mpv's OSD script read the same language file */
 }

@@ -18,6 +18,18 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.12
+
+> **In short:** A box set up in English stays in English.
+> - Language: choosing English in the setup guide was not saved, so the box switched to Danish after the first restart (e.g. after an update). If that happened to you, choose English again in *Settings*
+> - New page [SELF-HOSTING.md](https://github.com/fjallefar/NotaTV/blob/main/SELF-HOSTING.md): the server software behind each app, with links
+
+<!-- tldr:da
+Kort: En boks sat op på engelsk forbliver på engelsk.
+- Sprog: valgte man engelsk i opsætningsguiden, blev det ikke gemt, så boksen skiftede til dansk efter første genstart (fx efter en opdatering). Er det sket for dig, så vælg engelsk igen i Indstillinger
+- Ny side SELF-HOSTING.md: serversoftwaren bag hver app, med links
+-->
+
 ## 1.0.11
 
 > **In short:** A Danish keyboard when the box is set to Denmark, and pairing a PC for games can be cancelled.

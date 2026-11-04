@@ -239,9 +239,9 @@ static void press(Setup *v) {
     switch (v->step) {
     case ST_LANG:
         if (!row) return;
+        cfg_set("language", i18n_langs[row->id].code); /* always saved - also the default (English), see lang_init */
         if (strcmp(i18n_langs[row->id].code, i18n_lang())) {
-            /* new language: save and restart the user interface; the guide continues with the network */
-            cfg_set("language", i18n_langs[row->id].code);
+            /* new language: restart the user interface; the guide continues with the network */
             cfg_set_int("setup_resume", 1);
             app_quit();
         } else next_step(v);
