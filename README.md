@@ -26,7 +26,7 @@ NotaTV is its own Linux distribution (Buildroot) with its own user interface, wr
 - **Game streaming** from a PC with Sunshine (Moonlight protocol, ~11 ms on the box)
 - **Tesla**: your car's battery, charging and status live from your own TeslaMate
 - **Casting**: DLNA, YouTube cast, Jellyfin "Play On", AirPlay screen mirroring
-- **Media player** for USB drives and SMB/NFS shares
+- **Media player** for USB drives and SMB shares (NFS is not working yet)
 - **HDMI-CEC**: your TV remote controls the box
 - A **phone page** for typing, remote control and setup
 - **English and Danish** user interface
@@ -176,9 +176,9 @@ In the App Store on the home screen you can install more apps, update apps (*Upd
 | **Seerr** | Find and request movies and shows (Overseerr/Jellyseerr) with Plex login. Season picker, trailers, "More like this" and Netflix top 10 for your country. |
 | **Music** | Receives music from your phone over **AirPlay** (iPhone/iPad/Mac) or **Bluetooth** (any phone). "Now playing" shows cover art, title and progress. |
 | **Radio** | Stations from radio-browser.info (free and open, no login). The country follows the one chosen in the setup guide (the stations of another country can be chosen in the app). Popular, genres, search, recently played and favourites (Yellow; the first nine get a number you press on the remote). Plays in the background while you use the rest of the box, with a *Now playing* box in the top bar and the station on the home screen; it stops by itself when a video or game starts. |
-| **Games** | Game streaming from a PC running Sunshine with our own client `tvmoon`. HEVC is decoded in hardware straight to the screen, at 1080p 120 Hz. |
+| **Games** | Game streaming from a PC running Sunshine with our own client `tvmoon`. HEVC is decoded in hardware straight to the screen, at 1080p 120 Hz. To pair, type the PIN shown on the TV on `https://localhost:47990` on the PC (Sunshine rejects it on the PC's IP address); Back cancels. |
 | **Tesla** | Reads your own TeslaMate over its MQTT server (port 1883), read only: nothing is sent to the car and nothing is saved on disk. Finds TeslaMate on the network or takes an address, and asks for an MQTT login when the server wants one. Battery, range, charging, climate, tyres, locks and doors, the car seen from above, where it is, route with arrival time and battery at arrival, model and software. The side menu (Left) chooses the car, turns each part on or off, and puts up to 3 cars small at the top of the home screen. Everything is fitted to one screen. |
-| **Media** | USB drives are mounted automatically. SMB/NFS network drives are supported. Plays movies, music and pictures. |
+| **Media** | USB drives are mounted automatically. SMB network drives are supported (NFS is not working yet). Plays movies, music and pictures. |
 
 **Host it yourself:** [SELF-HOSTING.md](SELF-HOSTING.md) lists, per app, the server software it talks to (Jellyfin, Seerr, Sunshine, TeslaMate, Live TV playlists ...) with links to each project.
 
@@ -246,7 +246,7 @@ The user interface is available in **English** (the default) and **Danish**. Cha
 
 - **The source text is English.** Other languages are standard gettext `.po` files: [`src/shell/assets/lang/`](src/shell/assets/lang/) for the system, and `src/apps/<id>/lang/` for each app (an app brings its own translations).
 - **The system file covers** the UI, the game streaming client, the player OSD, the phone page and the helper scripts' messages.
-- **The rest follows the language too:** the default subtitle and audio languages, Seerr's metadata language, the keyboard layout and the country list.
+- **The rest follows the language too:** the default subtitle and audio languages, Seerr's metadata language and the country list. The keyboard layout (on-screen and physical keyboards) is Danish when the language is Danish or the country is Denmark, Greenland or the Faroe Islands, otherwise US.
 
 **Adding a language:**
 1. Run `python3 scripts/i18n-check.py --pot` to write the template `src/shell/assets/lang/notatv.pot`.
