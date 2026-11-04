@@ -17,7 +17,8 @@ up)
 	echo 1 > /proc/sys/net/ipv4/conf/default/ignore_routes_with_linkdown
 	for e in $(eth_ifaces); do
 		ip link set $e up
-		udhcpc -b -i $e -x hostname:$(hostname) -s /usr/libexec/notatv/dhcp-script -p /run/udhcpc.$e.pid >/dev/null 2>&1
+		# -A 3: retry after 3 s, not 20 - the cable's link often comes up a few seconds after this
+		udhcpc -b -A 3 -i $e -x hostname:$(hostname) -s /usr/libexec/notatv/dhcp-script -p /run/udhcpc.$e.pid >/dev/null 2>&1
 	done
 	$H/wifi start
 	[ -n "$(eth_ifaces)" ] && { $H/net watch & }

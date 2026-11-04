@@ -1,6 +1,7 @@
 #!/bin/sh
 # Wi-Fi: boot | start | scan | connect <ssid> <password> | forget
 . /usr/libexec/notatv/lib.sh
+up_s() { cut -d' ' -f1 /proc/uptime; }
 wlan() { for d in /sys/class/net/*; do [ -d $d/wireless ] && { echo ${d##*/}; return; }; done; }
 W=$(wlan)
 CONFW=/data/notatv/wpa_supplicant.conf
@@ -25,14 +26,18 @@ ensure() {
 	mkdir -p $RUN
 	i=0; until mkdir $RUN/wifi.lock 2>/dev/null; do i=$((i+1)); [ $i -ge 100 ] && break; sleep 0.1; done
 	if ! wpa_cli -i $W ping >/dev/null 2>&1; then
+		log "wifi: starting on $W (country $c, up $(up_s) s)"
 		ip link set $W up
-		wpa_supplicant -B -i $W -c $CONFW -D nl80211 >/dev/null 2>&1
+		# -t -f: wpa_supplicant's own messages with time stamps (scan, connect, why it failed) for the log bundle
+		wpa_supplicant -B -t -f /tmp/wpa_supplicant.log -i $W -c $CONFW -D nl80211 >/dev/null 2>&1
 		i=0; until wpa_cli -i $W ping >/dev/null 2>&1 || [ $i -ge 30 ]; do sleep 0.1; i=$((i+1)); done
 		nopower
-		# the moment Wi-Fi is connected, wifi-event asks udhcpc for an address (it otherwise waits up to 20 s
-		# between attempts - wpa_supplicant usually needs a few seconds to connect)
+		# the moment Wi-Fi is connected, wifi-event asks udhcpc for an address. -A 3: when no address came,
+		# try again after 3 s (BusyBox' default is 20 s, which is what made Wi-Fi take up to a minute at boot)
 		wpa_cli -i $W -a $H/wifi-event -B >/dev/null 2>&1
-		udhcpc -b -i $W -x hostname:$(hostname) -s $H/dhcp-script -p /run/udhcpc.$W.pid >/dev/null 2>&1
+		udhcpc -b -A 3 -i $W -x hostname:$(hostname) -s $H/dhcp-script -p /run/udhcpc.$W.pid >/dev/null 2>&1
+		# connected before wpa_cli was listening: no CONNECTED event came, so wake udhcpc now
+		wpa_cli -i $W status 2>/dev/null | grep -q '^wpa_state=COMPLETED' && kill -USR1 $(cat /run/udhcpc.$W.pid 2>/dev/null) 2>/dev/null
 	fi
 	rmdir $RUN/wifi.lock 2>/dev/null
 	return 0
@@ -45,7 +50,9 @@ boot)
 	[ -f $CONFW ] && grep -q network= $CONFW || exit 0
 	[ -n "$W" ] || modprobe brcmfmac 2>/dev/null
 	i=0; while [ -z "$W" ] && [ $i -lt 150 ]; do sleep 0.1; i=$((i+1)); W=$(wlan); done
-	[ -n "$W" ] && ensure
+	[ -n "$W" ] || { log "wifi: no adapter after 15 s"; exit 0; }
+	log "wifi: adapter $W ready (up $(up_s) s)"
+	ensure
 	;;
 start)
 	[ -n "$W" ] && [ -f $CONFW ] && grep -q network= $CONFW && ensure
@@ -85,7 +92,7 @@ connect)
 	[ "$st" = COMPLETED ] || { msg "Could not connect to %s (wrong password?)" "$ssid"; exit 1; }
 	nopower
 	kill -USR1 $(cat /run/udhcpc.$W.pid 2>/dev/null) 2>/dev/null || \
-		udhcpc -b -i $W -s $H/dhcp-script -p /run/udhcpc.$W.pid >/dev/null 2>&1
+		udhcpc -b -A 3 -i $W -x hostname:$(hostname) -s $H/dhcp-script -p /run/udhcpc.$W.pid >/dev/null 2>&1
 	for i in $(seq 1 15); do
 		ip -4 addr show $W | grep -q inet && { msg "Connected to %s" "$ssid"; exit 0; }
 		sleep 1

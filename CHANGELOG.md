@@ -20,12 +20,14 @@ Kort: Én sætning om opdateringen.
 
 ## 1.0.12
 
-> **In short:** A box set up in English stays in English.
+> **In short:** Wi-Fi connects faster when the box starts, and a box set up in English stays in English.
+> - Wi-Fi: after connecting, the box asks for an address again after 3 s instead of 20 s, and now knows your country's Wi-Fi rules (the regulatory database was missing, so all channels were treated by the strictest rules). Start-up steps and wpa_supplicant's messages are in the troubleshooting log
 > - Language: choosing English in the setup guide was not saved, so the box switched to Danish after the first restart (e.g. after an update). If that happened to you, choose English again in *Settings*
 > - New page [SELF-HOSTING.md](https://github.com/fjallefar/NotaTV/blob/main/SELF-HOSTING.md): the server software behind each app, with links
 
 <!-- tldr:da
-Kort: En boks sat op på engelsk forbliver på engelsk.
+Kort: Wi-Fi forbinder hurtigere, når boksen starter, og en boks sat op på engelsk forbliver på engelsk.
+- Wi-Fi: efter forbindelsen spørger boksen igen efter en adresse efter 3 s i stedet for 20 s, og kender nu dit lands Wi-Fi-regler (databasen manglede, så alle kanaler fulgte de strengeste regler). Opstartens trin og wpa_supplicants beskeder står i fejlsøgningsloggen
 - Sprog: valgte man engelsk i opsætningsguiden, blev det ikke gemt, så boksen skiftede til dansk efter første genstart (fx efter en opdatering). Er det sket for dig, så vælg engelsk igen i Indstillinger
 - Ny side SELF-HOSTING.md: serversoftwaren bag hver app, med links
 -->
