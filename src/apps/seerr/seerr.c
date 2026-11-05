@@ -583,16 +583,54 @@ static void email_done(void *ud, const char *e) {
     keyboard_open(T("Seerr: password"), "", true, pw_done, ud);
 }
 
+/* ---------- find servers on the network ---------- */
+static SeerrFound found[SEERR_MAX_FOUND];
+static int n_found;
+static int disc_prev_state; /* the state to go back to when nothing is chosen */
+
+static void enter_address(Seerr *v) {
+    keyboard_open(T("Seerr address (e.g. 192.168.1.10:5055)"), seerr_url(), false, url_done, v);
+}
+static void found_pick(void *ud, int idx) {
+    Seerr *v = ud;
+    if (v != live || idx < 0) return;
+    if (idx >= n_found) { enter_address(v); return; } /* "Enter address manually" */
+    url_done(v, found[idx].url);
+}
+static void disc_done(void *ud, const SeerrFound *f, int n) {
+    Seerr *v = ud;
+    if (v != live || v->state != 1) return;
+    v->state = disc_prev_state;
+    if (!n) { app_toast(T("No Seerr servers found - enter the address")); return; }
+    n_found = n < SEERR_MAX_FOUND ? n : SEERR_MAX_FOUND;
+    const char *items[SEERR_MAX_FOUND + 1];
+    char lbl[SEERR_MAX_FOUND][200];
+    for (int i = 0; i < n_found; i++) {
+        found[i] = f[i];
+        snprintf(lbl[i], sizeof lbl[i], "%s   ·   %s", f[i].name, f[i].url + 7);
+        items[i] = lbl[i];
+    }
+    items[n_found] = T("Enter address manually");
+    choice_open(n_found == 1 ? T("Found 1 Seerr server") : T("Seerr servers on the network"), items, n_found + 1, 0, found_pick, v);
+}
+static void find_servers(Seerr *v) {
+    disc_prev_state = v->state == 1 ? 0 : v->state;
+    v->state = 1;
+    snprintf(v->msg, sizeof v->msg, "%s", T("Searching for Seerr servers on the network…"));
+    seerr_discover(disc_done, v);
+}
+
 static void settings_cb(void *ud, int idx) {
     Seerr *v = ud;
     if (v != live) return;
-    if (idx == 0) keyboard_open(T("Seerr address (e.g. 192.168.1.10:5055)"), seerr_url(), false, url_done, v);
-    else if (idx == 1) keyboard_open(T("Seerr: email"), "", false, email_done, v);
-    else if (idx == 2) login(v);
+    if (idx == 0) enter_address(v);
+    else if (idx == 1) find_servers(v);
+    else if (idx == 2) keyboard_open(T("Seerr: email"), "", false, email_done, v);
+    else if (idx == 3) login(v);
 }
 static void open_settings(Seerr *v) {
-    const char *items[] = {T("Change Seerr address"), T("Local login (email)"), T("Sign in with Plex again")};
-    choice_open("Seerr", items, 3, 0, settings_cb, v);
+    const char *items[] = {T("Change Seerr address"), T("Find server on the network"), T("Local login (email)"), T("Sign in with Plex again")};
+    choice_open("Seerr", items, 4, 0, settings_cb, v);
 }
 
 static void search_done(void *ud, const char *q) {
@@ -642,7 +680,7 @@ static void seerr_enter(Screen *s) {
     side_init(&v->side, "Seerr", ICON_STAR, RGB(129, 140, 248));
     build_side(v);
     v->relogin = false;
-    if (!*seerr_url()) { v->state = 0; return; }
+    if (!*seerr_url()) { v->state = 0; find_servers(v); return; }
     v->state = 1;
     snprintf(v->msg, sizeof v->msg, T("Connecting…"));
     seerr_call("GET", "/api/v1/auth/me", NULL, me_done, v);
@@ -707,6 +745,12 @@ static void draw_poster(SItem *it, float x, float y, float w, float h, bool f) {
     text_draw_clip(F_REG, 20, x, y + h + 42, w, C_TEXT3, AL_LEFT, sub);
 }
 
+/* the setup/error screen's buttons */
+static int setup_buttons(Seerr *v, const char **b) {
+    if (v->state == 3 && *seerr_url()) { b[0] = T("Try again"); b[1] = T("Change address"); b[2] = T("Find server on the network"); return 3; }
+    b[0] = T("Find server on the network"); b[1] = T("Enter address"); return 2;
+}
+
 static void seerr_draw(Screen *s) {
     Seerr *v = s->st;
     draw_background();
@@ -717,7 +761,7 @@ static void seerr_draw(Screen *s) {
         if (v->state == 0) {
             text_draw(F_BOLD, 42, cx, 430, C_TEXT, AL_CENTER, T("Connect to Seerr"));
             text_draw_wrap(F_REG, 28, cx - 520, 500, 1040, 6, 40, C_TEXT2,
-                           T("Find and request movies and shows for your Plex server.\n\nEnter the address of your Overseerr/Jellyseerr/Seerr server, e.g. 192.168.1.10:5055. You are signed in with your Plex account."));
+                           T("Find and request movies and shows for your Plex server.\n\nFind your Overseerr/Jellyseerr/Seerr server on the network, or enter its address, e.g. 192.168.1.10:5055. You are signed in with your Plex account."));
         } else if (v->state == 1) {
             draw_spinner(cx, 520, 30, C_TEXT);
             text_draw(F_REG, 26, cx, 580, C_TEXT2, AL_CENTER, v->msg);
@@ -726,9 +770,9 @@ static void seerr_draw(Screen *s) {
             text_draw(F_REG, 28, cx, 500, C_TEXT2, AL_CENTER, v->msg);
         }
         if (v->state != 1) {
-            bool retry = v->state == 3 && *seerr_url();
-            const char *b[2] = {retry ? T("Try again") : T("Enter address"), T("Change address")};
-            draw_buttons(cx, 780, b, retry ? 2 : 1, v->side.open ? -1 : v->btn);
+            const char *b[3];
+            int nb = setup_buttons(v, b);
+            draw_buttons(cx, 780, b, nb, v->side.open ? -1 : v->btn);
             text_draw(F_REG, 22, cx, UI_H - 70, C_TEXT3, AL_CENTER, T("Left (from the first button): menu"));
         }
         side_draw(&v->side);
@@ -827,13 +871,15 @@ static bool seerr_input(Screen *s, const InputEvent *ev) {
     }
     if (v->state != 2) {
         if (v->state == 1) return ev->a != A_BACK && ev->a != A_HOME;
-        bool retry = v->state == 3 && *seerr_url();
-        int nb = retry ? 2 : 1;
+        const char *b[3];
+        int nb = setup_buttons(v, b);
         if (buttons_nav(&v->btn, nb, ev)) return true;
         if (ev->a == A_OK) {
             if (ev->repeat) return true;
-            if (retry && v->btn == 0) { v->relogin = false; login(v); }
-            else keyboard_open(T("Seerr address (e.g. 192.168.1.10:5055)"), seerr_url(), false, url_done, v);
+            const char *l = b[v->btn < nb ? v->btn : 0];
+            if (!strcmp(l, T("Try again"))) { v->relogin = false; login(v); }
+            else if (!strcmp(l, T("Find server on the network"))) find_servers(v);
+            else enter_address(v);
             return true;
         }
         if (ev->a == A_LEFT || ev->a == A_MENU) { side_open(&v->side); return true; }

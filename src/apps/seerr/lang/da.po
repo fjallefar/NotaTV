@@ -114,8 +114,8 @@ msgstr "Film"
 msgid "Connect to Seerr"
 msgstr "Forbind til Seerr"
 
-msgid "Find and request movies and shows for your Plex server.\n\nEnter the address of your Overseerr/Jellyseerr/Seerr server, e.g. 192.168.1.10:5055. You are signed in with your Plex account."
-msgstr "Find og anmod om film og serier til din Plex-server.\n\nIndtast adressen på din Overseerr/Jellyseerr/Seerr-server, fx 192.168.1.10:5055. Du logges ind med din Plex-konto."
+msgid "Find and request movies and shows for your Plex server.\n\nFind your Overseerr/Jellyseerr/Seerr server on the network, or enter its address, e.g. 192.168.1.10:5055. You are signed in with your Plex account."
+msgstr "Find og anmod om film og serier til din Plex-server.\n\nFind din Overseerr/Jellyseerr/Seerr-server på netværket, eller indtast adressen, fx 192.168.1.10:5055. Du logges ind med din Plex-konto."
 
 msgid "Could not sign in"
 msgstr "Kunne ikke logge ind"
@@ -453,17 +453,29 @@ msgstr "Netflix-rækkerne"
 msgid "The rows are fetched from Netflix's public top lists: the top 10 for your country and the worldwide top 20. Nothing about you is sent"
 msgstr "Rækkerne hentes fra Netflix' offentlige toplister: top 10 for dit land og top 20 for hele verden. Intet om dig sendes med"
 
+msgid "Find server on the network"
+msgstr "Find server på netværket"
 
+msgid "Enter address manually"
+msgstr "Indtast adresse selv"
 
+msgid "Found 1 Seerr server"
+msgstr "Fandt 1 Seerr-server"
 
-msgid "Safer sign-in, and fewer sign-in prompts"
-msgstr "Mere sikkert login og færre login-beskeder"
+msgid "Seerr servers on the network"
+msgstr "Seerr-servere på netværket"
 
-msgid "When the server rejects the session, Seerr signs in again only once"
-msgstr "Når serveren afviser sessionen, logger Seerr kun ind igen én gang"
+msgid "Searching for Seerr servers on the network…"
+msgstr "Søger efter Seerr-servere på netværket…"
 
-msgid "Server names use https by default, IP addresses and local names http - and you are warned when a sign-in would not be encrypted"
-msgstr "Servernavne bruger https som standard, IP-adresser og lokale navne http - og du får en advarsel, hvis et login ikke bliver krypteret"
+msgid "No Seerr servers found - enter the address"
+msgstr "Ingen Seerr-servere fundet - indtast adressen"
 
-msgid "Down and OK in an empty list no longer closes the app"
-msgstr "Ned og OK i en tom liste lukker ikke længere appen"
+msgid "Finds your Seerr server on the network by itself"
+msgstr "Finder selv din Seerr-server på netværket"
+
+msgid "The first time you open Seerr it searches the network (Overseerr, Jellyseerr and Seerr on port 5055), so you only have to pick the server"
+msgstr "Første gang du åbner Seerr, søger den på netværket (Overseerr, Jellyseerr og Seerr på port 5055), så du kun skal vælge serveren"
+
+msgid "Find server on the network is also on the setup screen and in the Seerr menu"
+msgstr "Find server på netværket ligger også på opsætningsskærmen og i Seerr-menuen"

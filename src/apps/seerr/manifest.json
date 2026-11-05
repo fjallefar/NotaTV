@@ -1,6 +1,6 @@
 {
   "id": "seerr",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "api": 2,
   "name": "Seerr",
   "desc": "Find and request movies and shows for Plex",
@@ -11,11 +11,10 @@
   "order": 60,
   "default": true,
   "changes": {
-    "summary": "Safer sign-in, and fewer sign-in prompts",
+    "summary": "Finds your Seerr server on the network by itself",
     "points": [
-      "When the server rejects the session, Seerr signs in again only once",
-      "Server names use https by default, IP addresses and local names http - and you are warned when a sign-in would not be encrypted",
-      "Down and OK in an empty list no longer closes the app"
+      "The first time you open Seerr it searches the network (Overseerr, Jellyseerr and Seerr on port 5055), so you only have to pick the server",
+      "Find server on the network is also on the setup screen and in the Seerr menu"
     ]
   }
 }
