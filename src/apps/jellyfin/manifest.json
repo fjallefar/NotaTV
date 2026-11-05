@@ -1,6 +1,6 @@
 {
   "id": "jellyfin",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": 2,
   "name": "Jellyfin",
   "desc": "Movies and shows from your Jellyfin server",
@@ -11,10 +11,10 @@
   "order": 30,
   "default": false,
   "changes": {
-    "summary": "Safer sign-in, and no crash in an empty list",
+    "summary": "Mark movies and shows as watched or unwatched",
     "points": [
-      "Server names use https by default, IP addresses and local names http - and you are warned when a sign-in would not be encrypted",
-      "Down and OK in an empty list no longer closes the app"
+      "Green key on a movie, series, season or episode: mark it as watched or unwatched, or remove it from Continue watching",
+      "The detail and series pages have a Mark as watched/unwatched button, and movies in progress a Remove from Continue button"
     ]
   }
 }

@@ -93,11 +93,13 @@ static void jf_call(const char *method, const char *path, const char *body, void
 /* ---------- elementer ---------- */
 typedef struct {
     char *id, *type, *name, *series, *series_id, *overview, *year, *backdrop_id, *logo_id, *rating;
+    char *season_id; /* episodes: the season's id */
     int index, parent_index, child_count;
     int unplayed;
     int tmdb; /* ProviderIds.Tmdb (0 = unknown): finds the right subtitles for a movie */
     int rt_critic, community10; /* Rotten Tomatoes % and community rating x10; -1 = unknown */
     double pos, run; /* seconds */
+    double played_pct; /* series/seasons: UserData.PlayedPercentage (0 = none watched) */
     bool played;
     char last_played[32]; /* UserData.LastPlayedDate (ISO 8601, compares as text); "" = never */
 } JItem;
@@ -105,12 +107,14 @@ typedef struct {
 static void jitem_free(JItem *j) {
     free(j->id); free(j->type); free(j->name); free(j->series); free(j->series_id);
     free(j->overview); free(j->year); free(j->backdrop_id); free(j->logo_id); free(j->rating);
+    free(j->season_id);
 }
 static JItem jitem_copy(const JItem *s) {
     JItem d = *s;
     d.id = str_dup(s->id); d.type = str_dup(s->type); d.name = str_dup(s->name); d.series = str_dup(s->series);
     d.series_id = str_dup(s->series_id); d.overview = str_dup(s->overview); d.year = str_dup(s->year);
     d.backdrop_id = str_dup(s->backdrop_id); d.logo_id = str_dup(s->logo_id); d.rating = str_dup(s->rating);
+    d.season_id = str_dup(s->season_id);
     return d;
 }
 
@@ -130,6 +134,7 @@ static void jitem_parse(JItem *j, cJSON *o) {
     j->name = js(o, "Name");
     j->series = js(o, "SeriesName");
     j->series_id = js(o, "SeriesId");
+    j->season_id = js(o, "SeasonId");
     j->overview = js(o, "Overview");
     int y = (int)jnum(o, "ProductionYear");
     if (y > 0) j->year = str_printf("%d", y);
@@ -142,6 +147,7 @@ static void jitem_parse(JItem *j, cJSON *o) {
     cJSON *ud = cJSON_GetObjectItem(o, "UserData");
     j->pos = jnum(ud, "PlaybackPositionTicks") / TICKS;
     j->played = cJSON_IsTrue(cJSON_GetObjectItem(ud, "Played"));
+    j->played_pct = jnum(ud, "PlayedPercentage");
     cJSON *lp = cJSON_GetObjectItem(ud, "LastPlayedDate");
     if (cJSON_IsString(lp)) snprintf(j->last_played, sizeof j->last_played, "%s", lp->valuestring);
     j->unplayed = (int)jnum(ud, "UnplayedItemCount");
@@ -939,6 +945,100 @@ static void side_activate(Jf *v, int idx) {
     } else confirm_open(T("Sign out of Jellyfin?"), T("You will need to sign in again to watch your movies and shows."), T("Sign out"), T("Cancel"), logout_cb, v);
 }
 
+/* ---------- watched / unwatched / remove from "Continue watching" ----------
+   The green key on a tile or an episode (and buttons on the detail page). For a series or a season Jellyfin marks
+   every episode. The open lists are changed in place (so the focus stays where it is); the series page fetches
+   its episodes again. "Remove from Continue" sets the saved position back to 0. */
+enum { JW_SEEN, JW_UNSEEN, JW_DECK };
+typedef struct { int a; char id[64]; } JwJob;
+static struct { char id[64]; int acts[3], n; } jw;
+static void jd_marked(const char *id, int a); /* the detail page (further down) */
+
+static bool jw_group(const JItem *j) { return j->type && (!strcmp(j->type, "Series") || !strcmp(j->type, "Season")); }
+static bool jw_can(const JItem *j) {
+    return j->id && j->type &&
+           (jw_group(j) || !strcmp(j->type, "Movie") || !strcmp(j->type, "Episode") || !strcmp(j->type, "Video"));
+}
+static bool jw_seen(const JItem *j) { return jw_group(j) ? j->played : j->played && j->pos <= 0; }
+static bool jw_any(const JItem *j) { return jw_group(j) ? j->played || j->played_pct > 0 : j->played; }
+
+/* change the items in the open lists, and drop them from "Continue"/"Next episode" when that no longer fits */
+static void jw_apply_rows(Jf *v, const char *id, int a) {
+    for (int r = 0; r < v->n_rows; r++) {
+        JRow *row = &v->rows[r];
+        for (int i = 0; i < row->n; i++) {
+            JItem *j = &row->it[i];
+            bool hit = j->id && !strcmp(j->id, id);
+            bool child = !hit && a != JW_DECK && ((j->series_id && !strcmp(j->series_id, id)) || (j->season_id && !strcmp(j->season_id, id)));
+            if (!hit && !child) continue;
+            if (a != JW_DECK) {
+                j->played = a == JW_SEEN;
+                j->played_pct = a == JW_SEEN ? 100 : 0;
+                if (a == JW_SEEN) j->unplayed = 0;
+            }
+            j->pos = 0;
+            bool drop = row->cont && (a == JW_SEEN || (a == JW_DECK && r == 0)); /* row 0 = "Continue watching" */
+            if (!drop) continue;
+            jitem_free(j);
+            memmove(j, j + 1, sizeof *j * (row->n - i - 1));
+            row->n--;
+            i--;
+        }
+    }
+    if (!v->n_rows) return;
+    JRow *cur = &v->rows[v->view == V_GRID ? 0 : v->row < v->n_rows ? v->row : 0];
+    if (v->view == V_GRID) {
+        if (v->row * GCOLS + v->col >= cur->n) { int k = cur->n ? cur->n - 1 : 0; v->row = k / GCOLS; v->col = k % GCOLS; }
+    } else if (v->col >= cur->n) v->col = cur->n ? cur->n - 1 : 0;
+}
+
+static void jw_done(void *ud, cJSON *json, long status) {
+    (void)json;
+    JwJob *w = ud;
+    if (status < 200 || status >= 300) app_toast(T("The Jellyfin server did not accept the change"));
+    else {
+        app_toast(w->a == JW_SEEN ? T("Marked as watched") : w->a == JW_UNSEEN ? T("Marked as unwatched") : T("Removed from Continue watching"));
+        if (live) jw_apply_rows(live, w->id, w->a);
+        jd_marked(w->id, w->a);
+        jellyfin_row_refresh(); /* the row on the home screen */
+    }
+    free(w);
+}
+
+static void jw_do(const char *id, int a) {
+    if (!id || !*id) return;
+    JwJob *w = calloc(1, sizeof *w);
+    w->a = a;
+    snprintf(w->id, sizeof w->id, "%s", id);
+    char *p;
+    if (a == JW_DECK) {
+        p = str_printf("/UserItems/%s/UserData?userId=%s", id, jf_uid());
+        jf_call_ex("POST", p, "{\"PlaybackPositionTicks\":0}", jw_done, w, true);
+    } else {
+        p = str_printf("/UserPlayedItems/%s?userId=%s", id, jf_uid());
+        jf_call_ex(a == JW_SEEN ? "POST" : "DELETE", p, NULL, jw_done, w, true);
+    }
+    free(p);
+}
+
+static void jw_menu_cb(void *ud, int idx) {
+    (void)ud;
+    if (idx >= 0 && idx < jw.n) jw_do(jw.id, jw.acts[idx]);
+}
+
+/* the green key's menu for an item */
+static void jw_menu(const JItem *j, const char *title) {
+    if (!jw_can(j)) return;
+    snprintf(jw.id, sizeof jw.id, "%s", j->id);
+    const char *items[3];
+    int n = 0;
+    if (!jw_seen(j)) { items[n] = T("Mark as watched"); jw.acts[n++] = JW_SEEN; }
+    if (jw_any(j)) { items[n] = T("Mark as unwatched"); jw.acts[n++] = JW_UNSEEN; }
+    if (!jw_group(j) && j->pos > 0) { items[n] = T("Remove from Continue watching"); jw.acts[n++] = JW_DECK; }
+    jw.n = n;
+    if (n) choice_open(title ? title : j->name ? j->name : "Jellyfin", items, n, 0, jw_menu_cb, NULL);
+}
+
 static void jf_enter(Screen *s) {
     Jf *v = s->st;
     live = v;
@@ -1259,6 +1359,7 @@ static bool jf_input(Screen *s, const InputEvent *ev) {
             return true;
         case A_OK: if (h && !ev->repeat) open_item(v, h, false); return true;
         case A_PLAYPAUSE: case A_PLAY: if (h && !ev->repeat) open_item(v, h, true); return true;
+        case A_INFO: if (h && !ev->repeat) jw_menu(h, NULL); return true;
         default: break;
         }
     }
@@ -1301,6 +1402,13 @@ static bool jf_input(Screen *s, const InputEvent *ev) {
         int i = gr ? v->row * GCOLS + v->col : v->col;
         if (i < 0 || i >= r->n) return true;
         open_item(v, &r->it[i], ev->a != A_OK);
+        return true;
+    }
+    case A_INFO: {
+        if (ev->repeat || !v->n_rows) return true;
+        JRow *r = gr ? gr : &v->rows[v->row];
+        int i = gr ? v->row * GCOLS + v->col : v->col;
+        if (i >= 0 && i < r->n) jw_menu(&r->it[i], NULL);
         return true;
     }
     default: return false;
@@ -1582,20 +1690,69 @@ static void jd_update(Screen *s, float dt) {
     d->esx = anim_to(d->esx, sel > avail - JD_EP_W ? sel - (avail - JD_EP_W) : 0, dt, 12);
 }
 
-/* buttons: [Resume] [Start over | Play] [Trailer]; for a series they are about the next episode */
-typedef enum { JB_RESUME, JB_PLAY, JB_START, JB_TRAILER } JBtn;
+/* buttons: [Resume] [Start over | Play] [Trailer] [Mark as watched | unwatched] [Remove from Continue];
+   for a series the play buttons are about the next episode and the mark is about the whole series */
+typedef enum { JB_RESUME, JB_PLAY, JB_START, JB_TRAILER, JB_SEEN, JB_DECK } JBtn;
+#define JD_MAX_BTNS 6
 static const JItem *jd_target(const JDetail *d) {
     if (!d->series) return &d->it;
     return d->next >= 0 && d->next < d->eps.n ? &d->eps.it[d->next] : NULL;
 }
+/* every episode of the series (season = -1) or of one season is watched */
+static bool jd_all_seen(const JDetail *d, int season, double *pct) {
+    int n = 0, seen = 0;
+    for (int i = 0; i < d->eps.n; i++) {
+        if (season >= 0 && d->eps.it[i].parent_index != season) continue;
+        n++;
+        if (d->eps.it[i].played && d->eps.it[i].pos <= 0) seen++;
+    }
+    if (pct) *pct = n ? 100.0 * seen / n : 0;
+    return n > 0 && seen == n;
+}
+
 static int jd_buttons(const JDetail *d, JBtn *k) {
     const JItem *t = jd_target(d);
-    if (!t) return 0;
     int n = 0;
-    if (t->pos > 30 && t->run > 0) { k[n++] = JB_RESUME; k[n++] = JB_START; }
-    else k[n++] = JB_PLAY;
-    if (d->it.type && !strcmp(d->it.type, "Movie")) k[n++] = JB_TRAILER;
+    if (t) {
+        if (t->pos > 30 && t->run > 0) { k[n++] = JB_RESUME; k[n++] = JB_START; }
+        else k[n++] = JB_PLAY;
+        if (d->it.type && !strcmp(d->it.type, "Movie")) k[n++] = JB_TRAILER;
+    }
+    if (d->series ? d->eps.n > 0 : jw_can(&d->it)) {
+        k[n++] = JB_SEEN;
+        if (!d->series && d->it.pos > 0) k[n++] = JB_DECK;
+    }
     return n;
+}
+static bool jd_seen(const JDetail *d) { return d->series ? jd_all_seen(d, -1, NULL) : jw_seen(&d->it); }
+
+/* a mark was accepted by the server: the series page fetches its episodes again, a movie page changes in place */
+static void jd_marked(const char *id, int a) {
+    JDetail *d = live_d;
+    if (!d) return;
+    if (d->series) { jd_load(d); return; }
+    if (!d->it.id || strcmp(d->it.id, id)) return;
+    if (a != JW_DECK) d->it.played = a == JW_SEEN;
+    d->it.pos = 0;
+}
+
+/* the green key on the series page: the series (buttons), the chosen season (pills) or the episode in focus */
+static void jd_watch_menu(JDetail *d) {
+    if (d->focus == 2 && d->ecol < d->n_sidx) { jw_menu(&d->eps.it[d->sidx[d->ecol]], NULL); return; }
+    JItem g = {0};
+    char lbl[64];
+    if (d->focus == 1 && d->scol < d->n_seasons && d->n_sidx) {
+        g.id = d->eps.it[d->sidx[0]].season_id;
+        g.type = "Season";
+        season_label(d->seasons[d->scol], lbl, sizeof lbl);
+        g.played = jd_all_seen(d, d->seasons[d->scol], &g.played_pct);
+        jw_menu(&g, lbl);
+    } else {
+        g.id = d->it.id;
+        g.type = "Series";
+        g.played = jd_all_seen(d, -1, &g.played_pct);
+        jw_menu(&g, d->it.name);
+    }
 }
 
 static void youtube_trailer(const JItem *it) {
@@ -1641,7 +1798,7 @@ static void jd_draw(Screen *s) {
         return;
     }
     /* buttons */
-    JBtn k[4];
+    JBtn k[JD_MAX_BTNS];
     int nb = jd_buttons(d, k);
     if (d->btn >= nb) d->btn = nb ? nb - 1 : 0;
     const JItem *t = jd_target(d);
@@ -1658,12 +1815,15 @@ static void jd_draw(Screen *s) {
             else snprintf(lb, sizeof lb, T("Play"));
             break;
         case JB_START: snprintf(lb, sizeof lb, T("Start over")); break;
+        case JB_SEEN: snprintf(lb, sizeof lb, "%s", jd_seen(d) ? T("Mark as unwatched") : T("Mark as watched")); break;
+        case JB_DECK: snprintf(lb, sizeof lb, "%s", T("Remove from Continue")); break;
         default: snprintf(lb, sizeof lb, T("Trailer (YouTube)")); break;
         }
         bool f = d->focus == 0 && d->btn == b;
         float w = text_width(F_SEMI, 28, lb) + 110;
         fill_rrect(bx, by, w, 76, 38, f ? C_FOCUS : RGBA(255, 255, 255, 40));
-        draw_icon(k[b] == JB_TRAILER ? ICON_FILM : ICON_PLAY, bx + 42, by + 38, 26, f ? RGB(10, 10, 10) : C_TEXT);
+        IconId ic = k[b] == JB_TRAILER ? ICON_FILM : k[b] == JB_SEEN ? ICON_CHECK : k[b] == JB_DECK ? ICON_BACK : ICON_PLAY;
+        draw_icon(ic, bx + 42, by + 38, 26, f ? RGB(10, 10, 10) : C_TEXT);
         text_draw(F_SEMI, 28, bx + 70, by + 20, f ? RGB(10, 10, 10) : C_TEXT, AL_LEFT, lb);
         bx += w + 24;
     }
@@ -1708,21 +1868,25 @@ static void jd_draw(Screen *s) {
         }
     }
     clip_pop();
+    if (d->focus > 0) draw_keybar(x, UI_H - 62, NULL, d->focus == 1 ? T("Season watched / unwatched") : T("Watched / unwatched"), NULL, NULL, NULL);
 }
 
 static bool jd_input(Screen *s, const InputEvent *ev) {
     JDetail *d = s->st;
     JItem *it = &d->it;
-    JBtn k[4];
+    JBtn k[JD_MAX_BTNS];
     int nb = jd_buttons(d, k);
     if (!d->series) {
         if (ev->a == A_LEFT) { if (d->btn > 0) d->btn--; return true; }
         if (ev->a == A_RIGHT) { if (d->btn < nb - 1) d->btn++; return true; }
-        if ((ev->a == A_OK || ev->a == A_PLAYPAUSE || ev->a == A_PLAY) && !ev->repeat) {
+        if (ev->a == A_INFO) { if (!ev->repeat) jw_menu(it, NULL); return true; }
+        if ((ev->a == A_OK || ev->a == A_PLAYPAUSE || ev->a == A_PLAY) && !ev->repeat && nb) {
             switch (k[d->btn < nb ? d->btn : 0]) {
             case JB_RESUME: jf_play_chain(it, true, it); break;
             case JB_PLAY: case JB_START: jf_play_chain(it, false, it); break;
             case JB_TRAILER: youtube_trailer(it); break;
+            case JB_SEEN: if (ev->a == A_OK) jw_do(it->id, jw_seen(it) ? JW_UNSEEN : JW_SEEN); return true; /* focus stays */
+            case JB_DECK: if (ev->a == A_OK) jw_do(it->id, JW_DECK); break;
             }
             d->btn = 0;
             return true;
@@ -1738,6 +1902,7 @@ static bool jd_input(Screen *s, const InputEvent *ev) {
     case A_DOWN:
         if (d->focus == 0) d->focus = 1;
         else if (d->focus == 1 && d->n_sidx) d->focus = 2;
+        else return false; /* at the bottom: the key bar takes focus */
         return true;
     case A_LEFT:
         if (d->focus == 0 && d->btn > 0) d->btn--;
@@ -1751,10 +1916,13 @@ static bool jd_input(Screen *s, const InputEvent *ev) {
         return true;
     case A_OK: case A_PLAYPAUSE: case A_PLAY:
         if (ev->repeat) return true;
-        if (d->focus == 0 && nb) jf_play_chain(jd_target(d), k[d->btn] == JB_RESUME, NULL);
+        if (d->focus == 0 && nb && k[d->btn] == JB_SEEN) {
+            if (ev->a == A_OK) jw_do(it->id, jd_seen(d) ? JW_UNSEEN : JW_SEEN);
+        } else if (d->focus == 0 && nb && jd_target(d)) jf_play_chain(jd_target(d), k[d->btn] == JB_RESUME, NULL);
         else if (d->focus == 1 && d->n_sidx) d->focus = 2;
         else if (d->focus == 2 && d->ecol < d->n_sidx) jf_play_chain(&d->eps.it[d->sidx[d->ecol]], true, NULL);
         return true;
+    case A_INFO: if (!ev->repeat) jd_watch_menu(d); return true;
     default: return false;
     }
 }

@@ -1,6 +1,6 @@
 {
   "id": "plex",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "api": 2,
   "name": "Plex",
   "desc": "Movies and shows from your Plex server",
@@ -11,9 +11,10 @@
   "order": 20,
   "default": true,
   "changes": {
-    "summary": "Signing out leaves nothing behind",
+    "summary": "Mark movies and shows as watched or unwatched",
     "points": [
-      "Replies from Plex that arrive after you sign out are thrown away, so nothing of the account is kept"
+      "Green key on a movie, series, season or episode: mark it as watched or unwatched, or remove it from Continue watching",
+      "The detail and series pages have a Mark as watched/unwatched button, and movies in progress a Remove from Continue button"
     ]
   }
 }

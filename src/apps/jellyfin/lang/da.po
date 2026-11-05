@@ -230,15 +230,41 @@ msgstr "%d min"
 msgid "CONTINUE IN JELLYFIN"
 msgstr "FORTSÆT I JELLYFIN"
 
+msgid "Mark as watched"
+msgstr "Markér som set"
 
+msgid "Mark as unwatched"
+msgstr "Markér som uset"
 
+msgid "Remove from Continue watching"
+msgstr "Fjern fra Fortsæt med at se"
 
+msgid "Remove from Continue"
+msgstr "Fjern fra Fortsæt"
 
-msgid "Safer sign-in, and no crash in an empty list"
-msgstr "Mere sikkert login og intet nedbrud i en tom liste"
+msgid "Marked as watched"
+msgstr "Markeret som set"
 
-msgid "Server names use https by default, IP addresses and local names http - and you are warned when a sign-in would not be encrypted"
-msgstr "Servernavne bruger https som standard, IP-adresser og lokale navne http - og du får en advarsel, hvis et login ikke bliver krypteret"
+msgid "Marked as unwatched"
+msgstr "Markeret som uset"
 
-msgid "Down and OK in an empty list no longer closes the app"
-msgstr "Ned og OK i en tom liste lukker ikke længere appen"
+msgid "Removed from Continue watching"
+msgstr "Fjernet fra Fortsæt med at se"
+
+msgid "The Jellyfin server did not accept the change"
+msgstr "Jellyfin-serveren tog ikke imod ændringen"
+
+msgid "Watched / unwatched"
+msgstr "Set / uset"
+
+msgid "Season watched / unwatched"
+msgstr "Sæson set / uset"
+
+msgid "Mark movies and shows as watched or unwatched"
+msgstr "Markér film og serier som set eller uset"
+
+msgid "Green key on a movie, series, season or episode: mark it as watched or unwatched, or remove it from Continue watching"
+msgstr "Grøn knap på en film, serie, sæson eller et afsnit: markér som set eller uset, eller fjern fra Fortsæt med at se"
+
+msgid "The detail and series pages have a Mark as watched/unwatched button, and movies in progress a Remove from Continue button"
+msgstr "Detalje- og seriesiderne har en knap til Markér som set/uset, og påbegyndte film en Fjern fra Fortsæt-knap"

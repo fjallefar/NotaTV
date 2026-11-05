@@ -217,6 +217,7 @@ typedef struct {
     int tmdb;
     char *show; /* series title for episodes */
     char *grandparent_key; /* episodes and seasons: the series' rating key */
+    char *parent_key; /* episodes: the season's rating key */
     int srv; /* server-indeks i S[] */
     bool hdr; /* the video track is HDR (PQ/HLG) */
     int width; /* video width (0 = unknown) */
@@ -286,6 +287,7 @@ static void pitem_parse(PItem *it, cJSON *m, int si) {
         it->subtitle = str_printf(T("%s · S%d E%d"), gp ? gp : "", it->parent_index, it->index);
         it->show = gp;
         it->grandparent_key = jstr(m, "grandparentRatingKey");
+        it->parent_key = jstr(m, "parentRatingKey");
         it->thumb = jstr(m, "grandparentThumb");
         it->art = jstr(m, "thumb"); /* afsnits-still (16:9) */
         if (!it->art) it->art = jstr(m, "art");
@@ -352,6 +354,7 @@ static void pitem_free(PItem *it) {
     free(it->subtype);
     free(it->show);
     free(it->grandparent_key);
+    free(it->parent_key);
     for (int i = 0; i < it->n_subs; i++) free(it->subs[i]);
     free(it->subs);
 }
@@ -363,6 +366,7 @@ static PItem pitem_copy(const PItem *s) {
     d.thumb = str_dup(s->thumb); d.art = str_dup(s->art); d.sart = str_dup(s->sart); d.clogo = str_dup(s->clogo); d.part = str_dup(s->part);
     d.year = str_dup(s->year); d.rating = str_dup(s->rating); d.subtype = str_dup(s->subtype); d.show = str_dup(s->show);
     d.grandparent_key = str_dup(s->grandparent_key);
+    d.parent_key = str_dup(s->parent_key);
     d.subs = calloc(s->n_subs + 1, sizeof(char *));
     for (int i = 0; i < s->n_subs; i++) d.subs[i] = str_dup(s->subs[i]);
     return d;
@@ -600,6 +604,62 @@ void plex_refresh_ondeck(void) {
 int plex_ondeck(HomeItem **items) {
     *items = deck;
     return *cfg_get("plex_token", "") ? n_deck : 0;
+}
+
+/* ---------- watched / unwatched / remove from "Continue watching" ----------
+   Chosen with the green key (or a button on the detail and series pages). Works for films, episodes, seasons and
+   whole series (Plex marks all the episodes). Afterwards play_gen is bumped, so every open list fetches again. */
+enum { WA_SEEN, WA_UNSEEN, WA_DECK };
+static struct { int srv; char rk[32]; int acts[3], n; } watch_t;
+
+static void watch_cb(void *ud, Req *r) {
+    int a = (int)(intptr_t)ud;
+    if (r->status < 200 || r->status >= 300) { app_toast(T("The Plex server did not accept the change")); return; }
+    app_toast(a == WA_SEEN ? T("Marked as watched") : a == WA_UNSEEN ? T("Marked as unwatched") : T("Removed from Continue watching"));
+    play_gen++;
+    plex_refresh_ondeck();
+}
+
+static void watch_do(int si, const char *rk, int a) {
+    if (!srv_ok(si) || !rk || !*rk) return;
+    char *e = url_encode(rk);
+    char *url = a == WA_DECK ? str_printf("%s/actions/removeFromContinueWatching?ratingKey=%s", S[si].uri, e)
+                             : str_printf("%s/:/%s?identifier=com.plexapp.plugins.library&key=%s", S[si].uri,
+                                          a == WA_SEEN ? "scrobble" : "unscrobble", e);
+    Req *r = req_send(a == WA_DECK ? "PUT" : "GET", url, S[si].token, watch_cb, (void *)(intptr_t)a);
+    r->srv = si;
+    free(url);
+    free(e);
+}
+
+static bool is_group(const PItem *it) { return it->type && (!strcmp(it->type, "show") || !strcmp(it->type, "season")); }
+static bool can_mark(const PItem *it) {
+    return it->rating_key && srv_ok(it->srv) && it->type &&
+           (is_group(it) || !strcmp(it->type, "movie") || !strcmp(it->type, "episode"));
+}
+/* fully watched (series/season: every episode) */
+static bool is_seen(const PItem *it) {
+    return is_group(it) ? it->leaves > 0 && it->viewed_leaves >= it->leaves : it->view_count > 0 && it->offset <= 0;
+}
+
+static void watch_menu_cb(void *ud, int idx) {
+    (void)ud;
+    if (idx >= 0 && idx < watch_t.n) watch_do(watch_t.srv, watch_t.rk, watch_t.acts[idx]);
+}
+
+/* the green key's menu for an item. cont = it is shown in "Continue watching" */
+static void watch_menu(const PItem *it, bool cont) {
+    if (!can_mark(it)) return;
+    watch_t.srv = it->srv;
+    snprintf(watch_t.rk, sizeof watch_t.rk, "%s", it->rating_key);
+    const char *items[3];
+    int n = 0;
+    bool any = is_group(it) ? it->viewed_leaves > 0 : it->view_count > 0;
+    if (!is_seen(it)) { items[n] = T("Mark as watched"); watch_t.acts[n++] = WA_SEEN; }
+    if (any) { items[n] = T("Mark as unwatched"); watch_t.acts[n++] = WA_UNSEEN; }
+    if (!is_group(it) && (cont || it->offset > 0)) { items[n] = T("Remove from Continue watching"); watch_t.acts[n++] = WA_DECK; }
+    watch_t.n = n;
+    if (n) choice_open(it->title ? it->title : "Plex", items, n, 0, watch_menu_cb, NULL);
 }
 
 /* ---------- playback ---------- */
@@ -2297,6 +2357,7 @@ static bool browse_input(Screen *s, const InputEvent *ev) {
             else { b->hero_idx--; b->hero_t = app_time(); b->hero_fade = 0; }
             return true;
         case A_OK: if (h && !ev->repeat) open_item(h); return true;
+        case A_INFO: if (h && !ev->repeat) watch_menu(h, false); return true;
         case A_PLAYPAUSE: case A_PLAY:
             if (h && !ev->repeat) {
                 if (h->part) play_with_resume(h, h);
@@ -2341,6 +2402,9 @@ static bool browse_input(Screen *s, const InputEvent *ev) {
         choice_open("Plex", items, 3, 0, plex_menu_cb, NULL);
         return true;
     }
+    case A_INFO:
+        if (nr && !ev->repeat) watch_menu(&b->rows[b->row].items[b->col], b->rows[b->row].cont);
+        return true;
     case A_SEARCH: keyboard_open(T("Search Plex"), "", false, search_cb, NULL); return true;
     default: return false;
     }
@@ -2375,6 +2439,7 @@ typedef struct {
     PItem trailer;
     bool has_trailer, extras_done, asked_seerr;
     int sel;
+    int gen; /* play_gen when the item was fetched: fetched again after a playback or a watched mark */
     Req *req, *ereq;
 } Detail;
 static Detail *live_pdetail;
@@ -2428,6 +2493,7 @@ static void extras_cb(void *ud, Req *r) {
 static void detail_enter(Screen *s) {
     Detail *d = s->st;
     live_pdetail = d;
+    d->gen = play_gen;
     char *p = str_printf("/library/metadata/%s?includeGuids=1", d->it.rating_key);
     d->req = srv_get(d->it.srv, p, detail_cb, d);
     free(p);
@@ -2452,14 +2518,30 @@ static void detail_destroy(Screen *s) {
 }
 
 
-/* buttons: [Resume] [Start over|Play] [Trailer] */
-typedef enum { B_RESUME, B_PLAY, B_START, B_TRAILER } BtnKind;
+static void detail_update(Screen *s, float dt) {
+    (void)dt;
+    Detail *d = s->st;
+    if (d->gen != play_gen && !d->req) { /* watched mark or progress changed: fetch the item again */
+        d->gen = play_gen;
+        char *p = str_printf("/library/metadata/%s?includeGuids=1", d->it.rating_key);
+        d->req = srv_get(d->it.srv, p, detail_cb, d);
+        free(p);
+    }
+}
+
+/* buttons: [Resume] [Start over|Play] [Trailer] [Mark as watched|unwatched] [Remove from Continue] */
+typedef enum { B_RESUME, B_PLAY, B_START, B_TRAILER, B_SEEN, B_DECK } BtnKind;
+#define MAX_BTNS 6
 static int detail_buttons(Detail *d, BtnKind *k) {
     int n = 0;
     if (d->it.offset > 30) { k[n++] = B_RESUME; k[n++] = B_START; }
     else k[n++] = B_PLAY;
     bool movie = d->it.type && !strcmp(d->it.type, "movie");
     if (d->has_trailer || (movie && d->extras_done)) k[n++] = B_TRAILER;
+    if (can_mark(&d->it)) {
+        k[n++] = B_SEEN;
+        if (d->it.offset > 0) k[n++] = B_DECK;
+    }
     return n;
 }
 
@@ -2500,7 +2582,7 @@ static void detail_draw(Screen *s) {
     text_draw(F_REG, 28, x, y + 100, C_TEXT2, AL_LEFT, meta);
     float rx = draw_ratings(x, y + 156, it->rt_critic, it->rt_audience, it->imdb10);
     text_draw_wrap(F_REG, 28, x, rx > x ? y + 226 : y + 170, 1000, rx > x ? 6 : 7, 40, C_TEXT, it->summary ? it->summary : "");
-    BtnKind k[4];
+    BtnKind k[MAX_BTNS];
     int nb = detail_buttons(d, k);
     if (d->sel >= nb) d->sel = nb - 1;
     float bx = x, by = 820;
@@ -2511,11 +2593,14 @@ static void detail_draw(Screen *s) {
         case B_PLAY: snprintf(lbl, sizeof lbl, T("Play")); break;
         case B_START: snprintf(lbl, sizeof lbl, T("Start over")); break;
         case B_TRAILER: snprintf(lbl, sizeof lbl, "%s", d->has_trailer ? T("Trailer") : T("Trailer (YouTube)")); break;
+        case B_SEEN: snprintf(lbl, sizeof lbl, "%s", is_seen(it) ? T("Mark as unwatched") : T("Mark as watched")); break;
+        case B_DECK: snprintf(lbl, sizeof lbl, "%s", T("Remove from Continue")); break;
         }
         bool f = d->sel == i;
         float w = text_width(F_SEMI, 28, lbl) + 110;
         fill_rrect(bx, by, w, 76, 38, f ? C_FOCUS : RGBA(255, 255, 255, 40));
-        draw_icon(k[i] == B_TRAILER ? ICON_FILM : ICON_PLAY, bx + 42, by + 38, 26, f ? RGB(10, 10, 10) : C_TEXT);
+        IconId ic = k[i] == B_TRAILER ? ICON_FILM : k[i] == B_SEEN ? ICON_CHECK : k[i] == B_DECK ? ICON_BACK : ICON_PLAY;
+        draw_icon(ic, bx + 42, by + 38, 26, f ? RGB(10, 10, 10) : C_TEXT);
         text_draw(F_SEMI, 28, bx + 70, by + 20, f ? RGB(10, 10, 10) : C_TEXT, AL_LEFT, lbl);
         bx += w + 24;
     }
@@ -2562,7 +2647,7 @@ static void play_youtube_trailer(PItem *it) {
 
 static bool detail_input(Screen *s, const InputEvent *ev) {
     Detail *d = s->st;
-    BtnKind k[4];
+    BtnKind k[MAX_BTNS];
     int nb = detail_buttons(d, k);
     switch (ev->a) {
     case A_LEFT: if (d->sel > 0) d->sel--; return true;
@@ -2575,9 +2660,16 @@ static bool detail_input(Screen *s, const InputEvent *ev) {
             if (d->has_trailer) play_plex_trailer(&d->trailer, &d->it);
             else play_youtube_trailer(&d->it);
             break;
+        case B_SEEN:
+            if (!ev->repeat) watch_do(d->it.srv, d->it.rating_key, is_seen(&d->it) ? WA_UNSEEN : WA_SEEN);
+            return true; /* keep the focus on the button */
+        case B_DECK:
+            if (!ev->repeat) { watch_do(d->it.srv, d->it.rating_key, WA_DECK); d->sel = 0; }
+            return true;
         }
         d->sel = 0;
         return true;
+    case A_INFO: if (!ev->repeat) watch_menu(&d->it, false); return true;
     default: return false;
     }
 }
@@ -2590,6 +2682,7 @@ static Screen *detail_screen(PItem *src) {
     s->st = d;
     s->enter = detail_enter;
     s->leave = detail_leave;
+    s->update = detail_update;
     s->draw = detail_draw;
     s->input = detail_input;
     s->destroy = detail_destroy;
@@ -2721,13 +2814,49 @@ static void season_label(int season, char *buf, size_t n) {
     else snprintf(buf, n, T("Season %d"), season);
 }
 
-/* buttons: [Continue S8 E4 | Play S1 E1] [Start over] */
+/* every episode of the series (season = -1) or of one season is watched */
+static bool show_seen(const Show *sh, int season, int *n_out, int *seen_out) {
+    int n = 0, seen = 0;
+    for (int i = 0; i < sh->n_eps; i++) {
+        if (season >= 0 && sh->eps[i].parent_index != season) continue;
+        n++;
+        if (sh->eps[i].view_count > 0 && sh->eps[i].offset <= 0) seen++;
+    }
+    if (n_out) *n_out = n;
+    if (seen_out) *seen_out = seen;
+    return n > 0 && seen == n;
+}
+
+/* buttons: [Continue S8 E4 | Play S1 E1] [Start over] [Mark as watched|unwatched] */
 static int show_buttons(Show *sh, BtnKind *k) {
-    if (sh->next < 0) return 0;
     int n = 0;
-    if (sh->eps[sh->next].offset > 30) { k[n++] = B_RESUME; k[n++] = B_START; }
-    else k[n++] = B_PLAY;
+    if (sh->next >= 0) {
+        if (sh->eps[sh->next].offset > 30) { k[n++] = B_RESUME; k[n++] = B_START; }
+        else k[n++] = B_PLAY;
+    }
+    if (sh->n_eps && sh->key[0]) k[n++] = B_SEEN; /* the whole series */
     return n;
+}
+
+/* the green key on the series page: the series (buttons), the chosen season (pills) or the episode in focus */
+static void show_watch_menu(Show *sh) {
+    if (sh->row == 2 && sh->esel < sh->n_sidx) { watch_menu(&sh->eps[sh->sidx[sh->esel]], false); return; }
+    PItem g = {0};
+    char lbl[64];
+    g.srv = sh->srv;
+    if (sh->row == 1 && sh->ssel < sh->n_seasons && sh->n_sidx) {
+        g.type = "season";
+        g.rating_key = sh->eps[sh->sidx[0]].parent_key;
+        season_label(sh->seasons[sh->ssel], lbl, sizeof lbl);
+        g.title = lbl;
+        show_seen(sh, sh->seasons[sh->ssel], &g.leaves, &g.viewed_leaves);
+    } else {
+        g.type = "show";
+        g.rating_key = sh->key;
+        g.title = sh->have_show ? sh->show.title : NULL;
+        show_seen(sh, -1, &g.leaves, &g.viewed_leaves);
+    }
+    watch_menu(&g, false); /* g only borrows strings: watch_menu copies what it needs */
 }
 
 #define SHOW_PILL_Y 610.0f
@@ -2800,20 +2929,22 @@ static void show_draw(Screen *s) {
         return;
     }
     /* buttons */
-    BtnKind k[4];
+    BtnKind k[MAX_BTNS];
     int nb = show_buttons(sh, k);
     if (sh->bsel >= nb) sh->bsel = nb ? nb - 1 : 0;
     float bx = x, by = 500;
     for (int i = 0; i < nb; i++) {
-        const PItem *ne = &sh->eps[sh->next];
+        const PItem *ne = sh->next >= 0 ? &sh->eps[sh->next] : NULL;
         char lbl[96], dur[32];
-        if (k[i] == B_RESUME) snprintf(lbl, sizeof lbl, T("Continue S%d E%d (%s)"), ne->parent_index, ne->index, fmt_duration(ne->offset, dur, sizeof dur));
+        if (k[i] == B_SEEN) snprintf(lbl, sizeof lbl, "%s", show_seen(sh, -1, NULL, NULL) ? T("Mark as unwatched") : T("Mark as watched"));
+        else if (!ne) continue;
+        else if (k[i] == B_RESUME) snprintf(lbl, sizeof lbl, T("Continue S%d E%d (%s)"), ne->parent_index, ne->index, fmt_duration(ne->offset, dur, sizeof dur));
         else if (k[i] == B_PLAY) snprintf(lbl, sizeof lbl, T("Play S%d E%d"), ne->parent_index, ne->index);
         else snprintf(lbl, sizeof lbl, "%s", T("Start over"));
         bool f = sh->row == 0 && sh->bsel == i;
         float w = text_width(F_SEMI, 28, lbl) + 110;
         fill_rrect(bx, by, w, 76, 38, f ? C_FOCUS : RGBA(255, 255, 255, 40));
-        draw_icon(ICON_PLAY, bx + 42, by + 38, 26, f ? RGB(10, 10, 10) : C_TEXT);
+        draw_icon(k[i] == B_SEEN ? ICON_CHECK : ICON_PLAY, bx + 42, by + 38, 26, f ? RGB(10, 10, 10) : C_TEXT);
         text_draw(F_SEMI, 28, bx + 70, by + 20, f ? RGB(10, 10, 10) : C_TEXT, AL_LEFT, lbl);
         bx += w + 24;
     }
@@ -2861,12 +2992,13 @@ static void show_draw(Screen *s) {
         }
     }
     clip_pop();
+    if (sh->row > 0) draw_keybar(x, UI_H - 62, NULL, sh->row == 1 ? T("Season watched / unwatched") : T("Watched / unwatched"), NULL, NULL, NULL);
 }
 
 static bool show_input(Screen *s, const InputEvent *ev) {
     Show *sh = s->st;
     if (!sh->loaded) return false;
-    BtnKind k[4];
+    BtnKind k[MAX_BTNS];
     int nb = show_buttons(sh, k);
     switch (ev->a) {
     case A_UP:
@@ -2874,8 +3006,8 @@ static bool show_input(Screen *s, const InputEvent *ev) {
         if (sh->row == 0 && !nb) sh->row = 1;
         return true;
     case A_DOWN:
-        if (sh->row < 2 && (sh->row < 1 || sh->n_sidx)) sh->row++;
-        return true;
+        if (sh->row < 2 && (sh->row < 1 || sh->n_sidx)) { sh->row++; return true; }
+        return sh->row < 1; /* at the bottom: false lets the key bar take focus */
     case A_LEFT:
         if (sh->row == 0 && sh->bsel > 0) sh->bsel--;
         else if (sh->row == 1 && sh->ssel > 0) { show_pick_season(sh, sh->ssel - 1); sh->esel = 0; sh->sx_e = 0; }
@@ -2888,13 +3020,17 @@ static bool show_input(Screen *s, const InputEvent *ev) {
         return true;
     case A_OK: case A_PLAYPAUSE: case A_PLAY:
         if (ev->repeat) return true;
-        if (sh->row == 0 && nb) {
+        if (sh->row == 0 && nb && k[sh->bsel] == B_SEEN) {
+            if (ev->a != A_OK) return true;
+            watch_do(sh->srv, sh->key, show_seen(sh, -1, NULL, NULL) ? WA_UNSEEN : WA_SEEN);
+        } else if (sh->row == 0 && nb && sh->next >= 0) {
             PItem *ne = &sh->eps[sh->next];
             plex_play_chain(ne, k[sh->bsel] == B_RESUME ? ne->offset : 0, NULL);
         } else if (sh->row == 1) {
             if (sh->n_sidx) sh->row = 2;
         } else if (sh->row == 2 && sh->esel < sh->n_sidx) play_with_resume(&sh->eps[sh->sidx[sh->esel]], NULL);
         return true;
+    case A_INFO: if (!ev->repeat) show_watch_menu(sh); return true;
     default: return false;
     }
 }
