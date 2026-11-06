@@ -1,0 +1,4 @@
+# NotaTV users (Buildroot makeusers format: name uid group gid password home shell groups comment)
+# media: mpv, ffprobe, yt-dlp and UxPlay run as this user when media_user=1 (see src/shell/mediarun.c). Fixed ids,
+# because media's home on the data partition (/data/notatv/media) keeps its owner across updates. No login.
+media 1990 media 1990 * - - video,audio NotaTV media playback

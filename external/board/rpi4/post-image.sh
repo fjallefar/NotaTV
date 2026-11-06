@@ -25,7 +25,7 @@ for f in passwd group shadow; do
 	"$HOST_DIR/sbin/debugfs" -R "dump -p /etc/$f $S/users/etc/$f" "$BINARIES_DIR/rootfs.ext4" >/dev/null 2>&1
 	[ -s "$S/users/etc/$f" ] || { echo "post-image: could not read /etc/$f from rootfs.ext4" >&2; exit 1; }
 done
-for u in dbus avahi; do
+for u in dbus avahi media; do
 	grep -q "^$u:" "$S/users/etc/passwd" || { echo "post-image: user $u missing from /etc/passwd" >&2; exit 1; }
 done
 # (added as "etc/..." without "./", so the excludes below do not drop them; the 2nd transform puts them in rootfs/)

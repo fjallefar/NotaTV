@@ -6,8 +6,11 @@
  * 1080p buffers, which the display hardware scales to 4K by itself - the same principle mpv uses. The display
  * therefore stays in 4K60 (and HDR) all the time, and the UI runs at 60 fps.
  *
- * Buffers: GBM buffer on the display card (vc4, can be shown directly) -> dmabuf -> EGLImage in SDL's
- * GL context -> GL texture -> SDL texture (render target). No copying.
+ * Buffers: GBM buffer on the display card (vc4, can be shown directly) -> dmabuf -> EGLImage -> GL renderbuffer.
+ * SDL draws into the texture K.ui, but its framebuffer gets the display buffer of the frame attached instead of the
+ * texture (kms_present_begin), so the UI is drawn straight into the buffer the display shows - no full-screen copy
+ * per frame (P5: ~8 MB read + 8 MB written each frame on the Pi 4). If the driver refuses that, or kms_direct=0
+ * is set in notatv.conf, the old path is used: draw into the texture and copy it into the display buffer.
  */
 #include "tv.h"
 #include <EGL/egl.h>
@@ -44,6 +47,9 @@ static struct {
     Buf buf[NBUF];
     SDL_Texture *ui;  /* SDL draws the UI here (ordinary GPU texture) */
     GLuint read_fbo;  /* framebuffer with the UI texture, which is copied to the display buffer */
+    GLuint ui_fbo;    /* SDL's own framebuffer for K.ui (direct mode: gets the display buffer attached) */
+    GLuint ui_gltex;  /* K.ui's GL texture (attached again when direct mode is not used) */
+    bool direct;      /* drawing straight into the display buffers */
     int cur;          /* the buffer being drawn into now */
     int shown;        /* the buffer on screen (-1: none yet) */
     bool flip_pending;
@@ -216,15 +222,69 @@ bool kms_present_init(SDL_Renderer *ren, int w, int h) {
     glBindFramebuffer(GL_FRAMEBUFFER, K.read_fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, uitex, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)prev);
+    K.ui_gltex = uitex;
     K.on = true;
     K.cur = 0;
-    SDL_Log("kms: UI i %dx%d, skaleres af skærmhardwaren til %dx%d", w, h, K.mode_w, K.mode_h);
+    /* direct mode: find SDL's framebuffer for K.ui (SDL binds it at once in SetRenderTarget) and see whether the
+       driver takes a display buffer as its color attachment */
+    if (cfg_int("kms_direct", 1)) {
+        SDL_Texture *was = SDL_GetRenderTarget(ren);
+        SDL_SetRenderTarget(ren, NULL);
+        SDL_SetRenderTarget(ren, K.ui);
+        GLint fbo = 0;
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+        if (fbo > 0) {
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, K.buf[0].rb);
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+                K.ui_fbo = (GLuint)fbo;
+                K.direct = true;
+            } else {
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, uitex, 0);
+            }
+        }
+        SDL_SetRenderTarget(ren, was);
+    }
+    SDL_Log("kms: UI i %dx%d, skaleres af skærmhardwaren til %dx%d (%s)", w, h, K.mode_w, K.mode_h,
+            K.direct ? "tegnes direkte i skærmbufferen" : "kopieres til skærmbufferen");
     return true;
 }
 
 bool kms_present_active(void) { return K.on; }
 
 SDL_Texture *kms_present_target(void) { return K.on ? K.ui : NULL; }
+
+/* before a frame is drawn: point K.ui's framebuffer at the display buffer this frame goes into. That buffer is two
+   flips old (NBUF 3, at most one flip pending), so the display no longer reads it. */
+void kms_present_begin(SDL_Renderer *ren) {
+    if (!K.on || !K.direct) return;
+    SDL_FlushRenderer(ren); /* everything queued for the previous buffer goes there first */
+    GLint prev = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prev);
+    glBindFramebuffer(GL_FRAMEBUFFER, K.ui_fbo);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, K.buf[K.cur].rb);
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)prev);
+}
+
+/* copy the frame on screen into the current render target (same size), e.g. the photo under a new screen. In
+   direct mode K.ui's texture is never drawn into, so the picture must come from the last display buffer.
+   false = not in direct mode (the caller copies K.ui as before). */
+bool kms_present_copy_shown(SDL_Renderer *ren) {
+    if (!K.on || !K.direct || K.shown < 0) return false;
+    SDL_FlushRenderer(ren);
+    Buf *b = &K.buf[K.shown];
+    GLint rf = 0, df = 0;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rf);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &df);
+    if ((GLuint)df == K.ui_fbo || df == 0) return false; /* the target must be another texture */
+    GLboolean sc = glIsEnabled(GL_SCISSOR_TEST);
+    if (sc) glDisable(GL_SCISSOR_TEST);
+    int w = gbm_bo_get_width(b->bo), h = gbm_bo_get_height(b->bo);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, b->fbo);
+    p_glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)rf);
+    if (sc) glEnable(GL_SCISSOR_TEST);
+    return true;
+}
 
 static void on_flip(int fd, unsigned seq, unsigned sec, unsigned usec, void *ud) { K.flip_pending = false; }
 
@@ -242,6 +302,7 @@ void kms_present_frame(SDL_Renderer *ren) {
     if (!K.on) return;
     SDL_FlushRenderer(ren);
     Buf *b = &K.buf[K.cur];
+    if (!K.direct) {
     /* copy the UI texture into the display buffer; save/restore the GL state SDL relies on */
     GLint rf = 0, df = 0;
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rf);
@@ -256,6 +317,7 @@ void kms_present_frame(SDL_Renderer *ren) {
     glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)rf);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)df);
     if (sc) glEnable(GL_SCISSOR_TEST);
+    }
     /* The display must not show the buffer before the GPU is done. vc4 (display) waits for v3d's fence on the buffer
        by itself before the flip (implicit sync), so glFlush is enough and the CPU can start on the next frame
        meanwhile. kms_finish=1 in notatv.conf goes back to glFinish (stalls the CPU every frame), should a TV show

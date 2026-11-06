@@ -138,7 +138,9 @@ static int video_thread(void *arg) {
             M.last_data = app_time();
             int sink = M.sink;
             if (sink < 0) {
-                M.keep = realloc(M.keep, M.nkeep + (size_t)r);
+                unsigned char *nk = realloc(M.keep, M.nkeep + (size_t)r);
+                if (!nk) { SDL_UnlockMutex(mu); continue; } /* out of memory: drop this piece */
+                M.keep = nk;
                 memcpy(M.keep + M.nkeep, buf, (size_t)r);
                 M.nkeep += (size_t)r;
                 long k = last_sps(M.keep, M.nkeep);
@@ -179,7 +181,7 @@ static int android_thread(void *arg) {
     for (;;) {
         int fd = accept(s, NULL, NULL); /* without CLOEXEC: mpv inherits the connection */
         if (fd < 0) { SDL_Delay(200); continue; }
-        if (!cfg_int("mirror_android", 1)) { close(fd); continue; }
+        if (!cfg_int("android_mirror", 0)) { close(fd); continue; } /* the same key that starts the thread */
         SDL_LockMutex(mu);
         if (M.android_fd >= 0) close(M.android_fd);
         M.android_fd = fd; /* newest wins */
@@ -195,7 +197,11 @@ static double since_disconnect;
 
 static void airplay_tick(void *ud) {
     (void)ud;
-    /* end when the phone has disconnected (no TCP connection for 2 s) */
+    /* end when the phone has disconnected (no TCP connection for 2 s). /proc/net/tcp* is read twice a second,
+       not in every frame */
+    static double next_check;
+    if (app_time() < next_check && !stop_airplay) return;
+    next_check = app_time() + 0.5;
     if (airplay_connected()) since_disconnect = 0;
     else if (since_disconnect == 0) since_disconnect = app_time();
     else if (app_time() - since_disconnect > 2) stop_airplay = true;

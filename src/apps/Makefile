@@ -25,13 +25,15 @@ APP_EXTRA :=
 all: $(foreach a,$(APPS),$(OUT)/$(a)/app.so) $(APP_EXTRA)
 
 .SECONDEXPANSION:
-$(OUT)/%/app.so: $$(wildcard %/*.c) $$(wildcard %/*.h) $(SHELL_DIR)/tv.h $(SHELL_DIR)/i18n.h %/manifest.json $$(wildcard %/lang/*.po) $$(wildcard %/app.mk)
+$(OUT)/%/app.so: $$(wildcard %/*.c) $$(wildcard %/*.h) $(SHELL_DIR)/tv.h $(SHELL_DIR)/i18n.h %/manifest.json $$(wildcard %/lang/*.po) $$(wildcard %/app.mk) $$(wildcard %/icon.png)
 	mkdir -p $(@D)
 	$(CC) $(CFLAGS) $(CFLAGS_$*) -DAPP_VERSION="\"$$(sed -n 's/^ *"version": *"\([0-9.]*\)".*/\1/p' $*/manifest.json)\"" \
 		-shared -o $@ $(filter %.c,$^) $(LDFLAGS)
 	cp $*/manifest.json $(@D)/manifest.json
 	rm -rf $(@D)/lang
 	if [ -d $*/lang ]; then cp -r $*/lang $(@D)/lang; fi
+	rm -f $(@D)/icon.png
+	if [ -f $*/icon.png ]; then cp $*/icon.png $(@D)/icon.png; fi
 
 # install every package into $(DESTDIR)/usr/lib/notatv/apps/<id>/
 install: all

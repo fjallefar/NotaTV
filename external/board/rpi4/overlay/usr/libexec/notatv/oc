@@ -60,6 +60,7 @@ status)
 	;;
 apply)
 	want=$(cfg_get $KEY $DEF)
+	case "$want" in ''|*[!0-9]*) want=$DEF ;; esac # only a plain number of MHz (a broken value means the standard)
 	mount_boot || { echo "Cannot find the boot partition"; exit 1; }
 	make_config "$want" > $BOOT/tryboot.txt.new
 	if cmp -s $BOOT/tryboot.txt.new $BOOT/config.txt; then

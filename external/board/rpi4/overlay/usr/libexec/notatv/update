@@ -207,6 +207,15 @@ discard() { # throw away an unfinished staging (nothing on the system was change
 	sync
 }
 
+# /etc/shadow comes from the package and has the image's root password, which is public. With developer mode on,
+# dropbear is running: give root the box's own random password again at once, not first at the next start.
+ssh_restore() {
+	grep -qx 'etc/shadow' "$ST/root.list" 2>/dev/null || return 0
+	[ "$(cfg_get ssh_enabled 0)" = 1 ] && pidof dropbear >/dev/null || return 0
+	$H/ssh on >/dev/null 2>&1 || { log "update: could not set the SSH password again - turning SSH off"; killall -q dropbear; }
+	return 0
+}
+
 apply() { # finish a committed change; can be run again any number of times
 	if [ -s "$ST/boot.list" ] || [ -s "$ST/boot-remove.list" ] || [ -f "$ST/slot" ]; then mount_boot || return 1; fi
 	# the kernel set first: one small write
@@ -234,6 +243,7 @@ apply() { # finish a committed change; can be run again any number of times
 		{ [ -L "/$f" ] || [ -f "/$f" ]; } && rm -f "/$f"
 	done < "$ST/remove.list"
 	sync
+	ssh_restore
 	rm -rf "$BOOT/$BST"; umount_boot
 	log "update: $(cat "$ST/version" 2>/dev/null) is in place$([ -f "$ST/slot" ] && echo " (kernel set: /$(cat "$ST/slot"))")"
 	rm -rf "$ST"; sync

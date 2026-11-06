@@ -46,6 +46,8 @@ if [ -n "$ytc" ]; then
 	[ -z "$name" ] && name=Account
 	P=/data/notatv/youtube/pending
 	mkdir -p $P && chmod 700 $P
+	# logins nobody answered on the TV (dialog closed, YouTube not installed) do not stay on the box
+	find $P -name '*.cookies' -mmin +10 -exec rm -f {} \; 2>/dev/null
 	urldecode "$ytc" > "$P/$name.cookies"
 	grep -q "youtube.com" "$P/$name.cookies" || { rm -f "$P/$name.cookies"; reply "400 Bad Request" "The file contains no YouTube cookies"; }
 	printf '%s\n%s\n' "$name" "$FROM" > $IN/.yp.tmp && mv $IN/.yp.tmp $IN/_ytpending
@@ -61,9 +63,15 @@ echo "$data" | tr '&' '\n' | while IFS='=' read -r k val; do
 	_text|_key) urldecode "$val" > "$IN/.$k.tmp" && mv "$IN/.$k.tmp" "$IN/$k" ;;
 	iptv_url|iptv_epg|xtream_server|xtream_user|xtream_pass|media_share|device_name)
 		v=$(urldecode "$val" | tr -d '\r\n')
+		# at most 2 KB per setting (the approval on the TV only shows the start of a value)
+		if [ ${#v} -gt 2048 ]; then : > "$pend.long"; continue; fi
 		printf '%s=%s\n' "$k" "$v" >> "$pend" ;;
 	esac
 done
+if [ -f "$pend.long" ]; then
+	rm -f "$pend" "$pend.long"
+	reply "413 Payload Too Large" "A field is too long (max. 2 KB)"
+fi
 if [ -s "$pend" ]; then
 	echo "_from=$FROM" >> "$pend"
 	mv "$pend" $IN/_pending

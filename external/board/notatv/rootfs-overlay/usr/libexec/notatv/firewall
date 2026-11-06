@@ -1,0 +1,54 @@
+#!/bin/sh
+# firewall: apply | off
+# The box's services (phone page 80, AirPlay, YouTube cast 8008, DLNA, SSDP, mDNS, SSH in developer mode ...) only
+# answer devices on the local network. Allowed from outside: private and link-local addresses, plus the networks the
+# box itself is on (so a home network with public IPv4 or IPv6 addresses works too - phones often use IPv6).
+# Everything the box opens itself (streams, App Store, NTP) is answered via connection tracking.
+# Run at network start, by dhcp-script and by "net watch" when the addresses change. Without nft, or with
+# cfg firewall=0 (troubleshooting), nothing is filtered.
+. /usr/libexec/notatv/lib.sh
+command -v nft >/dev/null || exit 0
+
+off() { nft delete table inet notatv 2>/dev/null; return 0; }
+
+case "$1" in
+apply)
+	[ "$(cfg_get firewall 1)" = 1 ] || { off; exit 0; }
+	[ -e /proc/net/nf_conntrack ] || modprobe -q -a nf_tables nft_ct nf_conntrack 2>/dev/null
+	# the box's own networks, e.g. "192.168.1.0/24" and "2a02:...::/64" (ip prints "addr/len"; nft takes it as a prefix)
+	v4=$(ip -4 -o addr show scope global 2>/dev/null | awk '{ print $4 }' | tr '\n' ' ')
+	v6=$(ip -6 -o addr show scope global 2>/dev/null | awk '{ print $4 }' | tr '\n' ' ')
+	set4="10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16"
+	set6="fe80::/10, fc00::/7"
+	for a in $v4; do set4="$set4, $a"; done
+	for a in $v6; do set6="$set6, $a"; done
+	# one transaction: the old table is replaced in the same step, never a moment without rules
+	{
+		echo "table inet notatv"
+		echo "delete table inet notatv"
+		echo "table inet notatv {"
+		echo "	chain input {"
+		echo "		type filter hook input priority 0; policy drop;"
+		echo "		iif lo accept"
+		echo "		ct state established,related accept"
+		echo "		ct state invalid drop"
+		echo "		meta l4proto ipv6-icmp accept"
+		echo "		icmp type { echo-request, destination-unreachable, time-exceeded } accept"
+		echo "		ip saddr { $set4 } accept"
+		echo "		ip6 saddr { $set6 } accept"
+		echo "	}"
+		echo "}"
+	} > $RUN/firewall.nft.new
+	# unchanged: nothing to do (net watch calls this every time the addresses might have changed)
+	cmp -s $RUN/firewall.nft.new $RUN/firewall.nft 2>/dev/null && nft list table inet notatv >/dev/null 2>&1 && { rm -f $RUN/firewall.nft.new; exit 0; }
+	if nft -f $RUN/firewall.nft.new 2>$RUN/firewall.err; then
+		mv $RUN/firewall.nft.new $RUN/firewall.nft
+	else
+		log "firewall: $(head -3 $RUN/firewall.err | tr '\n' ' ') - not filtering"
+		rm -f $RUN/firewall.nft.new
+		off
+	fi
+	;;
+off) off ;;
+esac
+exit 0

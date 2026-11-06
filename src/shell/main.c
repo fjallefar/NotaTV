@@ -37,6 +37,13 @@ static double ss_t;
 static float ss_fade; /* 0..1: the screensaver's alpha, glides in and out */
 
 double app_time(void) { return SDL_GetTicks() / 1000.0 - t0; }
+/* End the process without exit(): detached threads (jobs, image fetches, app threads) can still be
+ * inside an HTTPS request, and exit() runs OpenSSL's atexit cleanup under them -> SIGSEGV in
+ * OPENSSL_cleanup. Settings are already saved (cfg_flush), so only stdio needs flushing. */
+static _Noreturn void quit_now(int code) {
+    fflush(NULL);
+    _exit(code);
+}
 void app_quit(void) { running = false; }
 float app_boot_time(void) { return boot_time; }
 int app_cfg_gen(void) { return ext_cfg_gen; }
@@ -220,7 +227,9 @@ void app_push(Screen *s) {
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         static unsigned long pushed_in; /* frame_no of the last push: a second push in the same frame draws instead */
-        if (mt && pushed_in != frame_no + 1) {
+        if (mt && pushed_in != frame_no + 1 && kms_present_copy_shown(ren)) {
+            /* direct mode: copied from the display buffer on screen */
+        } else if (mt && pushed_in != frame_no + 1) {
             /* the frame on screen already is that picture: one copy instead of drawing every screen again
                (opening Live TV over the home screen: 27 ms -> ~1 ms on a Pi 4) */
             SDL_BlendMode bm;
@@ -472,7 +481,8 @@ void app_video_resume(void) {
         SDL_Delay(250);
     }
     SDL_Log("kan ikke genstarte video - afslutter (init genstarter os)");
-    exit(1);
+    cfg_flush();
+    quit_now(1);
 }
 
 /* ---------- shared UI helpers ---------- */
@@ -664,7 +674,8 @@ typedef struct { char *kv; char from[64]; char name[64]; } Pending;
 static void pending_cb(void *ud, bool yes) {
     Pending *p = ud;
     if (yes) {
-        for (char *line = strtok(p->kv, "\n"); line; line = strtok(NULL, "\n")) {
+        char *sv_line;
+        for (char *line = strtok_r(p->kv, "\n", &sv_line); line; line = strtok_r(NULL, "\n", &sv_line)) {
             char *eq = strchr(line, '=');
             if (!eq || line[0] == '_') continue;
             *eq = 0;
@@ -684,7 +695,8 @@ static void pending_show(char *val) {
     Pending *p = calloc(1, sizeof *p);
     p->kv = str_dup(val);
     char msg[512] = "";
-    for (char *line = strtok(val, "\n"); line; line = strtok(NULL, "\n")) {
+    char *sv_line;
+    for (char *line = strtok_r(val, "\n", &sv_line); line; line = strtok_r(NULL, "\n", &sv_line)) {
         char *eq = strchr(line, '=');
         if (!eq) continue;
         *eq = 0;
@@ -942,6 +954,7 @@ static void draw_fps(void) {
 
 static void draw_frame(void) {
     gfx_frame_begin();
+    kms_present_begin(ren);
     if (kms_present_active()) SDL_SetRenderTarget(ren, kms_present_target());
     else if (ui_rt) SDL_SetRenderTarget(ren, ui_rt);
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
@@ -1202,5 +1215,5 @@ int main(int argc, char **argv) {
     video_quit();
     jobs_shutdown();
     SDL_Quit();
-    return 0;
+    quit_now(0);
 }

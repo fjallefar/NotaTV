@@ -18,6 +18,37 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## Next (not released yet - rename to the version number when it is released)
+
+> **In short:** NFS network drives work, controllers and keyboards can be paired from the TV, and apps can have their own picture.
+> - Bluetooth: *Pair a controller or keyboard* finds the controller, keyboard or mouse and pairs it
+> - NFS network drives mount (NFSv4, otherwise NFSv3)
+> - Pi: the menus are drawn straight into the picture the TV shows - one less full-screen copy per frame
+> - Safer: only the local network can reach the box, DLNA asks before a new device plays, and Wi-Fi names with æ, ø and å work
+
+<!-- tldr:da
+Kort: NFS-netværksdrev virker, controllere og tastaturer kan parres fra TV'et, og apps kan have deres eget billede.
+- Bluetooth: Par en controller eller et tastatur finder controlleren, tastaturet eller musen og parrer den
+- NFS-netværksdrev monteres (NFSv4, ellers NFSv3)
+- Pi: menuerne tegnes direkte i det billede, TV'et viser - én fuldskærms-kopi mindre pr. billede
+- Mere sikker: kun det lokale net kan nå boksen, DLNA spørger før en ny enhed afspiller, og Wi-Fi-navne med æ, ø og å virker
+-->
+
+- Bluetooth: new *Settings → Bluetooth → Pair a controller or keyboard*. The box searches while it is open and lists the input devices nearby (strongest signal first); OK pairs, trusts and connects the chosen one. A keyboard that needs a code gets it shown on the TV. Only the device you chose is approved
+- NFS network drives: the address lookup gave the kernel the DNS server's address for an IP share, so NFS never mounted. BusyBox now resolves the name itself; NFSv4 first, then NFSv3, with a timeout so a dead server does not hang
+- Pi display: the UI is drawn straight into the display buffer instead of a texture that was copied over every frame (about 16 MB less memory traffic per frame on a Pi 4). `kms_direct=0` in notatv.conf goes back to the old way
+- tvshell no longer can crash while quitting (OpenSSL's cleanup ran under background downloads)
+- Apps can have their own `icon.png`: it is packed with the app and published next to it in the App Store catalog (with SHA256), so the App Store shows it before the app is installed
+- Firewall: the box's services only answer the local network (private and link-local addresses, and the networks the box is on); `firewall=0` turns it off for troubleshooting
+- DLNA: the first time a phone or PC wants to play or control playback, the TV asks "Allow ... to play on the TV?" (like YouTube cast); a denial holds for 10 minutes
+- Wi-Fi: networks with æ, ø, å, emoji or quotes in the name are shown correctly and can be joined
+- Settings: a value longer than 4 KB could become a setting of its own after a restart; the file is now read without a line limit, and the phone page refuses fields over 2 KB. The App Store address from the settings must be https
+- Developer mode: after an update or "Undo last update", the box's own SSH password is set again at once (before, the image's public one worked until the restart)
+- TV 2 Play: the login token is no longer on the helper's command line, and the log bundle masks tokens shaped like a JWT
+- yt-dlp can be updated through the App Store, without a new NotaTV version (it is not shown in the store; the box takes a newer one by itself)
+- mpv, ffprobe, yt-dlp and UxPlay can run as their own user instead of root (`media_user=1`, off for now while it is tested)
+- Smaller fixes: an https request is never redirected to http, the data partition is checked after a power cut, unanswered YouTube logins sent from the phone are deleted, reproducible app packages, and the App Store upload replaces one file at a time
+
 ## 1.0.13
 
 > **In short:** Smoother on the Raspberry Pi 4, a softer channel change in Live TV, and network drives with a login.

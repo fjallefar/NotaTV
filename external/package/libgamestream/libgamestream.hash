@@ -1,0 +1,2 @@
+# Locally calculated (Buildroot's tarball of the git checkout incl. submodules; update when the commit changes)
+sha256  28a83ae69e94c83906b08b1cc745fae31ca9b173e13710dc9f06f57ac28743a1  libgamestream-f32e415aea6797d261d6b470dcf8bf18727341c2-git4.tar.gz

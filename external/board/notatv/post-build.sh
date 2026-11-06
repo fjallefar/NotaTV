@@ -6,6 +6,18 @@ TARGET=$1
 rm -f $TARGET/etc/init.d/S40network $TARGET/etc/init.d/S50dropbear $TARGET/etc/init.d/S41dhcpcd
 # AirPlay (shairport-sync/nqptp) is started and paused by /usr/libexec/notatv/music (frees the audio during video)
 rm -f $TARGET/etc/init.d/S99shairport-sync $TARGET/etc/init.d/S90nqptp
+# the firewall is set up by /usr/libexec/notatv/firewall (with the box's own networks), not from /etc/nftables.conf
+rm -f $TARGET/etc/init.d/S35nftables
+# mpv, ffprobe, yt-dlp and UxPlay are started through mediarun (as the user "media" when media_user=1): the real
+# programs move to /usr/libexec/notatv/media, /usr/bin/<name> becomes a symlink to mediarun (yt-dlp stays in
+# /usr/lib/yt-dlp). Only a real file is moved, so running post-build again changes nothing.
+mkdir -p $TARGET/usr/libexec/notatv/media
+for p in mpv ffprobe uxplay; do
+	if [ -f $TARGET/usr/bin/$p ] && [ ! -L $TARGET/usr/bin/$p ]; then mv -f $TARGET/usr/bin/$p $TARGET/usr/libexec/notatv/media/$p; fi
+	[ -f $TARGET/usr/libexec/notatv/media/$p ] && ln -sfn ../libexec/notatv/mediarun $TARGET/usr/bin/$p
+done
+[ -e $TARGET/usr/lib/yt-dlp ] && ln -sfn ../libexec/notatv/mediarun $TARGET/usr/bin/yt-dlp
+[ -x $TARGET/usr/libexec/notatv/mediarun ] || { echo "post-build: mediarun mangler" >&2; exit 1; }
 # the alsa configuration is generated at boot
 ln -sf /run/notatv/asound.conf $TARGET/etc/asound.conf
 mkdir -p $TARGET/media $TARGET/data $TARGET/root

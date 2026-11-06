@@ -306,9 +306,6 @@ msgstr "Film og serier fra din Plex-server"
 msgid "CONTINUE IN PLEX"
 msgstr "FORTSÆT I PLEX"
 
-
-
-
 msgid "Loading…"
 msgstr "Henter…"
 
@@ -363,11 +360,8 @@ msgstr "Set / uset"
 msgid "Season watched / unwatched"
 msgstr "Sæson set / uset"
 
-msgid "Mark movies and shows as watched or unwatched"
-msgstr "Markér film og serier som set eller uset"
+msgid "Small fixes"
+msgstr "Små rettelser"
 
-msgid "Green key on a movie, series, season or episode: mark it as watched or unwatched, or remove it from Continue watching"
-msgstr "Grøn knap på en film, serie, sæson eller et afsnit: markér som set eller uset, eller fjern fra Fortsæt med at se"
-
-msgid "The detail and series pages have a Mark as watched/unwatched button, and movies in progress a Remove from Continue button"
-msgstr "Detalje- og seriesiderne har en knap til Markér som set/uset, og påbegyndte film en Fjern fra Fortsæt-knap"
+msgid "A small memory leak when a series has nothing to play is fixed"
+msgstr "En lille hukommelseslæk, når en serie ikke har noget at afspille, er rettet"

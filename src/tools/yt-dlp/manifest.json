@@ -1,0 +1,8 @@
+{
+  "id": "yt-dlp",
+  "version": "2026.10.26",
+  "kind": "tool",
+  "bin": "yt-dlp_linux_aarch64",
+  "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp_linux_aarch64.zip",
+  "sha256": "74708e707e8fa8177c8347e58152337edf320149cd7b225defd453f7cde47822"
+}

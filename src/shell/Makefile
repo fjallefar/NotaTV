@@ -18,7 +18,7 @@ SRCS = main.c i18n.c drm_util.c kms_present.c subs.c gfx.c input.c util.c player
        ui_net.c bt.c dlna.c mirror.c moon.c ui_settings.c netdisc.c apps.c ui_appstore.c appcat.c update_notice.c tz.c ui_setup.c quick.c stb_impl.c vendor/cJSON.c vendor/qrcodegen.c
 OBJS = $(SRCS:.c=.o)
 
-all: tvshell notasplash
+all: tvshell notasplash mediarun
 
 tvshell: $(OBJS)
 	$(CC) $(LDFLAGS) -rdynamic -o $@ $(OBJS) $(LIBS) -ldl
@@ -33,7 +33,11 @@ vendor/cJSON.o vendor/qrcodegen.o: override CFLAGS += -Wno-all -Wno-extra
 notasplash: splash.c vendor/stb_truetype.h
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-sign-compare $(LDFLAGS) -o $@ splash.c $(shell $(PKG_CONFIG) --libs libdrm) -lm
 
+# starts mpv/ffprobe/yt-dlp/UxPlay, as the user "media" when media_user=1 (see mediarun.c)
+mediarun: mediarun.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ mediarun.c
+
 clean:
-	rm -f tvshell notasplash $(OBJS)
+	rm -f tvshell notasplash mediarun $(OBJS)
 
 .PHONY: all clean

@@ -112,6 +112,7 @@ static const NotaApp *load_pkg(const char *dir, const char *name) {
             add(a, dir, ver);
             got = a;
             gen++;
+            app_art_changed(); /* its own icon.png may be in the package */
             SDL_Log("app %s %s loaded from %s", id, app_version(a), dir);
         }
     }
@@ -255,4 +256,5 @@ void app_uninstall(const NotaApp *a) {
         run_cmd("%s", cmd);
         free(cmd);
     }
+    app_art_changed();
 }

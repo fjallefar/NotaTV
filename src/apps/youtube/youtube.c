@@ -185,7 +185,8 @@ static void pf_work(void *arg) {
     argv[n++] = "--"; argv[n++] = url; argv[n] = NULL;
     char *out = run_capture_argv(argv);
     free(fmt); free(url);
-    char *l1 = strtok(out, "\n"), *l2 = strtok(NULL, "\n");
+    char *sv_l1 = NULL;
+    char *l1 = strtok_r(out, "\n", &sv_l1), *l2 = strtok_r(NULL, "\n", &sv_l1);
     if (l1 && !strncmp(l1, "http", 4)) j->video = str_dup(l1);
     if (l2 && !strncmp(l2, "http", 4)) j->audio = str_dup(l2);
     free(out);

@@ -65,7 +65,7 @@ jobs:
           make -C buildroot O=$TREE/output-rpi4 BR2_EXTERNAL=$TREE/external tvshell-dirclean tvshell-build \
             > apps-build.log 2>&1 || { tail -80 apps-build.log; exit 1; }
           rm -rf dist-apps
-          python3 scripts/apps-catalog.py output-rpi4/build/tvshell-1.0/apps-out dist-apps --strip output-rpi4/host/bin/aarch64-linux-strip --notes apps-notes.md
+          python3 scripts/apps-catalog.py output-rpi4/build/tvshell-1.0/apps-out dist-apps --strip output-rpi4/host/bin/aarch64-linux-strip --notes apps-notes.md --tools src/tools --dl dl
           ls -la dist-apps
 
       - name: Publish to the App Store
@@ -93,11 +93,18 @@ jobs:
           # the release text: every app with its version and what is new (made by apps-catalog.py --notes)
           if os.path.exists("apps-notes.md"):
               call(f"{api}/{store['id']}", json.dumps({"body": open("apps-notes.md", encoding="utf-8").read()}).encode(), method="PATCH")
+          # each file is replaced right before its upload (not all deleted first: boxes would meanwhile find no catalog),
+          # and a file GitHub already has with the same SHA256 is left alone (packages are reproducible)
+          import hashlib
           files = sorted(os.listdir("dist-apps"))
-          for a in store.get("assets", []):
-              if a["name"] in files:
-                  urllib.request.urlopen(urllib.request.Request(f"{api}/assets/{a['id']}", method="DELETE", headers=hdr))
+          have = {a["name"]: a for a in store.get("assets", [])}
+          def same(n):
+              d = have.get(n, {}).get("digest") or ""
+              return d == "sha256:" + hashlib.sha256(open(os.path.join("dist-apps", n), "rb").read()).hexdigest()
+          files = [n for n in files if not same(n)]
           for n in sorted(files, key=lambda f: f.endswith(".json")):
+              if n in have:
+                  urllib.request.urlopen(urllib.request.Request(f"{api}/assets/{have[n]['id']}", method="DELETE", headers=hdr))
               with open(os.path.join("dist-apps", n), "rb") as f:
                   call(f"https://uploads.github.com/repos/{repo}/releases/{store['id']}/assets?name={n}",
                        data=f.read(), ctype="application/octet-stream")

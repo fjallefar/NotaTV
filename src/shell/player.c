@@ -891,6 +891,10 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
             while (input_next(&ev)) handle_action(&ev, rq, &st, &quit, digits, &digit_t);
             if (rq->tick) rq->tick(rq->ud);
             app_background_tick(true); /* jobs, phone page, Bluetooth, App Store installs keep running */
+            { /* mpv as the user media (media_user=1): files rewritten during playback (channels) stay readable for it */
+                static double next_share;
+                if (app_time() > next_share) { next_share = app_time() + 2; media_share_tmp(); }
+            }
             if (st.scrub >= 0 && app_time() - st.scrub_t > 0.7) {
                 char a[32];
                 snprintf(a, sizeof a, "%.1f", st.scrub);
@@ -964,8 +968,9 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
                     FILE *f = fopen("/tmp/notatv-subs.json", "w");
                     if (f) { fputs(js, f); fclose(f); }
                     free(js);
+                    media_share_tmp();
                     CMD("script-message", "notatv-subresults");
-                } else if (subjob.path) { CMD("sub-add", subjob.path, "select"); player_osd(T("Subtitles loaded"), 2000); free(subjob.path); }
+                } else if (subjob.path) { media_share_tmp(); CMD("sub-add", subjob.path, "select"); player_osd(T("Subtitles loaded"), 2000); free(subjob.path); }
                 else player_osd(T("Could not download subtitles"), 3000);
                 subjob.labels = NULL;
                 subjob.path = NULL;

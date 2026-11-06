@@ -1,6 +1,6 @@
 {
   "id": "games",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "api": 2,
   "name": "Games",
   "desc": "Play games from your PC via Sunshine (Moonlight)",
@@ -11,10 +11,9 @@
   "order": 80,
   "default": true,
   "changes": {
-    "summary": "Pairing fixes",
+    "summary": "Small fixes",
     "points": [
-      "Back (or Esc) now cancels pairing while the code is shown",
-      "The pairing screen points to https://localhost:47990 on the PC - Sunshine rejects the PIN when its page is opened on the PC's IP address"
+      "Searching for PCs is more reliable while other things happen at the same time"
     ]
   }
 }

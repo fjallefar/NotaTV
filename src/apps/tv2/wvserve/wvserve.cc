@@ -257,8 +257,15 @@ static std::vector<std::string> pssh_list_from_mpd(const std::string& mpd){
 }
 
 int main(int argc,char** argv){
-  if(argc<4){ fprintf(stderr,"brug: %s <so> <tv2-token> <guid> [port]\n",argv[0]); return 2; }
+  if(argc<4){ fprintf(stderr,"brug: %s <so> <tv2-token|@fil> <guid> [port]\n",argv[0]); return 2; }
   const char* so=argv[1]; std::string token=argv[2],guid=argv[3]; g_port=argc>4?atoi(argv[4]):8888;
+  // "@<file>": the token is read from the file, so it never shows in the process list (ps, the log bundle)
+  if(!token.empty()&&token[0]=='@'){
+    FILE* tf=fopen(token.c_str()+1,"r"); token.clear();
+    if(tf){ char b[8192]; size_t n=fread(b,1,sizeof b,tf); fclose(tf); token.assign(b,n); }
+    while(!token.empty()&&(token.back()=='\n'||token.back()=='\r'||token.back()==' ')) token.pop_back();
+    if(token.empty()){ fprintf(stderr,"resolve fejlede: intet token i %s\n",argv[2]+1); return 1; }
+  }
   g_access_token=token;
   curl_global_init(CURL_GLOBAL_DEFAULT);
   std::string mpd_url,lic_url,lic_token;

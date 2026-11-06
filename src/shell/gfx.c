@@ -1582,18 +1582,32 @@ static void draw_tex_rrect(SDL_Texture *t, float x, float y, float w, float h, f
     st_geom++, SDL_RenderGeometry(R, t, vbuf, nv, ibuf, ni);
 }
 
+/* an app's tile picture, first found of: icon.png in its installed package, the picture downloaded from the App
+   Store catalog (shown before it is installed), the one built into the image (assets/icons/<id>.png). The answer is
+   remembered per id (no file checks every frame) until app_art_changed(). */
+static struct { char id[48], path[512]; } art_cache[48];
+static int art_n;
+void app_art_changed(void) { art_n = 0; }
+
 bool draw_app_art(const char *id, float x, float y, float w, float h, float r, float alpha) {
-    if (!id || !*id || strchr(id, '/') || strchr(id, '.')) return false;
-    char path[512];
-    snprintf(path, sizeof path, "%s/icons/%s.png", asset_dir(), id);
-    static char missing[32][48]; /* ids without art: not looked for again every frame */
-    static int n_missing;
-    for (int i = 0; i < n_missing; i++) if (!strcmp(missing[i], id)) return false;
-    if (access(path, R_OK) != 0) {
-        if (n_missing < 32) snprintf(missing[n_missing++], sizeof missing[0], "%s", id);
-        return false;
+    if (!id || !*id || strchr(id, '/') || strchr(id, '.') || strlen(id) >= sizeof art_cache[0].id) return false;
+    int k = 0;
+    while (k < art_n && strcmp(art_cache[k].id, id)) k++;
+    if (k == art_n) {
+        if (art_n == (int)(sizeof art_cache / sizeof art_cache[0])) art_n = 0; /* full: start over */
+        k = art_n++;
+        snprintf(art_cache[k].id, sizeof art_cache[k].id, "%s", id);
+        char *p = art_cache[k].path;
+        size_t pn = sizeof art_cache[k].path;
+        const NotaApp *a = app_find(id);
+        const CatApp *c = appcat_find(id);
+        p[0] = 0;
+        if (a && app_packaged(a)) snprintf(p, pn, "%s/icon.png", app_pkg_dir(a));
+        if (!p[0] || access(p, R_OK) != 0) { p[0] = 0; if (c && appcat_icon_path(c, p, pn) && access(p, R_OK) != 0) p[0] = 0; }
+        if (!p[0]) { snprintf(p, pn, "%s/icons/%s.png", asset_dir(), id); if (access(p, R_OK) != 0) p[0] = 0; }
     }
-    Image *im = img_get(path);
+    if (!art_cache[k].path[0]) return false;
+    Image *im = img_get(art_cache[k].path);
     if (!im || img_state(im) != IMG_READY) return false;
     return img_draw_cover(im, x, y, w, h, r, alpha);
 }

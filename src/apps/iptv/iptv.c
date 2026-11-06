@@ -157,7 +157,8 @@ static void recent_load(void) {
     char line[8192];
     while (n_recent < 8 && fgets(line, sizeof line, f)) {
         str_trim(line);
-        char *a = strtok(line, "\t"), *b = strtok(NULL, "\t"), *c = strtok(NULL, "\t");
+        char *sv_a = NULL;
+        char *a = strtok_r(line, "\t", &sv_a), *b = strtok_r(NULL, "\t", &sv_a), *c = strtok_r(NULL, "\t", &sv_a);
         if (!a || !b) continue;
         recents[n_recent].name = strdup(a);
         recents[n_recent].url = strdup(b);
@@ -854,13 +855,14 @@ static bool epg_cache_load(EpgJob *j, const char *cpath, const struct stat *xs) 
         uint32_t n;
         if (fread(&n, 4, 1, f) != 1 || n > 100000) { ok = false; break; }
         j->progs[i] = n ? calloc(n, sizeof(Prog)) : NULL;
+        if (n && !j->progs[i]) { ok = false; break; }
         j->cap_progs[i] = (int)n;
         for (uint32_t k = 0; k < n; k++) {
             int64_t ab[2];
             uint16_t l;
             if (fread(ab, sizeof ab, 1, f) != 1 || fread(&l, 2, 1, f) != 1) { ok = false; break; }
             char *t = malloc(l + 1);
-            if (fread(t, 1, l, f) != l) { free(t); ok = false; break; }
+            if (!t || fread(t, 1, l, f) != l) { free(t); ok = false; break; }
             t[l] = 0;
             j->progs[i][j->n_progs[i]++] = (Prog){(time_t)ab[0], (time_t)ab[1], t};
             j->total++;

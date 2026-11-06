@@ -11,7 +11,8 @@ KEEP=/data/notatv/logs
 CONF=/data/notatv/notatv.conf
 
 # masking: values of secret URL parameters, Authorization/token headers and fields, Xtream paths,
-# smb://user:password@ and http://user:password@, cookies, codes in toast text and settings
+# smb://user:password@ and http://user:password@, cookies, tokens shaped like a JWT (eyJ...; e.g. TV 2's),
+# codes in toast text and settings
 mask() {
 	sed -E \
 		-e 's#([?&;](api_key|apikey|ApiKey|X-Plex-Token|x-plex-token|token|Token|access_token|refresh_token|password|pass|username|user|auth|key|sig|n|pot|signature)=)[^&" ]*#\1***#g' \
@@ -22,6 +23,7 @@ mask() {
 		-e 's#/(live|movie|series|timeshift)/[^/ ]+/[^/ ]+/#/\1/***/***/#g' \
 		-e 's#(://)[^/@ :]+:[^/@ ]+@#\1***:***@#g' \
 		-e 's#(Cookie: *)[^"]*#\1***#g' \
+		-e 's#eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*#***#g' \
 		-e 's#(-pin +)[0-9]{4}#\1****#g' \
 		-e 's#((New code|Ny kode): )[0-9]+#\1***#g' \
 		-e 's#((phone|airplay)_pin=)[0-9]+#\1***#g' |

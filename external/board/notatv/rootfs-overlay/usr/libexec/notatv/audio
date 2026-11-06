@@ -76,6 +76,8 @@ EOC
 		;;
 	esac
 	echo "audio-device=$mid" > $RUN/mpv-local.conf
+	# readable for everyone (mpv and UxPlay may run as the user media, see mediarun), also when run with umask 077
+	chmod 644 $RUN/asound.conf $RUN/mpv-local.conf
 	# unmute all cards
 	for c in /proc/asound/card[0-9]*; do
 		n=${c##*card}

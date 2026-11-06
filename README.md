@@ -26,7 +26,7 @@ NotaTV is its own Linux distribution (Buildroot) with its own user interface, wr
 - **Game streaming** from a PC with Sunshine (Moonlight protocol, ~11 ms on the box)
 - **Tesla**: your car's battery, charging and status live from your own TeslaMate
 - **Casting**: DLNA, YouTube cast, Jellyfin "Play On", AirPlay screen mirroring
-- **Media player** for USB drives and SMB shares (NFS is not working yet)
+- **Media player** for USB drives, SMB and NFS shares
 - **HDMI-CEC**: your TV remote controls the box
 - A **phone page** for typing, remote control and setup
 - **English and Danish** user interface
@@ -161,7 +161,7 @@ Keys and text work right away. **Playlists, logins, network drives, names and Yo
 
 ## Apps
 
-Everything on the home screen is an app, and NotaTV comes without any: you pick them in the setup guide, and they are downloaded from the **App Store**. The App Store is the GitHub release `apps` of this repository, with one package per app and a catalog (version, SHA256). A package is only installed when its SHA256 matches the catalog.
+Everything on the home screen is an app, and NotaTV comes without any: you pick them in the setup guide, and they are downloaded from the **App Store**. The App Store is the GitHub release `apps` of this repository, with one package per app and a catalog (version, SHA256). A package is only installed when its SHA256 matches the catalog. An app can have its own picture (`icon.png` in the package, at most 1024x1024); the catalog points to a copy with its SHA256, so the App Store shows it before the app is installed.
 
 In the App Store on the home screen you can install more apps, update apps (*Update* shows when the catalog has a newer version) and uninstall them. When apps have updates, a bar at the top updates them all at once (*Update all*), and a short card says what is new in each version before it is installed. Uninstalling an app deletes everything it has saved on the box, including your sign-in, and stops its background services (e.g. Plex cast). Each app's settings are under *Settings → Apps*. To move an app on the home screen, press 🟢 Green on it, move it with the arrows and press OK. Boxes updated from NotaTV 1.0 download the apps they had by themselves.
 
@@ -178,7 +178,7 @@ In the App Store on the home screen you can install more apps, update apps (*Upd
 | **Radio** | Stations from radio-browser.info (free and open, no login). The country follows the one chosen in the setup guide (the stations of another country can be chosen in the app). Popular, genres, search, recently played and favourites (Yellow; the first nine get a number you press on the remote). Plays in the background while you use the rest of the box, with a *Now playing* box in the top bar and the station on the home screen; it stops by itself when a video or game starts. |
 | **Games** | Game streaming from a PC running Sunshine with our own client `tvmoon`. HEVC is decoded in hardware straight to the screen, at 1080p 120 Hz. To pair, type the PIN shown on the TV on `https://localhost:47990` on the PC (Sunshine rejects it on the PC's IP address); Back cancels. |
 | **Tesla** | Reads your own TeslaMate over its MQTT server (port 1883), read only: nothing is sent to the car and nothing is saved on disk. Finds TeslaMate on the network or takes an address, and asks for an MQTT login when the server wants one. Battery, range, charging, climate, tyres, locks and doors, the car seen from above, where it is, route with arrival time and battery at arrival, model and software. The side menu (Left) chooses the car, turns each part on or off, and puts up to 3 cars small at the top of the home screen. Everything is fitted to one screen. |
-| **Media** | USB drives are mounted automatically. SMB network drives are supported, with a username and password or as a guest (NFS is not working yet). Plays movies, music and pictures. |
+| **Media** | USB drives are mounted automatically. SMB network drives are supported, with a username and password or as a guest, and NFS drives (`nfs://server/path`, NFSv4 or v3). Plays movies, music and pictures. |
 
 **Host it yourself:** [SELF-HOSTING.md](SELF-HOSTING.md) lists, per app, the server software it talks to (Jellyfin, Seerr, Sunshine, TeslaMate, Live TV playlists ...) with links to each project.
 
@@ -204,13 +204,15 @@ Google Cast/Chromecast cannot be built as open source, because phones require a 
 YouTube cast goes through YouTube's servers because the protocol requires it. DLNA stays on the local network.
 
 - **AirPlay screen mirroring** asks for the box's 4-digit code the first time a phone mirrors. The TV shows it, and it is under *Settings → Cast and sharing*.
-- **DLNA** only plays addresses on the network (http, https, rtsp).
+- **DLNA** only plays addresses on the network (http, https, rtsp). The first time a phone or PC wants to play or control playback, the TV asks whether it may (like YouTube cast).
+- **Firewall:** the box's services (phone page, AirPlay, cast, DLNA, SSH) only answer devices on the local network: private and link-local addresses, and the networks the box itself is on.
 
 **Bluetooth pairing:**
 - *Settings → Bluetooth → Pair a phone* makes the TV visible for 3 minutes.
 - The phone and the TV show the same code, and you confirm it on the TV. Nobody can pair without that confirmation.
 - By default the TV is only visible while Music is open. Paired controllers and keyboards can always connect.
-- New devices can only pair while *Pair a phone* is open.
+- New devices can only pair while *Pair a phone* or *Pair a controller or keyboard* is open.
+- *Settings → Bluetooth → Pair a controller or keyboard*: put the controller, keyboard or mouse in pairing mode, and the TV finds it. Choose it with OK. A keyboard that needs a code shows it on the TV.
 
 ---
 

@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define MAX_CAT 64
 #define MAX_QUEUE 32
@@ -52,8 +53,11 @@ int version_cmp(const char *a, const char *b) {
 static const char *base_url(char *buf, size_t n) {
     const char *e = getenv("TVSHELL_APPCAT_URL");
     if (e && *e) { snprintf(buf, n, "%s", e); return buf; }
+    /* from the settings only over https (the packages are code that runs in tvshell); file:// etc. only via the
+       environment for development */
     const char *u = cfg_get("apps_url", "");
-    if (*u) { snprintf(buf, n, "%s", u); return buf; }
+    if (!strncmp(u, "https://", 8)) { snprintf(buf, n, "%s", u); return buf; }
+    if (*u) SDL_Log("appcat: apps_url skal være https:// - bruger standardbutikken");
     char repo[128] = "";
     snprintf(repo, sizeof repo, "%s", cfg_get("update_repo", ""));
     if (!repo[0]) {
@@ -88,6 +92,149 @@ static Color jcolor(cJSON *a) {
     return c;
 }
 static const char *jstr(cJSON *o, const char *k) { const char *s = cJSON_GetStringValue(cJSON_GetObjectItem(o, k)); return s ? s : ""; }
+
+/* ---------- the apps' own pictures (shown in the App Store before an app is installed) ---------- */
+static const char *icon_dir(void) {
+    static char p[300];
+    if (!p[0]) snprintf(p, sizeof p, "%s/app-icons", data_dir());
+    return p;
+}
+bool appcat_icon_path(const CatApp *c, char *out, size_t n) {
+    if (!c || !c->icon_file[0]) return false;
+    snprintf(out, n, "%s/%s-%.16s.png", icon_dir(), c->id, c->icon_sha);
+    return true;
+}
+typedef struct { int n; char id[MAX_CAT][40], file[MAX_CAT][96], sha[MAX_CAT][72]; char url[400]; int got; } IconJob;
+static bool icons_running;
+static void icons_work(void *arg) { /* one after another in the background; a failed one is tried again next catalog */
+    IconJob *j = arg;
+    char prog[300];
+    snprintf(prog, sizeof prog, "%s/apppkg", helper_path());
+    for (int i = 0; i < j->n; i++) {
+        const char *argv[] = {prog, "icon", j->url, icon_dir(), j->id[i], j->file[i], j->sha[i], NULL}; /* no shell */
+        char *out = run_capture_argv(argv);
+        if (out && !strncmp(out, "OK", 2)) j->got++;
+        else SDL_Log("app-ikon %s: %s", j->id[i], out ? out : "?");
+        free(out);
+    }
+}
+static void icons_done(void *arg) {
+    IconJob *j = arg;
+    if (j->got) app_art_changed();
+    icons_running = false;
+    free(j);
+}
+static void icons_fetch(void) {
+    if (icons_running) return;
+    IconJob *j = calloc(1, sizeof *j);
+    if (!j) return;
+    if (!base_url(j->url, sizeof j->url)) { free(j); return; }
+    for (int i = 0; i < n_cat; i++) {
+        char p[400];
+        const CatApp *c = &cat[i];
+        if (!appcat_icon_path(c, p, sizeof p) || access(p, R_OK) == 0) continue;
+        snprintf(j->id[j->n], sizeof j->id[0], "%s", c->id);
+        snprintf(j->file[j->n], sizeof j->file[0], "%s", c->icon_file);
+        snprintf(j->sha[j->n], sizeof j->sha[0], "%s", c->icon_sha);
+        j->n++;
+    }
+    if (!j->n) { free(j); return; }
+    icons_running = true;
+    job_submit_q(JQ_SLOW, icons_work, icons_done, j);
+}
+
+/* ---------- tools (src/tools): programs from the catalog's "tools", never shown in the store ----------
+ * Today only yt-dlp: YouTube changes often and an old yt-dlp stops working, so a newer one comes with the catalog
+ * instead of with a system release. It is installed in <data>/tools/<id> (apppkg tool-install, SHA256 from the
+ * catalog like a package) when it is newer than both the image's and the one already installed; mediarun runs it. */
+#define MAX_TOOLS 4
+typedef struct { char id[40], version[24], file[128], sha[72]; } CatTool;
+static CatTool tools[MAX_TOOLS];
+static int n_tools;
+static bool tool_running;
+static const char *tools_root(void) {
+    static char p[300];
+    if (!p[0]) snprintf(p, sizeof p, "%s/tools", data_dir());
+    return p;
+}
+/* the version in a small file / manifest ("" = none) */
+static void tool_version(const char *id, bool builtin, char *out, size_t n) {
+    out[0] = 0;
+    char path[400];
+    if (builtin) snprintf(path, sizeof path, "/usr/lib/%s/notatv-version", id);
+    else snprintf(path, sizeof path, "%s/%s/manifest.json", tools_root(), id);
+    char *txt = file_read_all(path, 1 << 14);
+    if (!txt) return;
+    if (builtin) { snprintf(out, n, "%s", txt); str_trim(out); }
+    else {
+        cJSON *m = cJSON_Parse(txt);
+        const char *v = cJSON_GetStringValue(cJSON_GetObjectItem(m, "version"));
+        if (v) snprintf(out, n, "%s", v);
+        cJSON_Delete(m);
+    }
+    free(txt);
+}
+typedef struct { CatTool t; char url[400]; char *out; } ToolJob;
+static void tool_work(void *arg) {
+    ToolJob *j = arg;
+    char prog[300];
+    snprintf(prog, sizeof prog, "%s/apppkg", helper_path());
+    const char *argv[] = {prog, "tool-install", j->url, tools_root(), j->t.id, j->t.file, j->t.sha, NULL}; /* no shell */
+    j->out = run_capture_argv(argv);
+}
+static void tools_check(void);
+static void tool_done(void *arg) {
+    ToolJob *j = arg;
+    char *out = j->out ? j->out : str_dup("");
+    str_trim(out);
+    const char *last = strrchr(out, '\n');
+    last = last ? last + 1 : out;
+    if (!strcmp(last, "OK")) SDL_Log("tool %s %s installed", j->t.id, j->t.version);
+    else SDL_Log("tool %s %s: %s (tried again with the next catalog)", j->t.id, j->t.version, last);
+    bool ok = !strcmp(last, "OK");
+    free(out);
+    free(j);
+    tool_running = false;
+    if (ok) tools_check(); /* the next one, if any */
+}
+static void tools_check(void) {
+    if (tool_running || getenv("TVSHELL_SCRIPT")) return;
+    for (int i = 0; i < n_tools; i++) {
+        const CatTool *t = &tools[i];
+        if (strcmp(t->id, "yt-dlp")) continue; /* mediarun only knows yt-dlp */
+        char built[32], have[32];
+        tool_version(t->id, true, built, sizeof built);
+        tool_version(t->id, false, have, sizeof have);
+        if ((built[0] && version_cmp(t->version, built) <= 0) || (have[0] && version_cmp(t->version, have) <= 0)) continue;
+        ToolJob *j = calloc(1, sizeof *j);
+        if (!j || !base_url(j->url, sizeof j->url)) { free(j); return; }
+        j->t = *t;
+        tool_running = true;
+        SDL_Log("tool %s: %s -> %s", t->id, have[0] ? have : built[0] ? built : "?", t->version);
+        job_submit_q(JQ_SLOW, tool_work, tool_done, j);
+        return;
+    }
+}
+static void tools_parse(cJSON *arr) {
+    n_tools = 0;
+    cJSON *a;
+    cJSON_ArrayForEach(a, arr) {
+        if (n_tools >= MAX_TOOLS) break;
+        CatTool *t = &tools[n_tools];
+        memset(t, 0, sizeof *t);
+        snprintf(t->id, sizeof t->id, "%s", jstr(a, "id"));
+        snprintf(t->version, sizeof t->version, "%s", jstr(a, "version"));
+        snprintf(t->file, sizeof t->file, "%s", jstr(a, "file"));
+        snprintf(t->sha, sizeof t->sha, "%s", jstr(a, "sha256"));
+        /* the same checks apppkg makes */
+        bool ok = t->id[0] && strlen(t->id) <= 32 && t->version[0] && t->file[0] && strlen(t->sha) == 64;
+        for (const char *p = t->id; ok && *p; p++) ok = (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '_';
+        for (const char *p = t->version; ok && *p; p++) ok = (*p >= '0' && *p <= '9') || *p == '.';
+        for (const char *p = t->sha; ok && *p; p++) ok = (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f');
+        for (const char *p = t->file; ok && *p; p++) ok = (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || strchr("._-", *p);
+        if (ok) n_tools++;
+    }
+}
 
 typedef struct { char *out; } CatJob;
 static void cat_work(void *arg) {
@@ -146,10 +293,21 @@ static void cat_done(void *arg) {
             for (const char *p = c->id; ok && *p; p++) ok = (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '_';
             for (const char *p = c->sha; ok && *p; p++) ok = (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f');
             for (const char *p = c->file; ok && *p; p++) ok = (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || strchr("._-", *p);
+            /* the app's own picture: a plain .png name and a hex SHA256, like the package */
+            snprintf(c->icon_file, sizeof c->icon_file, "%s", jstr(a, "icon_file"));
+            snprintf(c->icon_sha, sizeof c->icon_sha, "%s", jstr(a, "icon_sha256"));
+            bool iok = strlen(c->icon_sha) == 64 && strlen(c->icon_file) > 4 && !strcmp(c->icon_file + strlen(c->icon_file) - 4, ".png");
+            for (const char *p = c->icon_sha; iok && *p; p++) iok = (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f');
+            for (const char *p = c->icon_file; iok && *p; p++) iok = (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || strchr("._-", *p);
+            if (!iok) c->icon_file[0] = c->icon_sha[0] = 0;
             if (ok) n_cat++;
         }
         state = CAT_OK;
         cat_err[0] = 0;
+        app_art_changed(); /* pictures from the catalog may now be known */
+        icons_fetch();
+        tools_parse(cJSON_GetObjectItem(root, "tools"));
+        tools_check();
     }
     cJSON_Delete(root);
     free(j->out);

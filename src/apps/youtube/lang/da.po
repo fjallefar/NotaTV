@@ -306,16 +306,8 @@ msgstr "YouTube: %s er forbundet"
 msgid "Up to 1080p on a Raspberry Pi (YouTube has 1440p and 4K only in formats it cannot decode)"
 msgstr "Op til 1080p på en Raspberry Pi (YouTube har kun 1440p og 4K i formater, den ikke kan afkode)"
 
+msgid "Small fixes"
+msgstr "Små rettelser"
 
-
-msgid "Casting to the TV needs your approval"
-msgstr "Cast til TV'et kræver din godkendelse"
-
-msgid "A new phone or computer must be allowed on the TV before it can cast"
-msgstr "En ny telefon eller computer skal godkendes på TV'et, før den kan caste"
-
-msgid "Signing out removes more traces, also replies from YouTube that arrive afterwards"
-msgstr "Log ud fjerner flere spor, også svar fra YouTube, der kommer bagefter"
-
-msgid "The sign-in screen only closes itself when it is on top"
-msgstr "Login-skærmen lukker kun sig selv, når den er øverst"
+msgid "Casting and preparing videos are more reliable when several things happen at once"
+msgstr "Cast og forberedelse af videoer er mere stabile, når flere ting sker samtidig"

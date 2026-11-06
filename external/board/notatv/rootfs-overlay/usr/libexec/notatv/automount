@@ -60,8 +60,13 @@ if [ -n "$share" ] && ! grep -q " $mnt " /proc/mounts; then
 	nfs://*)
 		rest=${share#nfs://}
 		host=${rest%%/*}; path=/${rest#*/}
-		ip=$(nslookup "$host" 2>/dev/null | awk '/^Address/ {a=$NF} END {print a}')
-		mount -t nfs4 -o ro,nosuid,nodev,noexec,addr=${ip:-$host} "$host:$path" "$mnt" 2>/dev/null || { rmdir "$mnt"; log "NFS fejlede: $share"; }
+		# BusyBox mount (without FEATURE_MOUNT_NFS) resolves the host itself and adds addr=
+		# for the kernel. No own nslookup: for an IP it printed the DNS server ("x.x.x.x:53"),
+		# which gave the kernel a bad addr= and the mount always failed.
+		# NFSv4 first, then v3 (nolock: there is no rpc.statd on the box).
+		mount -t nfs4 -o ro,nosuid,nodev,noexec,soft,timeo=50 "$host:$path" "$mnt" 2>/dev/null ||
+			mount -t nfs -o ro,nosuid,nodev,noexec,soft,timeo=50,vers=3,nolock "$host:$path" "$mnt" 2>/dev/null ||
+			{ rmdir "$mnt"; log "NFS fejlede: $share"; }
 		;;
 	esac
 fi

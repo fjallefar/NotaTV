@@ -1062,14 +1062,14 @@ static int pick_next_ep(const PItem *e, int n) {
 static void showplay_cb(void *ud, Req *r) {
     (void)ud;
     cJSON *mc = mc_of(r);
-    PItem *items;
+    PItem *items = NULL;
     int n = mc ? parse_items(mc, &items, r->srv) : 0;
     int pick = pick_next_ep(items, n);
     double start = pick >= 0 && items[pick].offset > 30 ? items[pick].offset : 0;
     if (pick >= 0) plex_play_chain(&items[pick], start, NULL);
     else app_toast(T("No playable file"));
     for (int i = 0; i < n; i++) pitem_free(&items[i]);
-    if (n) free(items);
+    free(items);
 }
 static void play_show(PItem *h) {
     if (!h->rating_key || !srv_ok(h->srv)) return;

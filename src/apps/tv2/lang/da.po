@@ -308,12 +308,8 @@ msgstr "Menu"
 msgid "Filter"
 msgstr "Filter"
 
-msgid "In your language"
-msgstr "På dit sprog"
+msgid "Safer sign-in"
+msgstr "Mere sikkert login"
 
-msgid "TV 2 Play now follows the language of the box - English or Danish"
-msgstr "TV 2 Play følger nu boksens sprog - engelsk eller dansk"
-
-msgid "Titles and descriptions from TV 2 stay in Danish"
-msgstr "Titler og beskrivelser fra TV 2 er stadig på dansk"
-
+msgid "Your login is no longer visible in the box's list of running programs or in the log bundle"
+msgstr "Dit login kan ikke længere ses i boksens liste over kørende programmer eller i log-pakken"

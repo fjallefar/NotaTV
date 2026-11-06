@@ -1,6 +1,6 @@
 {
   "id": "plex",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "api": 2,
   "name": "Plex",
   "desc": "Movies and shows from your Plex server",
@@ -11,10 +11,9 @@
   "order": 20,
   "default": true,
   "changes": {
-    "summary": "Mark movies and shows as watched or unwatched",
+    "summary": "Small fixes",
     "points": [
-      "Green key on a movie, series, season or episode: mark it as watched or unwatched, or remove it from Continue watching",
-      "The detail and series pages have a Mark as watched/unwatched button, and movies in progress a Remove from Continue button"
+      "A small memory leak when a series has nothing to play is fixed"
     ]
   }
 }

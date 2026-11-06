@@ -108,7 +108,8 @@ static char *sq(const char *s) { /* shell-citering */
 static int split_lines(char *out, char ***lines) {
     int n = 0;
     *lines = NULL;
-    for (char *l = strtok(out, "\n"); l; l = strtok(NULL, "\n")) {
+    char *sv_l;
+    for (char *l = strtok_r(out, "\n", &sv_l); l; l = strtok_r(NULL, "\n", &sv_l)) {
         if (!*l) continue;
         *lines = realloc(*lines, sizeof(char *) * (n + 1));
         (*lines)[n++] = l;
@@ -117,11 +118,29 @@ static int split_lines(char *out, char ***lines) {
 }
 
 /* --- Wi-Fi --- */
+/* wpa_cli writes network names with bytes outside printable ASCII as \xNN (and " \ as \" \\): "S\xc3\xb8ren".
+   That form is kept for "wifi connect" (it hands it to wpa_supplicant as P"..."), and decoded here for the screen. */
+static int hex_val(char c) {
+    return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+}
+static void wpa_unescape(char *s) {
+    char *w = s;
+    for (const char *r = s; *r; r++) {
+        if (*r != '\\' || !r[1]) { *w++ = *r; continue; }
+        r++;
+        int h1, h2;
+        if (*r == 'x' && (h1 = hex_val(r[1])) >= 0 && (h2 = hex_val(r[2])) >= 0) { *w++ = (char)(h1 * 16 + h2); r += 2; }
+        else if (*r == 'n' || *r == 'r' || *r == 't' || *r == 'e') *w++ = ' '; /* control characters: a space on screen */
+        else *w++ = *r; /* \" \\ */
+    }
+    *w = 0;
+}
 static char wifi_ssid[128];
 static void wifi_connected(char *out, void *ud) {
     (void)ud;
     busy_close();
     str_trim(out);
+    wpa_unescape(out); /* "Connected to S\xc3\xb8ren" */
     app_toast("%s", *out ? tr_msg(out) : T("Done"));
 }
 static void wifi_pw(void *ud, const char *pw) {
@@ -142,7 +161,10 @@ static void wifi_pick(void *ud, int idx) {
     if (scan_open[idx]) wifi_pw(NULL, "");
     else {
         char t[200];
-        snprintf(t, sizeof t, T("Password for %s"), wifi_ssid);
+        char shown[128];
+        snprintf(shown, sizeof shown, "%s", wifi_ssid);
+        wpa_unescape(shown);
+        snprintf(t, sizeof t, T("Password for %s"), shown);
         keyboard_open(t, "", true, wifi_pw, NULL);
     }
 }
@@ -159,11 +181,15 @@ static void wifi_scanned(char *out, void *ud) {
     char **labels = calloc(n + 1, sizeof(char *));
     n_scan = 0;
     for (int i = 0; i < n; i++) {
-        char *ssid = strtok(lines[i], "\t"), *sig = strtok(NULL, "\t"), *sec = strtok(NULL, "\t");
+        char *sv_ssid = NULL;
+        char *ssid = strtok_r(lines[i], "\t", &sv_ssid), *sig = strtok_r(NULL, "\t", &sv_ssid), *sec = strtok_r(NULL, "\t", &sv_ssid);
         if (!ssid || !*ssid) continue;
         scan_ssids[n_scan] = str_dup(ssid);
         scan_open[n_scan] = !sec || !strcmp(sec, "open");
-        labels[n_scan] = str_printf("%s   %s%%%s", ssid, sig ? sig : "?", scan_open[n_scan] ? "" : T("  · secured"));
+        char shown[128];
+        snprintf(shown, sizeof shown, "%s", ssid);
+        wpa_unescape(shown);
+        labels[n_scan] = str_printf("%s   %s%%%s", shown, sig ? sig : "?", scan_open[n_scan] ? "" : T("  · secured"));
         n_scan++;
     }
     if (n_scan == 0) app_toast(T("No Wi-Fi networks found"));
@@ -182,6 +208,7 @@ static void act_wifi_forget(void) { run_async(forgot, NULL, "wifi forget"); }
 static void act_phone_pin(void) { phone_pin_change(NULL); }
 static void act_netwatch(void) { app_push(netwatch_screen()); }
 static void act_bt_pair(void) { app_push(bt_pair_screen()); }
+static void act_bt_pad(void) { app_push(bt_pad_screen()); }
 /* Forget paired devices: choose one device or all of them, then confirm */
 static BtDevice fg_dev[16];
 static int fg_n, fg_sel; /* fg_sel = fg_n: all devices */
@@ -300,7 +327,8 @@ static void adev_listed(char *out, void *ud) {
     n_adev = 1;
     int sel = 0;
     for (int i = 0; i < n; i++) {
-        char *id = strtok(lines[i], "\t"), *name = strtok(NULL, "\t");
+        char *sv_id = NULL;
+        char *id = strtok_r(lines[i], "\t", &sv_id), *name = strtok_r(NULL, "\t", &sv_id);
         if (!id) continue;
         adev_ids[n_adev] = str_dup(id);
         labels[n_adev] = str_dup(name ? name : id);
@@ -484,6 +512,7 @@ static const Item bt_items[] = {
     {N_("Only visible while Music is open"), IT_TOGGLE, "bt_ondemand", "1", onoff, .changed = bt_apply,
      .help = N_("Phones can only find and connect to the TV while Music or \"Pair a phone\" is open (and for 2 min. after). Paired controllers and keyboards can always connect. Turn off if phones should be able to connect on their own")},
     {N_("Pair a phone"), IT_ACTION, .action = act_bt_pair, .help = N_("Makes the TV visible for 3 minutes. The code is confirmed here on the TV")},
+    {N_("Pair a controller or keyboard"), IT_ACTION, .action = act_bt_pad, .help = N_("Put the controller, keyboard or mouse in pairing mode - the TV finds it and pairs it")},
     {N_("Forget paired devices"), IT_ACTION, .action = act_bt_forget, .help = N_("Choose a phone, controller or keyboard to forget - or all of them")},
     {N_("Cover art for Bluetooth music"), IT_TOGGLE, "music_cover_lookup", "1", onoff, .help = N_("Looks up cover art at Apple (iTunes) and in MusicBrainz (open music database). Sends artist and album there")},
     {N_("AirPlay (music from phone)"), IT_TOGGLE, "airplay_enabled", "1", onoff, .changed = restart_music, .help = N_("iPhone, iPad and Mac can play music on the TV. Local network only")},
@@ -686,6 +715,7 @@ static void info_work(void *arg) {
         char *cmd = str_printf("%s/%s 2>/dev/null", helper_path(), sc->items[i].info_cmd);
         j->vals[i] = run_capture(cmd);
         str_trim(j->vals[i]);
+        if (!strcmp(sc->items[i].info_cmd, "net status")) wpa_unescape(j->vals[i]); /* "Wi-Fi: S\xc3\xb8ren" */
         free(cmd);
     }
 }

@@ -1,6 +1,6 @@
 {
   "id": "jellyfin",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "api": 2,
   "name": "Jellyfin",
   "desc": "Movies and shows from your Jellyfin server",
@@ -11,10 +11,9 @@
   "order": 30,
   "default": false,
   "changes": {
-    "summary": "Mark movies and shows as watched or unwatched",
+    "summary": "Small fixes",
     "points": [
-      "Green key on a movie, series, season or episode: mark it as watched or unwatched, or remove it from Continue watching",
-      "The detail and series pages have a Mark as watched/unwatched button, and movies in progress a Remove from Continue button"
+      "A new sign-in gets a truly random device id on the server"
     ]
   }
 }

@@ -116,7 +116,8 @@ void moon_inbox(const char *args) {
     snprintf(copy, sizeof copy, "%s", args);
     char *argv[24] = {"tvmoon"};
     int n = 1;
-    for (char *s = strtok(copy, " "); s && n < 23; s = strtok(NULL, " ")) argv[n++] = s;
+    char *sv_s;
+    for (char *s = strtok_r(copy, " ", &sv_s); s && n < 23; s = strtok_r(NULL, " ", &sv_s)) argv[n++] = s;
     argv[n] = NULL;
     if (n < 2) return;
     moon_run(argv, NULL, NULL);

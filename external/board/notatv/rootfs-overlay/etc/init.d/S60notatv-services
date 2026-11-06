@@ -5,6 +5,8 @@
 case "$1" in
 start)
 	(
+		# only the local network may reach the box's services (dhcp-script and net watch update it with the addresses)
+		$H/firewall apply
 		$H/net up
 		$H/cec daemon &
 		# phone remote / text input

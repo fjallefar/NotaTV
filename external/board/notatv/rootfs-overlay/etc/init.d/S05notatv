@@ -9,6 +9,8 @@ start)
 	: > $RUN/mpv-local.conf
 	# persistent data partition (created by the installer)
 	dev=$(data_dev)
+	# after a power cut: repair what the journal cannot (-p only fixes what is safe; a clean partition takes ms)
+	[ -n "$dev" ] && command -v e2fsck >/dev/null && { e2fsck -p "$dev" >/dev/null 2>&1; [ $? -ge 4 ] && log "data: e2fsck found errors it could not fix on $dev"; }
 	if [ -n "$dev" ] && mount -o noatime "$dev" /data 2>/dev/null; then
 		echo installed > $RUN/mode
 	else
@@ -22,8 +24,14 @@ start)
 	$H/wifi boot >/dev/null 2>&1 &
 	# targets for symlinks from the rootfs (see post-build.sh): Bluetooth, bluealsa, shader cache, mpv
 	mkdir -p /data/notatv/bluetooth /data/notatv/bluealsa /data/notatv/cache /data/notatv/config
+	# YouTube logins sent from the phone that were never approved: the question on the TV is gone after a restart
+	rm -rf /data/notatv/youtube/pending
 	# tokens, passwords and cookies (Plex, IPTV, Seerr, YouTube) for root only
 	chmod -R go= /data/notatv
+	# others may pass through (not list) the data folder: the user "media" (mediarun) reaches its own home in it, and
+	# the programs from the App Store in tools/ (yt-dlp) - everything else in it stays root's only
+	chmod 711 /data/notatv
+	[ -d /data/notatv/tools ] && chmod -R go=rX /data/notatv/tools
 	# audio default (HDMI with a connected TV) - runs in the background
 	$H/audio setup >/dev/null 2>&1 &
 	;;

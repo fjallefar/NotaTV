@@ -1,0 +1,3 @@
+# NotaTV: the HEVC decoder in ffmpeg (v4l2-request) takes its buffers from /dev/dma_heap/*, which is root-only by
+# default. Group video, so mpv also works as the user "media" (media_user=1, see src/shell/mediarun.c).
+SUBSYSTEM=="dma_heap", GROUP="video", MODE="0660"

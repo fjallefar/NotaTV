@@ -215,7 +215,8 @@ static void set_playlist(cJSON *a, bool replace_current) { /* mu locked */
         Y.nids = 0;
         char tmp[4096];
         snprintf(tmp, sizeof tmp, "%s", ids);
-        for (char *t = strtok(tmp, ","); t && Y.nids < 200; t = strtok(NULL, ","))
+        char *sv_t;
+        for (char *t = strtok_r(tmp, ",", &sv_t); t && Y.nids < 200; t = strtok_r(NULL, ",", &sv_t))
             snprintf(Y.ids[Y.nids++], sizeof Y.ids[0], "%s", t);
     }
     if (*jget(a, "listId")) snprintf(Y.list_id, sizeof Y.list_id, "%s", jget(a, "listId"));

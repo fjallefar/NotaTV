@@ -28,8 +28,12 @@ static const char *device_id(void) {
     const char *d = cfg_get("jf_device", "");
     if (*d) return d;
     char id[40];
-    srand((unsigned)time(NULL) ^ (unsigned)(uintptr_t)&id);
-    snprintf(id, sizeof id, "notatv-%08x%08x", rand(), rand());
+    /* random from the kernel (not srand/rand: that reset the shared rand() and gave a guessable id) */
+    unsigned r[2] = {0, 0};
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (!f || fread(r, sizeof r, 1, f) != 1) { r[0] = (unsigned)time(NULL); r[1] = (unsigned)(uintptr_t)&id ^ (unsigned)SDL_GetTicks(); }
+    if (f) fclose(f);
+    snprintf(id, sizeof id, "notatv-%08x%08x", r[0], r[1]);
     cfg_set("jf_device", id);
     return cfg_get("jf_device", "");
 }

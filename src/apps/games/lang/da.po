@@ -114,11 +114,8 @@ msgstr "Spil fra din PC via Sunshine (Moonlight)"
 msgid "HEVC (the Pi 5 has no H.264 decoder)"
 msgstr "HEVC (Pi 5 har ingen H.264-dekoder)"
 
-msgid "Pairing fixes"
-msgstr "Rettelser til parring"
+msgid "Small fixes"
+msgstr "Små rettelser"
 
-msgid "Back (or Esc) now cancels pairing while the code is shown"
-msgstr "Tilbage (eller Esc) afbryder nu parringen, mens koden vises"
-
-msgid "The pairing screen points to https://localhost:47990 on the PC - Sunshine rejects the PIN when its page is opened on the PC's IP address"
-msgstr "Parringsskærmen henviser til https://localhost:47990 på PC'en - Sunshine afviser PIN'en, når siden åbnes på PC'ens IP-adresse"
+msgid "Searching for PCs is more reliable while other things happen at the same time"
+msgstr "Søgningen efter PC'er er mere stabil, mens andet sker samtidig"

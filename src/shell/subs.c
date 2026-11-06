@@ -37,7 +37,8 @@ static void os_langs(char *out, size_t n) {
     out[0] = 0;
     char tmp[128];
     snprintf(tmp, sizeof tmp, "%s", cfg_get("sub_lang", lang_media_default("sub_lang")));
-    for (char *t = strtok(tmp, ","); t; t = strtok(NULL, ",")) {
+    char *sv_t;
+    for (char *t = strtok_r(tmp, ",", &sv_t); t; t = strtok_r(NULL, ",", &sv_t)) {
         if (strlen(t) != 2 || !strcmp(t, "dk")) continue;
         if (strstr(out, t)) continue;
         if (out[0]) strncat(out, ",", n - strlen(out) - 1);

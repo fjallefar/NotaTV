@@ -29,6 +29,7 @@ watch)
 	mkdir -p $RUN
 	echo $$ > $RUN/netwatch.pid
 	last=""
+	n6=0
 	while :; do
 		now=""
 		for e in $(eth_ifaces); do now="$now $e=$(cat /sys/class/net/$e/carrier 2>/dev/null)"; done
@@ -43,6 +44,8 @@ watch)
 			fi
 		done
 		last=$now
+		# IPv6 addresses come and go without DHCP (router advertisements): the firewall follows them every 30 s
+		n6=$((n6 + 1)); [ $n6 -ge 15 ] && { n6=0; $H/firewall apply; }
 		sleep 2
 	done
 	;;

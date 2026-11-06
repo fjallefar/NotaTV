@@ -33,6 +33,8 @@ define YT_DLP_INSTALL_TARGET_CMDS
 	chmod 0755 $(TARGET_DIR)/usr/lib/yt-dlp/$(YT_DLP_BIN)
 	rm -f $(TARGET_DIR)/usr/bin/yt-dlp
 	ln -sf ../lib/yt-dlp/$(YT_DLP_BIN) $(TARGET_DIR)/usr/bin/yt-dlp
+	# the image's version: mediarun uses a yt-dlp from the App Store only if it is newer
+	echo $(YT_DLP_VERSION) > $(TARGET_DIR)/usr/lib/yt-dlp/notatv-version
 	mkdir -p $(TARGET_DIR)/etc
 	printf -- '$(YT_DLP_JS_RUNTIMES)--cache-dir /data/notatv/yt-dlp-cache\n' > $(TARGET_DIR)/etc/yt-dlp.conf
 	$(YT_DLP_INSTALL_NODE)

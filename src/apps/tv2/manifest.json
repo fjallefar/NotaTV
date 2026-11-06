@@ -1,6 +1,6 @@
 {
   "id": "tv2",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": 2,
   "name": "TV 2 Play",
   "desc": "Streaming from TV 2 Play (Widevine)",
@@ -13,10 +13,9 @@
   "nonfree": true,
   "helpers": ["wvserve"],
   "changes": {
-    "summary": "In your language",
+    "summary": "Safer sign-in",
     "points": [
-      "TV 2 Play now follows the language of the box - English or Danish",
-      "Titles and descriptions from TV 2 stay in Danish"
+      "Your login is no longer visible in the box's list of running programs or in the log bundle"
     ]
   }
 }

@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <glob.h>
+#include <grp.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -262,6 +263,8 @@ bool http_request_cookies(const char *method, const char *url, const char *const
     struct curl_slist *hl = NULL;
     for (int i = 0; headers && headers[i]; i++) hl = curl_slist_append(hl, headers[i]);
     curl_easy_setopt(c, CURLOPT_URL, url);
+    /* an https request may not be redirected to http: the headers (tokens such as X-Plex-Token) would be sent in clear */
+    if (!strncasecmp(url, "https://", 8)) curl_easy_setopt(c, CURLOPT_REDIR_PROTOCOLS_STR, "https");
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(c, CURLOPT_MAXREDIRS, 8L);
     curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 8L);
@@ -466,8 +469,11 @@ void cfg_load(void) {
     n_cfg = 0;
     FILE *f = fopen(cfg_path, "r");
     if (!f) return;
-    char line[4096];
-    while (fgets(line, sizeof line, f)) {
+    /* getline, not a fixed buffer: a longer line split in two would make its tail a setting of its own
+       (e.g. "...apps_url=http://..." at the end of a long playlist address from the phone page) */
+    char *line = NULL;
+    size_t lcap = 0;
+    while (getline(&line, &lcap, f) >= 0) {
         char *eq = strchr(line, '=');
         if (!eq || line[0] == '#') continue;
         *eq = 0;
@@ -480,6 +486,7 @@ void cfg_load(void) {
         cfg[n_cfg].v = strdup(v);
         n_cfg++;
     }
+    free(line);
     fclose(f);
 }
 
@@ -542,8 +549,9 @@ void cfg_flush(void) {
 /* the configuration is stored as "key=value" per line: a newline in a value (e.g. from the phone's
  * web page, %0A) could otherwise add a new setting like ssh_enabled=1 */
 static void cfg_set_clean(const char *key, const char *val);
+#define CFG_MAX_VAL 16384 /* longer values are cut (no setting needs more; the phone page sends at most 2 KB per field) */
 static char *cfg_clean(const char *s) {
-    char *o = strdup(s);
+    char *o = strndup(s, CFG_MAX_VAL);
     for (unsigned char *p = (unsigned char *)o; *p; p++)
         if (*p < 0x20 || *p == 0x7f) *p = ' ';
     return o;
@@ -571,6 +579,7 @@ static void cfg_set_clean(const char *key, const char *val) {
         }
     /* a new array instead of realloc, so readers that are iterating do not hit freed memory */
     Kv *n = malloc(sizeof(Kv) * (n_cfg + 1));
+    if (!n) { SDL_Log("cfg: ingen hukommelse til %s", key); SDL_UnlockMutex(cfg_lock); return; }
     if (n_cfg) memcpy(n, cfg, sizeof(Kv) * n_cfg);
     n[n_cfg].k = strdup(key);
     n[n_cfg].v = strdup(val);
@@ -884,6 +893,35 @@ static void wipe_dir_except(const char *dir, const char *keep) {
     closedir(d);
 }
 /* leftovers in /tmp that can hold addresses, tokens or pictures from the account (mpv log, image cache, now playing) */
+/* mpv as the user "media" (media_user=1, see mediarun.c): tvshell's files in /tmp that mpv reads (now playing,
+   channels, posters, subtitles) get the group media and 0640. mediarun does the same when mpv starts; this is for
+   files written during playback. */
+void media_share_tmp(void) {
+    static int gen = -1;
+    static bool on;
+    static gid_t gid;
+    if (gen != cfg_gen()) {
+        gen = cfg_gen();
+        struct group *g = cfg_int("media_user", 0) ? getgrnam("media") : NULL;
+        on = g != NULL;
+        gid = g ? g->gr_gid : 0;
+    }
+    if (!on) return;
+    static const char *const pats[] = {"/tmp/notatv-*.json", "/tmp/notatv-*.bgra", "/tmp/notatv-*.m3u", "/tmp/notatv-sub-*.srt", NULL};
+    for (int i = 0; pats[i]; i++) {
+        glob_t g;
+        if (glob(pats[i], 0, NULL, &g) != 0) continue;
+        for (size_t k = 0; k < g.gl_pathc; k++) {
+            int fd = open(g.gl_pathv[k], O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+            struct stat st;
+            if (fd >= 0 && fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_uid == 0 && (st.st_gid != gid || (st.st_mode & 0777) != 0640))
+                if (fchown(fd, 0, gid) == 0) fchmod(fd, 0640);
+            if (fd >= 0) close(fd);
+        }
+        globfree(&g);
+    }
+}
+
 void wipe_session_traces(void) {
     home_hidden_forget(NULL); /* titles removed from the home row */
     img_cache_clear();        /* the images in memory */
@@ -897,7 +935,8 @@ void wipe_session_traces(void) {
                                         "/tmp/notatv-chan.json.part", "/tmp/notatv-media.m3u", "/tmp/uxplay.log",
                                         "/tmp/tvmoon.log", "/tmp/shairport-sync.log", NULL};
     for (int i = 0; files[i]; i++) wipe_file(files[i]);
-    static const char *const pats[] = {"/tmp/notatv-sub-*.srt", "/tmp/notatv-logo-*.bgra", NULL};
+    /* <data>/media/cookies-*: the copies of YouTube logins mediarun made for yt-dlp as the user media */
+    static const char *const pats[] = {"/tmp/notatv-sub-*.srt", "/tmp/notatv-logo-*.bgra", "/data/notatv/media/cookies-*", NULL};
     for (int i = 0; pats[i]; i++) {
         glob_t g;
         if (glob(pats[i], 0, NULL, &g) != 0) continue;

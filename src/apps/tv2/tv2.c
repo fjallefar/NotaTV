@@ -1647,7 +1647,7 @@ static PlayResult play_one(Tv2 *v, const char *guid, const char *title,
     /* profileToken is base64/JWT (no quote); guard anyway so it can never break the shell word */
     char *prof = (v->profile[0] && !strchr(v->profile, '\'')) ? str_printf("TV2_PROFILE='%s' ", v->profile) : str_dup("");
     run_cmd("kill $(pidof wvserve) 2>/dev/null; sleep 0.3; "
-            "%sTV2_POSFILE='%s' LD_LIBRARY_PATH='%s/lib' '%s' '%s' \"$(cat '%s')\" '%s' %d >'%s' 2>&1 &",
+            "%sTV2_POSFILE='%s' LD_LIBRARY_PATH='%s/lib' '%s' '%s' '@%s' '%s' %d >'%s' 2>&1 &",
             prof, posf, dir, wv, cdm, tok, guid, PORT, log);
     free(prof);
 

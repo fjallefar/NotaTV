@@ -1061,6 +1061,9 @@ msgstr "Torsdag"
 msgid "Too large (max. 512 KB)"
 msgstr "For stor (maks. 512 KB)"
 
+msgid "A field is too long (max. 2 KB)"
+msgstr "Et felt er for langt (maks. 2 KB)"
+
 msgid "Too many wrong codes - try again in 10 minutes"
 msgstr "For mange forkerte koder - prøv igen om 10 minutter"
 
@@ -1512,6 +1515,15 @@ msgstr "Ugyldig app-pakke"
 msgid "Could not download the app"
 msgstr "Appen kunne ikke hentes"
 
+msgid "Invalid app picture"
+msgstr "Ugyldigt app-billede"
+
+msgid "Could not save the app picture"
+msgstr "App-billedet kunne ikke gemmes"
+
+msgid "Could not download the app picture"
+msgstr "App-billedet kunne ikke hentes"
+
 msgid "The download is damaged - try again"
 msgstr "Det hentede er beskadiget - prøv igen"
 
@@ -1712,3 +1724,60 @@ msgstr "Vis apps, der kræver lukket software"
 
 msgid "Some streaming services need a closed module from another company to play (DRM). It is not open source."
 msgstr "Nogle streamingtjenester kræver et lukket modul fra et andet firma for at afspille (DRM). Det er ikke open source."
+
+msgid "Pair a controller or keyboard"
+msgstr "Par en controller eller et tastatur"
+
+msgid "Put the controller, keyboard or mouse in pairing mode - the TV finds it and pairs it"
+msgstr "Sæt controlleren, tastaturet eller musen i parringstilstand - TV'et finder og parrer den"
+
+msgid "Controller"
+msgstr "Controller"
+
+msgid "Keyboard"
+msgstr "Tastatur"
+
+msgid "Mouse"
+msgstr "Mus"
+
+msgid "Input device"
+msgstr "Inputenhed"
+
+msgid "%s is paired"
+msgstr "%s er parret"
+
+msgid "Could not pair %s - put it in pairing mode and try again"
+msgstr "Kunne ikke parre %s - sæt den i parringstilstand og prøv igen"
+
+msgid "Restart the box. NotaTV keeps trying by itself while this screen is open."
+msgstr "Genstart boksen. NotaTV bliver ved med at prøve, mens denne skærm er åben."
+
+msgid "Put it in pairing mode - it then shows up below"
+msgstr "Sæt den i parringstilstand - så dukker den op herunder"
+
+msgid "Xbox: hold the pair button on top  ·  PlayStation: hold Share/Create + PS  ·  Switch Pro: hold the sync button"
+msgstr "Xbox: hold parringsknappen på toppen  ·  PlayStation: hold Share/Create + PS  ·  Switch Pro: hold sync-knappen"
+
+msgid "Pairing with %s ..."
+msgstr "Parrer med %s ..."
+
+msgid "Type this code on the keyboard and press Enter:"
+msgstr "Skriv denne kode på tastaturet og tryk Enter:"
+
+msgid "%d of %d typed"
+msgstr "%d af %d skrevet"
+
+msgid "Searching ..."
+msgstr "Søger ..."
+
+msgid "Still searching - OK pairs the chosen one"
+msgstr "Søger stadig - OK parrer den valgte"
+
+msgid "Deny"
+msgstr "Afvis"
+
+msgid "Play from another device"
+msgstr "Afspil fra en anden enhed"
+
+msgid "Allow %s to play on the TV (DLNA)?"
+msgstr "Må %s afspille på TV'et (DLNA)?"

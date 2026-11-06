@@ -71,7 +71,8 @@ static void *discover_job(void *arg) {
         return NULL;
     }
     g->n = 0;
-    for (char *line = strtok(out, "\n"); line && g->n < MAXROW; line = strtok(NULL, "\n")) {
+    char *sv_line;
+    for (char *line = strtok_r(out, "\n", &sv_line); line && g->n < MAXROW; line = strtok_r(NULL, "\n", &sv_line)) {
         if (strncmp(line, "server\t", 7) != 0) continue;
         char *p = line + 7;
         Row *r = &g->rows[g->n++];
@@ -115,7 +116,8 @@ static void *apps_job(void *arg) {
     g->n = 0;
     g->running = 0;
     g->msg[0] = 0;
-    for (char *line = strtok(out, "\n"); line && g->n < MAXROW; line = strtok(NULL, "\n")) {
+    char *sv_line;
+    for (char *line = strtok_r(out, "\n", &sv_line); line && g->n < MAXROW; line = strtok_r(NULL, "\n", &sv_line)) {
         char *p = line;
         char *kind = field(&p);
         if (!strcmp(kind, "running")) g->running = atoi(field(&p));

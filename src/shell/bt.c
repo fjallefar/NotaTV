@@ -34,6 +34,11 @@ static int adapter_state;         /* -1 unknown, 0 no adapter (bluetoothd missin
 static double next_adapter_check;
 static Screen *pair_scr;          /* the open pairing screen (closed by itself when a phone has paired) */
 static bool pair_close;
+/* "Pair a controller or keyboard": the box searches and pairs itself (a phone instead finds the box) */
+static bool pad_open;             /* the screen is open: searching */
+static char pad_target[128];      /* the device being paired right now ("" = none) */
+static char pad_code[16];         /* code to type on a keyboard ("" = none) */
+static int pad_entered = -1;      /* digits typed so far (DisplayPasskey), -1 unknown */
 
 /* ---------- small helpers ---------- */
 static void track_conn(const char *dev, bool on) {
@@ -144,6 +149,36 @@ static DBusHandlerResult agent_msg(DBusConnection *c, DBusMessage *m, void *ud) 
     const char *mem = dbus_message_get_member(m);
     const char *dev = NULL;
     dbus_uint32_t pk = 0;
+    /* the controller/keyboard we pair from the TV: chosen there with OK, so it is not asked again */
+    if ((!strcmp(mem, "RequestConfirmation") || !strcmp(mem, "RequestAuthorization")) && pad_target[0]) {
+        DBusMessageIter ai;
+        const char *d = NULL;
+        if (dbus_message_iter_init(m, &ai) && dbus_message_iter_get_arg_type(&ai) == DBUS_TYPE_OBJECT_PATH)
+            dbus_message_iter_get_basic(&ai, &d);
+        if (d && !strcmp(d, pad_target)) {
+            set_bool(d, "org.bluez.Device1", "Trusted", true);
+            send_call(dbus_message_new_method_return(m));
+            return DBUS_HANDLER_RESULT_HANDLED;
+        }
+    }
+    if (!strcmp(mem, "DisplayPasskey") && pad_target[0]) { /* keyboard: type this code on it, then Enter */
+        dbus_uint16_t entered = 0;
+        if (dbus_message_get_args(m, NULL, DBUS_TYPE_OBJECT_PATH, &dev, DBUS_TYPE_UINT32, &pk, DBUS_TYPE_UINT16, &entered, DBUS_TYPE_INVALID)) {
+            snprintf(pad_code, sizeof pad_code, "%06u", pk);
+            pad_entered = entered;
+        }
+        send_call(dbus_message_new_method_return(m));
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
+    if (!strcmp(mem, "RequestPinCode") && pad_target[0]) { /* older keyboards: we choose the code, it is typed on the keyboard */
+        snprintf(pad_code, sizeof pad_code, "%04u", (unsigned)(SDL_GetTicks() * 2654435761u % 10000));
+        pad_entered = -1;
+        const char *pin = pad_code;
+        DBusMessage *r = dbus_message_new_method_return(m);
+        if (r) dbus_message_append_args(r, DBUS_TYPE_STRING, &pin, DBUS_TYPE_INVALID);
+        send_call(r);
+        return DBUS_HANDLER_RESULT_HANDLED;
+    }
     if (!strcmp(mem, "RequestConfirmation") &&
         dbus_message_get_args(m, NULL, DBUS_TYPE_OBJECT_PATH, &dev, DBUS_TYPE_UINT32, &pk, DBUS_TYPE_INVALID)) {
         if (pending_req) answer(false);
@@ -166,10 +201,11 @@ static DBusHandlerResult agent_msg(DBusConnection *c, DBusMessage *m, void *ud) 
     DBusMessage *r;
     if (!strcmp(mem, "AuthorizeService")) {
         /* only while pairing or for devices we have already approved (they are "Trusted" and are not asked) */
-        r = app_time() < pair_until ? dbus_message_new_method_return(m)
+        r = app_time() < pair_until || pad_target[0] ? dbus_message_new_method_return(m)
                                     : dbus_message_new_error(m, "org.bluez.Error.Rejected", T("Not in pairing mode"));
     } else if (!strcmp(mem, "Cancel")) {
         if (pending_req) { dbus_message_unref(pending_req); pending_req = NULL; }
+        pad_code[0] = 0;
         app_toast(T("Pairing cancelled"));
         r = dbus_message_new_method_return(m);
     } else if (!strcmp(mem, "Release") || !strcmp(mem, "DisplayPasskey") || !strcmp(mem, "DisplayPinCode")) {
@@ -504,7 +540,7 @@ void bt_apply(void) {
     set_bool(ADAPTER, "org.bluez.Adapter1", "Powered", enabled);
     /* new devices can only pair in pairing mode (Bluetooth → Pair); a connected phone does not make the box
        pairable for everyone nearby */
-    set_bool(ADAPTER, "org.bluez.Adapter1", "Pairable", enabled && pair_until > 0);
+    set_bool(ADAPTER, "org.bluez.Adapter1", "Pairable", enabled && (pair_until > 0 || pad_open));
     /* paired phones must be able to connect by themselves (e.g. "NotaTV" in Spotify's device list), even when the TV is not visible */
     set_bool(ADAPTER, "org.bluez.Adapter1", "Connectable", on || input);
     if (!on) set_bool(ADAPTER, "org.bluez.Adapter1", "Discoverable", false);
@@ -736,5 +772,239 @@ Screen *bt_pair_screen(void) {
     s->leave = pair_leave;
     s->draw = pair_draw;
     s->input = pair_input;
+    return s;
+}
+
+/* ---------- pair a controller or keyboard ----------
+ * Controllers, keyboards and mice do not search for the TV: they are put in pairing mode and the box finds them.
+ * The screen searches (StartDiscovery) while it is open, lists the input devices found nearby, and OK pairs,
+ * trusts and connects the chosen one. A keyboard may need a code typed on it - the agent shows it here. */
+typedef struct { char path[128], name[128], icon[64]; int rssi; } PadDev;
+static PadDev pad_dev[12];
+static int pad_n, pad_sel;
+static double pad_next_scan;
+static bool pad_busy;              /* a Pair call is running */
+static char pad_busy_name[128];
+
+static const char *pad_kind(const char *icon) {
+    if (!strcmp(icon, "input-gaming")) return T("Controller");
+    if (!strcmp(icon, "input-keyboard")) return T("Keyboard");
+    if (!strcmp(icon, "input-mouse") || !strcmp(icon, "input-tablet")) return T("Mouse");
+    return T("Input device");
+}
+
+/* unpaired input devices BlueZ has found (GetManagedObjects, short timeout), strongest signal first */
+static void pad_scan(void) {
+    if (!bus) return;
+    DBusMessage *m = dbus_message_new_method_call("org.bluez", "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
+    DBusMessage *r = m ? dbus_connection_send_with_reply_and_block(bus, m, 300, NULL) : NULL;
+    if (m) dbus_message_unref(m);
+    if (!r) return;
+    char keep[128];
+    snprintf(keep, sizeof keep, "%s", pad_n ? pad_dev[pad_sel].path : "");
+    int n = 0;
+    DBusMessageIter it, objs;
+    if (dbus_message_iter_init(r, &it) && dbus_message_iter_get_arg_type(&it) == DBUS_TYPE_ARRAY) {
+        dbus_message_iter_recurse(&it, &objs);
+        while (dbus_message_iter_get_arg_type(&objs) == DBUS_TYPE_DICT_ENTRY && n < 12) {
+            DBusMessageIter kv, ifaces;
+            const char *path;
+            dbus_message_iter_recurse(&objs, &kv);
+            dbus_message_iter_get_basic(&kv, &path);
+            dbus_message_iter_next(&kv);
+            dbus_message_iter_recurse(&kv, &ifaces);
+            while (dbus_message_iter_get_arg_type(&ifaces) == DBUS_TYPE_DICT_ENTRY) {
+                DBusMessageIter ik, props;
+                const char *iface;
+                dbus_message_iter_recurse(&ifaces, &ik);
+                dbus_message_iter_get_basic(&ik, &iface);
+                if (!strcmp(iface, "org.bluez.Device1")) {
+                    dbus_message_iter_next(&ik);
+                    dbus_message_iter_recurse(&ik, &props);
+                    PadDev d = {.rssi = -999};
+                    bool paired = false, named = false;
+                    snprintf(d.path, sizeof d.path, "%s", path);
+                    while (dbus_message_iter_get_arg_type(&props) == DBUS_TYPE_DICT_ENTRY) {
+                        DBusMessageIter pk, v;
+                        const char *k, *sv;
+                        dbus_message_iter_recurse(&props, &pk);
+                        dbus_message_iter_get_basic(&pk, &k);
+                        dbus_message_iter_next(&pk);
+                        dbus_message_iter_recurse(&pk, &v);
+                        if (!strcmp(k, "Alias") && variant_str(&v, &sv)) snprintf(d.name, sizeof d.name, "%s", sv);
+                        else if (!strcmp(k, "Name")) named = true;
+                        else if (!strcmp(k, "Paired")) paired = variant_bool(&v);
+                        else if (!strcmp(k, "Icon") && variant_str(&v, &sv)) snprintf(d.icon, sizeof d.icon, "%s", sv);
+                        else if (!strcmp(k, "RSSI") && dbus_message_iter_get_arg_type(&v) == DBUS_TYPE_INT16) {
+                            dbus_int16_t x;
+                            dbus_message_iter_get_basic(&v, &x);
+                            d.rssi = x;
+                        }
+                        dbus_message_iter_next(&props);
+                    }
+                    /* only input devices that are nearby now (RSSI = seen in this search) and not paired yet */
+                    if (!paired && named && !strncmp(d.icon, "input", 5) && d.rssi > -999) pad_dev[n++] = d;
+                }
+                dbus_message_iter_next(&ifaces);
+            }
+            dbus_message_iter_next(&objs);
+        }
+    }
+    dbus_message_unref(r);
+    for (int i = 1; i < n; i++) /* strongest first: the controller in your hand is usually the closest */
+        for (int j = i; j > 0 && pad_dev[j].rssi > pad_dev[j - 1].rssi; j--) {
+            PadDev t = pad_dev[j]; pad_dev[j] = pad_dev[j - 1]; pad_dev[j - 1] = t;
+        }
+    pad_n = n;
+    pad_sel = 0;
+    for (int i = 0; i < n; i++) if (!strcmp(pad_dev[i].path, keep)) pad_sel = i; /* the focus stays on the same device */
+}
+
+static void pad_discovery(bool on) {
+    if (!bus) return;
+    send_call(dbus_message_new_method_call("org.bluez", ADAPTER, "org.bluez.Adapter1", on ? "StartDiscovery" : "StopDiscovery"));
+}
+
+static void pad_paired(DBusPendingCall *pc, void *ud) {
+    (void)ud;
+    DBusMessage *r = dbus_pending_call_steal_reply(pc);
+    const char *err = r && dbus_message_get_type(r) == DBUS_MESSAGE_TYPE_ERROR ? dbus_message_get_error_name(r) : NULL;
+    if (r && (!err || !strcmp(err, "org.bluez.Error.AlreadyExists"))) {
+        /* paired: trust it (it reconnects by itself when turned on) and connect now */
+        set_bool(pad_target, "org.bluez.Device1", "Trusted", true);
+        send_call(dbus_message_new_method_call("org.bluez", pad_target, "org.bluez.Device1", "Connect"));
+        app_toast(T("%s is paired"), pad_busy_name);
+        SDL_Log("bt: parret %s", pad_target);
+    } else {
+        SDL_Log("bt: parring fejlede: %s", err ? err : "intet svar");
+        app_toast(T("Could not pair %s - put it in pairing mode and try again"), pad_busy_name);
+    }
+    if (r) dbus_message_unref(r);
+    dbus_pending_call_unref(pc);
+    pad_busy = false;
+    dev_forget(pad_target); /* cached before pairing: the real name/icon are read again */
+    pad_target[0] = pad_code[0] = 0;
+    pad_entered = -1;
+    pad_next_scan = 0;
+    bt_apply(); /* a paired input device keeps the box connectable */
+}
+
+static void pad_pair(const PadDev *d) {
+    if (!bus || pad_busy) return;
+    DBusMessage *m = dbus_message_new_method_call("org.bluez", d->path, "org.bluez.Device1", "Pair");
+    if (!m) return;
+    pad_discovery(false); /* searching while pairing makes many controllers fail */
+    snprintf(pad_target, sizeof pad_target, "%s", d->path);
+    snprintf(pad_busy_name, sizeof pad_busy_name, "%s", d->name);
+    pad_code[0] = 0;
+    pad_entered = -1;
+    DBusPendingCall *pc = NULL;
+    if (dbus_connection_send_with_reply(bus, m, &pc, 60000) && pc) {
+        pad_busy = true;
+        dbus_pending_call_set_notify(pc, pad_paired, NULL, NULL);
+    } else pad_target[0] = 0;
+    dbus_message_unref(m);
+}
+
+static void pad_draw(Screen *s) {
+    (void)s;
+    draw_background();
+    draw_topbar("Bluetooth");
+    float cx = UI_W / 2.0f;
+    if (!bus || adapter_state == 0) {
+        text_draw(F_BOLD, 42, cx, 400, C_TEXT, AL_CENTER, T("Bluetooth is not available"));
+        text_draw(F_REG, 28, cx, 470, C_TEXT2, AL_CENTER, T("Restart the box. NotaTV keeps trying by itself while this screen is open."));
+        return;
+    }
+    text_draw(F_BOLD, 46, cx, 170, C_TEXT, AL_CENTER, T("Pair a controller or keyboard"));
+    text_draw(F_REG, 28, cx, 240, C_TEXT2, AL_CENTER, T("Put it in pairing mode - it then shows up below"));
+    text_draw(F_REG, 24, cx, 286, C_TEXT3, AL_CENTER,
+              T("Xbox: hold the pair button on top  ·  PlayStation: hold Share/Create + PS  ·  Switch Pro: hold the sync button"));
+    if (pad_busy) {
+        draw_spinner(cx, 470, 26, C_TEXT2);
+        char l[200];
+        snprintf(l, sizeof l, T("Pairing with %s ..."), pad_busy_name);
+        text_draw(F_SEMI, 34, cx, 530, C_TEXT, AL_CENTER, l);
+        if (pad_code[0]) {
+            text_draw(F_REG, 28, cx, 610, C_TEXT2, AL_CENTER, T("Type this code on the keyboard and press Enter:"));
+            text_draw(F_BOLD, 88, cx, 660, C_TEXT, AL_CENTER, pad_code);
+            if (pad_entered >= 0) {
+                char e[64];
+                snprintf(e, sizeof e, T("%d of %d typed"), pad_entered, (int)strlen(pad_code));
+                text_draw(F_REG, 24, cx, 780, C_TEXT3, AL_CENTER, e);
+            }
+        }
+        return;
+    }
+    float lx = cx - 420, ly = 370, rowh = 76;
+    if (!pad_n) {
+        draw_spinner(cx - 170, 480, 14, C_TEXT3);
+        text_draw(F_REG, 30, cx - 140, 462, C_TEXT2, AL_LEFT, T("Searching ..."));
+    } else {
+        int vis = pad_n < 7 ? pad_n : 7, first = pad_sel >= vis ? pad_sel - vis + 1 : 0;
+        for (int i = 0; i < vis; i++) {
+            int k = first + i;
+            float y = ly + i * rowh;
+            bool f = k == pad_sel;
+            if (f) fill_rrect(lx, y, 840, 64, 32, C_FOCUS);
+            Color tc = f ? RGB(10, 10, 10) : C_TEXT;
+            text_draw_clip(F_SEMI, 30, lx + 40, y + 15, 560, tc, AL_LEFT, pad_dev[k].name);
+            text_draw(F_REG, 24, lx + 800, y + 19, f ? RGB(40, 40, 40) : C_TEXT3, AL_RIGHT, pad_kind(pad_dev[k].icon));
+        }
+        draw_spinner(lx + 14, ly + vis * rowh + 30, 10, C_TEXT3);
+        text_draw(F_REG, 22, lx + 36, ly + vis * rowh + 18, C_TEXT3, AL_LEFT, T("Still searching - OK pairs the chosen one"));
+    }
+}
+
+static void pad_update(Screen *s, float dt) {
+    (void)s; (void)dt;
+    if (pad_busy || app_time() < pad_next_scan) return;
+    pad_next_scan = app_time() + 1.5;
+    pad_scan();
+}
+
+static bool pad_input(Screen *s, const InputEvent *ev) {
+    (void)s;
+    if (pad_busy) return ev->a != A_BACK && ev->a != A_HOME; /* wait for the answer (at most 60 s); Back leaves */
+    if (ev->a == A_UP && pad_n) { pad_sel = (pad_sel + pad_n - 1) % pad_n; return true; }
+    if (ev->a == A_DOWN && pad_n) { pad_sel = (pad_sel + 1) % pad_n; return true; }
+    if (ev->a == A_OK && !ev->repeat && pad_n) { pad_pair(&pad_dev[pad_sel]); return true; }
+    return false;
+}
+
+static void pad_enter(Screen *s) {
+    (void)s;
+    pad_open = true;
+    pad_n = pad_sel = 0;
+    pad_next_scan = 0;
+    pair_shown = true; /* check the adapter now and then (bt_tick) */
+    if (!bus) return;
+    if (!cfg_int("bt_enabled", 1)) cfg_set_int("bt_enabled", 1);
+    bt_wake(300);
+    bt_apply();
+    check_adapter();
+    next_adapter_check = app_time() + 3;
+    pad_discovery(true);
+}
+
+static void pad_leave(Screen *s) {
+    (void)s;
+    pad_open = false;
+    pair_shown = pair_scr != NULL;
+    pad_discovery(false);
+    if (pad_busy) { /* stop the pairing that is still running */
+        send_call(dbus_message_new_method_call("org.bluez", pad_target, "org.bluez.Device1", "CancelPairing"));
+    }
+    bt_apply();
+}
+
+Screen *bt_pad_screen(void) {
+    Screen *s = calloc(1, sizeof *s);
+    s->name = "bt-pad";
+    s->enter = pad_enter;
+    s->leave = pad_leave;
+    s->draw = pad_draw;
+    s->update = pad_update;
+    s->input = pad_input;
     return s;
 }

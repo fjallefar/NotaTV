@@ -70,6 +70,8 @@ bool kms_present_init(SDL_Renderer *ren, int w, int h);
 void kms_present_quit(void);
 bool kms_present_active(void);
 SDL_Texture *kms_present_target(void);
+void kms_present_begin(SDL_Renderer *ren); /* before drawing a frame: the display buffer it goes into */
+bool kms_present_copy_shown(SDL_Renderer *ren); /* the frame on screen into the current target; false = copy K.ui */
 void kms_present_frame(SDL_Renderer *ren); /* debugging: count since the last call */ /* draw the UI in HDR10 (PQ/BT.2020) when the TV is always in HDR */
 SDL_Renderer *gfx_renderer(void);
 float gfx_scale(void);
@@ -417,6 +419,7 @@ typedef struct {
     char news[200], points[4][160];
     int n_points;
     bool nonfree; /* needs closed software (e.g. a DRM module): only listed when cfg store_nonfree=1 */
+    char icon_file[96], icon_sha[72]; /* the app's own tile picture in the release ("" = none) */
 } CatApp;
 typedef enum { CAT_NONE, CAT_LOADING, CAT_OK, CAT_ERROR } CatState;
 CatState appcat_state(void);
@@ -433,6 +436,8 @@ int appcat_pending(const char *id);        /* 0 = not queued, 1 = waiting, 2 = b
 bool appcat_busy(int *done, int *total, const char **current); /* installs left; progress of this round */
 bool appcat_restart_needed(void);          /* an app was updated while loaded: the new version needs a restart */
 void appcat_tick(void);
+bool appcat_icon_path(const CatApp *c, char *out, size_t n); /* where its downloaded picture is (false = none in the catalog) */
+void app_art_changed(void); /* gfx.c: an app's picture may have appeared (installed, downloaded): look again */
 IconId icon_by_name(const char *name);
 int version_cmp(const char *a, const char *b);
 void apps_tick(void);
@@ -552,6 +557,7 @@ void bt_apply(void);              /* bt_enabled / device name changed */
 void bt_wake(double secs);        /* turn the radio on for at least secs seconds (only when in use, cfg bt_ondemand) */
 void bt_media(const char *cmd);   /* "Play", "Pause", "Next", "Previous" to the phone */
 Screen *bt_pair_screen(void);
+Screen *bt_pad_screen(void); /* pair a controller, keyboard or mouse: the box searches for it */
 /* DLNA/UPnP receiver (dlna.c): apps can send video/music/pictures to the TV */
 void dlna_tick(void);
 void dlna_apply(void);
@@ -590,6 +596,7 @@ struct HomeItem { char *title, *subtitle, *image, *key; double progress; char *l
 void wipe_file(const char *path);        /* overwrite (small files) and delete */
 void wipe_dir(const char *dir);          /* everything in a folder */
 void wipe_session_traces(void);          /* /tmp leftovers: mpv log, image cache */
+void media_share_tmp(void);              /* mpv as the user media (media_user=1): /tmp files it reads get group media */
 void home_hidden_forget(const char *app); /* what was removed from the home row (NULL = all apps) */
 void subs_forget(void);
 

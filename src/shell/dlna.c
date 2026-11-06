@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sys/stat.h>
 
 #define WEBROOT "/tmp/notatv-dlna"
@@ -55,6 +57,94 @@ static void push(int cmd, double arg) {
     SDL_LockMutex(mu);
     if (S.qn < 16) S.q[S.qn++] = (DCmd){cmd, arg};
     SDL_UnlockMutex(mu);
+}
+
+/* ---------- which devices may control the TV ----------
+ * Like YouTube cast: the first time a phone/PC sends something to play (or controls playback), the TV asks
+ * "Allow ...?". The UPnP thread waits for the answer (up to WAIT_S), so the phone's request simply succeeds once
+ * it is allowed. Allowed devices are remembered until tvshell restarts; a "Deny" holds for 10 minutes.
+ * Only the main thread can ask (not during playback): a new device is turned away meanwhile. */
+#define MAX_PEERS 16
+#define WAIT_S 25
+static struct {
+    char ok[MAX_PEERS][64];
+    int nok;
+    struct { char ip[64]; double t; } no[MAX_PEERS];
+    int nno;
+    char ask_ip[64];
+    bool ask;           /* the main thread should ask about ask_ip */
+    double asked_t;     /* the question is on screen (0 = none) */
+} P;
+
+static void peer_ip(UpnpActionRequest *req, char *ip, size_t n) {
+    ip[0] = 0;
+    const struct sockaddr_storage *ss = UpnpActionRequest_get_CtrlPtIPAddr(req);
+    if (!ss) return;
+    if (ss->ss_family == AF_INET) inet_ntop(AF_INET, &((const struct sockaddr_in *)ss)->sin_addr, ip, (socklen_t)n);
+    else if (ss->ss_family == AF_INET6) {
+        inet_ntop(AF_INET6, &((const struct sockaddr_in6 *)ss)->sin6_addr, ip, (socklen_t)n);
+        if (!strncmp(ip, "::ffff:", 7)) memmove(ip, ip + 7, strlen(ip + 7) + 1);
+    }
+}
+/* mu locked */
+static int peer_state(const char *ip) { /* 1 allowed, -1 denied recently, 0 unknown */
+    if (!strcmp(ip, "127.0.0.1") || !strcmp(ip, "::1")) return 1;
+    for (int i = 0; i < P.nok; i++) if (!strcmp(P.ok[i], ip)) return 1;
+    double now = app_time();
+    for (int i = 0; i < P.nno;) {
+        if (now - P.no[i].t >= 600) { P.no[i] = P.no[--P.nno]; continue; }
+        if (!strcmp(P.no[i].ip, ip)) return -1;
+        i++;
+    }
+    return 0;
+}
+/* UPnP thread: may ip control the TV? Asks on the TV and waits for the answer if it is new. */
+static bool peer_allowed(const char *ip) {
+    if (!ip[0]) return false;
+    SDL_LockMutex(mu);
+    int st = peer_state(ip);
+    if (st == 0 && !P.ask && !P.asked_t) { snprintf(P.ask_ip, sizeof P.ask_ip, "%s", ip); P.ask = true; }
+    SDL_UnlockMutex(mu);
+    for (int i = 0; st == 0 && i < WAIT_S * 10; i++) {
+        SDL_Delay(100);
+        SDL_LockMutex(mu);
+        st = peer_state(ip);
+        bool open = P.ask || (P.asked_t && !strcmp(P.ask_ip, ip));
+        SDL_UnlockMutex(mu);
+        if (!open && st == 0) break; /* someone else is being asked, or the question was closed without an answer */
+    }
+    if (st != 1) SDL_Log("dlna: %s afvist (ikke godkendt på TV'et)", ip);
+    return st == 1;
+}
+static void peer_answer(void *ud, bool yes) {
+    (void)ud;
+    SDL_LockMutex(mu);
+    if (P.ask_ip[0]) {
+        if (yes) {
+            if (P.nok < MAX_PEERS) snprintf(P.ok[P.nok++], sizeof P.ok[0], "%s", P.ask_ip);
+            else { memmove(P.ok[0], P.ok[1], sizeof P.ok[0] * (MAX_PEERS - 1)); snprintf(P.ok[MAX_PEERS - 1], sizeof P.ok[0], "%s", P.ask_ip); }
+        } else {
+            int i = P.nno < MAX_PEERS ? P.nno++ : 0;
+            snprintf(P.no[i].ip, sizeof P.no[i].ip, "%s", P.ask_ip);
+            P.no[i].t = app_time();
+        }
+    }
+    P.asked_t = 0;
+    SDL_UnlockMutex(mu);
+}
+static void peer_tick(void) { /* main thread, outside playback */
+    SDL_LockMutex(mu);
+    bool ask = P.ask;
+    char ip[64];
+    snprintf(ip, sizeof ip, "%s", P.ask_ip);
+    if (ask) { P.ask = false; P.asked_t = app_time(); }
+    else if (P.asked_t && app_time() - P.asked_t > WAIT_S + 5) P.asked_t = 0; /* closed with Home: ask again next time */
+    SDL_UnlockMutex(mu);
+    if (ask) {
+        char msg[200];
+        snprintf(msg, sizeof msg, T("Allow %s to play on the TV (DLNA)?"), ip);
+        confirm_open(T("Play from another device"), msg, T("Allow"), T("Deny"), peer_answer, NULL);
+    }
 }
 
 /* ---------- small helpers ---------- */
@@ -146,6 +236,18 @@ static int on_action(UpnpActionRequest *req) {
     int kind = strstr(sid, "AVTransport") ? 0 : strstr(sid, "RenderingControl") ? 1 : 2;
     const char *svc = kind == 0 ? AVT : kind == 1 ? RC : CM;
     char b1[32], b2[32];
+    /* reading the state is open to everyone on the network; playing and controlling only for allowed devices */
+    bool control = (kind == 0 && (!strcmp(act, "SetAVTransportURI") || !strcmp(act, "Play") || !strcmp(act, "Pause") ||
+                                  !strcmp(act, "Stop") || !strcmp(act, "Seek"))) ||
+                   (kind == 1 && (!strcmp(act, "SetVolume") || !strcmp(act, "SetMute")));
+    if (control) {
+        char ip[64];
+        peer_ip(req, ip, sizeof ip);
+        if (!peer_allowed(ip)) {
+            UpnpActionRequest_set_ErrCode(req, 501); /* action failed */
+            return 0;
+        }
+    }
     if (kind == 0) {
         if (!strcmp(act, "SetAVTransportURI")) {
             char *u = arg_of(in, "CurrentURI"), *m = arg_of(in, "CurrentURIMetaData");
@@ -234,7 +336,7 @@ static int on_action(UpnpActionRequest *req) {
             SDL_LockMutex(mu);
             S.volume = vol < 0 ? 0 : vol > 100 ? 100 : vol;
             SDL_UnlockMutex(mu);
-            push(C_VOLUME, vol);
+            push(C_VOLUME, S.volume);
             notify_rc();
         } else if (!strcmp(act, "GetMute")) {
             ADD("CurrentMute", S.mute ? "1" : "0");
@@ -536,6 +638,7 @@ static void play_current(void) {
 
 void dlna_tick(void) {
     if (!mu) mu = SDL_CreateMutex();
+    if (up) peer_tick();
     if (!up) {
         if (!cfg_int("dlna_enabled", 1) || app_time() < next_try) return;
         next_try = app_time() + 10;

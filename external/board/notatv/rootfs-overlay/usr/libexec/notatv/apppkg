@@ -2,6 +2,9 @@
 # App packages from the App Store (the GitHub release "apps", see scripts/apps-catalog.py). Used by tvshell (appcat.c).
 #   catalog <base-url> <api>                         print the catalog (JSON) for this app API version
 #   install <base-url> <dir> <id> <file> <sha256>    download, check and unpack the package into <dir>/<id>; prints OK
+#   icon <base-url> <dir> <id> <file> <sha256>       download the app's tile picture into <dir>/<id>-<sha16>.png; prints OK
+#   tool-install <base-url> <dir> <id> <file> <sha256>  the same for a tool (src/tools, e.g. yt-dlp): no app.so, but
+#                                                    the program its manifest names; readable for the user media
 #   remove <dir> <id>                                delete the package
 # Safety: nothing is put in place before the whole package is downloaded, matches the SHA256 from the catalog and
 # only holds plain files and folders with relative paths. The old version is replaced with renames and deleted with
@@ -9,25 +12,31 @@
 set -u
 die() { echo "$*"; exit 1; }
 valid_id() { echo "$1" | grep -Eq '^[a-z0-9_-]{1,32}$'; }
+# the store's address: https (file:// only for development: tvshell takes it from $TVSHELL_APPCAT_URL, never from settings)
+valid_base() { case "$1" in https://?*|file:///?*) return 0 ;; esac; return 1; }
 
 case "${1:-}" in
 catalog)
 	[ $# -eq 3 ] || die "Invalid request"
 	echo "$3" | grep -Eq '^[0-9]+$' || die "Invalid request"
-	curl -fsSL -m 20 --retry 2 "$2/apps-api$3.json" || die "Could not reach the App Store"
+	valid_base "$2" || die "Invalid request"
+	curl --proto =https,file --proto-redir =https -fsSL -m 20 --retry 2 "$2/apps-api$3.json" || die "Could not reach the App Store"
 	;;
-install)
+install|tool-install)
+	tool=; [ "$1" = tool-install ] && tool=1
 	[ $# -eq 6 ] || die "Invalid request"
 	base=$2 dir=$3 id=$4 file=$5 sum=$6
-	valid_id "$id" || die "Invalid app package"
+	valid_id "$id" && valid_base "$base" || die "Invalid app package"
 	echo "$file" | grep -Eq '^[A-Za-z0-9._-]+\.tar\.gz$' || die "Invalid app package"
 	echo "$sum" | grep -Eq '^[0-9a-f]{64}$' || die "Invalid app package"
-	mkdir -p "$dir" && chmod 700 "$dir" || die "Could not install the app"
+	# apps: root only. Tools: the user media runs them (mediarun), so readable and runnable for others
+	if [ -n "$tool" ]; then perm=755; else perm=700; fi
+	mkdir -p "$dir" && chmod $perm "$dir" || die "Could not install the app"
 	tmp="$dir/.dl-$id"
 	rm -rf "$tmp"
 	mkdir -p "$tmp/pkg" || die "Could not install the app"
 	trap 'rm -rf "$tmp"' EXIT
-	curl -fsSL -m 300 --retry 2 -o "$tmp/p.tar.gz" "$base/$file" || die "Could not download the app"
+	curl --proto =https,file --proto-redir =https -fsSL -m 300 --retry 2 -o "$tmp/p.tar.gz" "$base/$file" || die "Could not download the app"
 	[ "$(sha256sum "$tmp/p.tar.gz" | cut -d' ' -f1)" = "$sum" ] || die "The download is damaged - try again"
 	# only plain files and folders, no absolute paths or ..
 	# (busybox tar has no -z: gunzip -c | tar, like the system updater)
@@ -35,7 +44,16 @@ install)
 	cut -c1 "$tmp/list" | grep -qv '^[-d]$' && die "Invalid app package"
 	gunzip -c "$tmp/p.tar.gz" 2>/dev/null | tar -t -f - 2>/dev/null | grep -Eq '(^/|(^|/)\.\.(/|$))' && die "Invalid app package"
 	gunzip -c "$tmp/p.tar.gz" 2>/dev/null | tar -x -f - -C "$tmp/pkg" 2>/dev/null || die "The download is damaged - try again"
-	[ -f "$tmp/pkg/app.so" ] && grep -Eq "\"id\": *\"$id\"" "$tmp/pkg/manifest.json" 2>/dev/null || die "Invalid app package"
+	grep -Eq "\"id\": *\"$id\"" "$tmp/pkg/manifest.json" 2>/dev/null || die "Invalid app package"
+	if [ -n "$tool" ]; then
+		grep -Eq '"kind": *"tool"' "$tmp/pkg/manifest.json" || die "Invalid app package"
+		bin=$(sed -n 's/.*"bin": *"\([A-Za-z0-9._-]*\)".*/\1/p' "$tmp/pkg/manifest.json" | head -1)
+		case "$bin" in ''|.*) die "Invalid app package" ;; esac
+		[ -f "$tmp/pkg/$bin" ] || die "Invalid app package"
+		chmod -R go=rX "$tmp/pkg" && chmod 755 "$tmp/pkg/$bin" || die "Could not install the app"
+	else
+		[ -f "$tmp/pkg/app.so" ] || die "Invalid app package"
+	fi
 	rm -rf "$dir/.old-$id"
 	[ -d "$dir/$id" ] && { mv "$dir/$id" "$dir/.old-$id" || die "Could not install the app"; }
 	if ! mv "$tmp/pkg" "$dir/$id"; then
@@ -44,6 +62,28 @@ install)
 	fi
 	rm -rf "$dir/.old-$id"
 	sync
+	echo OK
+	;;
+icon)
+	# the App Store shows an app's own picture before it is installed: same checks as a package (SHA256 from the
+	# catalog), and it must be a PNG of at most 1024x1024 (the picture is decoded in full)
+	[ $# -eq 6 ] || die "Invalid request"
+	base=$2 dir=$3 id=$4 file=$5 sum=$6
+	valid_id "$id" && valid_base "$base" || die "Invalid app picture"
+	echo "$file" | grep -Eq '^[A-Za-z0-9._-]+\.png$' || die "Invalid app picture"
+	echo "$sum" | grep -Eq '^[0-9a-f]{64}$' || die "Invalid app picture"
+	mkdir -p "$dir" && chmod 700 "$dir" || die "Could not save the app picture"
+	tmp="$dir/.dl-$id.png"
+	trap 'rm -f "$tmp"' EXIT
+	curl --proto =https,file --proto-redir =https -fsSL -m 30 --retry 2 --max-filesize 524288 -o "$tmp" "$base/$file" || die "Could not download the app picture"
+	[ "$(sha256sum "$tmp" | cut -d' ' -f1)" = "$sum" ] || die "The download is damaged - try again"
+	[ "$(head -c 16 "$tmp" | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a0000000d49484452" ] || die "Invalid app picture"
+	set -- $(od -An -tu1 -j16 -N8 "$tmp")
+	[ $# -eq 8 ] || die "Invalid app picture"
+	w=$(( ($1 << 24) | ($2 << 16) | ($3 << 8) | $4 )) h=$(( ($5 << 24) | ($6 << 16) | ($7 << 8) | $8 ))
+	[ "$w" -ge 1 ] && [ "$w" -le 1024 ] && [ "$h" -ge 1 ] && [ "$h" -le 1024 ] || die "Invalid app picture"
+	rm -f "$dir/$id"-*.png
+	mv "$tmp" "$dir/$id-$(echo "$sum" | cut -c1-16).png" || die "Could not save the app picture"
 	echo OK
 	;;
 remove)

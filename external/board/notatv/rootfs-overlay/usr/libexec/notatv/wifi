@@ -74,7 +74,9 @@ connect)
 	ssid=$2; psk=$3
 	wpa_cli -i $W remove_network all >/dev/null
 	id=$(wpa_cli -i $W add_network | tail -1)
-	wpa_cli -i $W set_network $id ssid "\"$ssid\"" >/dev/null
+	# the name is in wpa_cli's escaped form from "scan" (æ/ø/å, emoji, " and \ as \xNN, \" and \\): P"..." makes
+	# wpa_supplicant decode it - a plain "..." would look for a network literally named S\xc3\xb8ren
+	wpa_cli -i $W set_network $id ssid "P\"$ssid\"" >/dev/null
 	if [ -n "$psk" ]; then
 		wpa_cli -i $W set_network $id psk "\"$psk\"" >/dev/null || { echo "Invalid password"; exit 1; }
 		wpa_cli -i $W set_network $id key_mgmt "WPA-PSK SAE" >/dev/null
