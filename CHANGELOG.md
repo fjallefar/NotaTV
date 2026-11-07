@@ -18,7 +18,7 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
-## Next (not released yet - rename to the version number when it is released)
+## 1.0.14
 
 > **In short:** NFS network drives work, controllers and keyboards can be paired from the TV, and apps can have their own picture.
 > - Bluetooth: *Pair a controller or keyboard* finds the controller, keyboard or mouse and pairs it
