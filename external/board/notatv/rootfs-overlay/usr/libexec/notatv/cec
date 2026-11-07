@@ -1,5 +1,5 @@
 #!/bin/sh
-# HDMI-CEC: daemon | setup | status | tv-on | tv-off | wake
+# HDMI-CEC: daemon | setup | status | tv-on | tv-off | wake | on-standby
 . /usr/libexec/notatv/lib.sh
 
 devs() { ls /dev/cec* 2>/dev/null; }
@@ -35,16 +35,12 @@ wake() {
 	done
 }
 
-monitor() { # dev - react to the TV's standby
-	cec-ctl -d $1 --monitor 2>/dev/null | while read -r line; do
-		case "$line" in
-		*"STANDBY (0x36)"*)
-			if [ "$(cfg_get cec_standby 1)" = 1 ] && [ ! -f $RUN/sleeping ]; then
-				log "cec: TV slukket -> dvale"
-				CEC_NO_TV_OFF=1 $H/power sleep &
-			fi ;;
-		esac
-	done
+# the TV turned off (cecd calls this when the TV sends Standby)
+on_standby() {
+	if [ "$(cfg_get cec_standby 1)" = 1 ] && [ ! -f $RUN/sleeping ]; then
+		log "cec: TV slukket -> dvale"
+		CEC_NO_TV_OFF=1 $H/power sleep &
+	fi
 }
 
 case "$1" in
@@ -54,10 +50,11 @@ daemon)
 		attach_pulse8
 		for d in $(devs); do
 			n=${d##*/}
-			[ -f $RUN/cec-$n ] && continue
+			# cecd answers the TV (Menu Request, power status, active source, standby); started again if it stops
+			[ -f $RUN/cec-$n ] && kill -0 $(cat $RUN/cec-$n) 2>/dev/null && continue
 			configure $d
-			touch $RUN/cec-$n
-			monitor $d &
+			$H/cecd $d &
+			echo $! > $RUN/cec-$n
 			log "cec: $d konfigureret"
 			[ $first = 1 ] && wake
 		done
@@ -69,6 +66,7 @@ setup)
 	for d in $(devs); do configure $d; done
 	;;
 wake) wake ;;
+on-standby) on_standby ;;
 tv-on)
 	[ -z "$(devs)" ] && { echo "No CEC adapter found"; exit 1; }
 	for d in $(devs); do cec-ctl -d $d --to 0 --image-view-on >/dev/null 2>&1; done

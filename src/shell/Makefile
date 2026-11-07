@@ -18,7 +18,7 @@ SRCS = main.c i18n.c drm_util.c kms_present.c subs.c gfx.c input.c util.c player
        ui_net.c bt.c dlna.c mirror.c moon.c ui_settings.c netdisc.c apps.c ui_appstore.c appcat.c update_notice.c tz.c ui_setup.c quick.c stb_impl.c vendor/cJSON.c vendor/qrcodegen.c
 OBJS = $(SRCS:.c=.o)
 
-all: tvshell notasplash mediarun
+all: tvshell notasplash mediarun cecd
 
 tvshell: $(OBJS)
 	$(CC) $(LDFLAGS) -rdynamic -o $@ $(OBJS) $(LIBS) -ldl
@@ -37,7 +37,11 @@ notasplash: splash.c vendor/stb_truetype.h
 mediarun: mediarun.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ mediarun.c
 
+# answers the HDMI-CEC questions the kernel does not (Samsung Anynet+ needs them), see cecd.c
+cecd: cecd.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ cecd.c
+
 clean:
-	rm -f tvshell notasplash mediarun $(OBJS)
+	rm -f tvshell notasplash mediarun cecd $(OBJS)
 
 .PHONY: all clean

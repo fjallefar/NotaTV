@@ -5,6 +5,8 @@ dl/
 *.iso
 src/shell/tvshell
 src/shell/notasplash
+src/shell/mediarun
+src/shell/cecd
 src/shell/*.o
 output-rpi4/
 *.img

@@ -24,6 +24,7 @@ Kort: Én sætning om opdateringen.
 > - Bluetooth: *Pair a controller or keyboard* finds the controller, keyboard or mouse and pairs it
 > - NFS network drives mount (NFSv4, otherwise NFSv3)
 > - Pi: the menus are drawn straight into the picture the TV shows - one less full-screen copy per frame
+> - Samsung TVs: the TV remote works over HDMI-CEC (Anynet+)
 > - Safer: only the local network can reach the box, DLNA asks before a new device plays, and Wi-Fi names with æ, ø and å work
 
 <!-- tldr:da
@@ -31,10 +32,12 @@ Kort: NFS-netværksdrev virker, controllere og tastaturer kan parres fra TV'et, 
 - Bluetooth: Par en controller eller et tastatur finder controlleren, tastaturet eller musen og parrer den
 - NFS-netværksdrev monteres (NFSv4, ellers NFSv3)
 - Pi: menuerne tegnes direkte i det billede, TV'et viser - én fuldskærms-kopi mindre pr. billede
+- Samsung-TV: TV'ets fjernbetjening virker over HDMI-CEC (Anynet+)
 - Mere sikker: kun det lokale net kan nå boksen, DLNA spørger før en ny enhed afspiller, og Wi-Fi-navne med æ, ø og å virker
 -->
 
 - Bluetooth: new *Settings → Bluetooth → Pair a controller or keyboard*. The box searches while it is open and lists the input devices nearby (strongest signal first); OK pairs, trusts and connects the chosen one. A keyboard that needs a code gets it shown on the TV. Only the device you chose is approved
+- HDMI-CEC on Samsung TVs (Anynet+): a new helper, `cecd`, answers what the TV asks and the kernel did not - above all *Menu Request*, which Samsung needs before it sends the remote's keys, and also the power status and which input is active. Keys, switching to the box's input and "sleep when the TV turns off" go through it on every TV. Tip: skip the Samsung guide that asks which box is connected (Apple, Nvidia, Roku ...) - it sets up Samsung's universal remote, not CEC - and turn on *Anynet+ (HDMI-CEC)*
 - NFS network drives: the address lookup gave the kernel the DNS server's address for an IP share, so NFS never mounted. BusyBox now resolves the name itself; NFSv4 first, then NFSv3, with a timeout so a dead server does not hang
 - Pi display: the UI is drawn straight into the display buffer instead of a texture that was copied over every frame (about 16 MB less memory traffic per frame on a Pi 4). `kms_direct=0` in notatv.conf goes back to the old way
 - tvshell no longer can crash while quitting (OpenSSL's cleanup ran under background downloads)
