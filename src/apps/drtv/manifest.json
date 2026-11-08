@@ -1,0 +1,23 @@
+{
+  "id": "drtv",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "DRTV",
+  "desc": "DR's live channels and programmes - free, no account needed",
+  "icon": "tv",
+  "c1": [214, 22, 52],
+  "c2": [118, 10, 28],
+  "fg": [255, 255, 255],
+  "order": 36,
+  "default": false,
+  "changes": {
+    "summary": "DRTV on NotaTV",
+    "points": [
+      "Live TV: DR1, DR2, DR Ramasjang, DRTV Ekstra and TVA Live, with what is on now and next",
+      "The DRTV front page, categories, A-Z, kids and search",
+      "Series with seasons and episodes, resume where you stopped and skip the end credits",
+      "Continue watching on the NotaTV home screen",
+      "Works without an account - sign in with your DR account for your own Continue watching and My list"
+    ]
+  }
+}

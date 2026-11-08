@@ -7,6 +7,10 @@
  *   remote (CEC): Red = menu (Resume / Stats / Quit). Green = stats overlay
  *   (holding Back goes to LG's own menu)
  * The remote's arrows/OK/Back are sent as a controller (d-pad/A/B), so you can navigate without a controller.
+ * Xbox controllers over Bluetooth (hid-generic) report the triggers as ABS_BRAKE/ABS_GAS and the right stick
+ * as ABS_Z/ABS_RZ; that layout is detected per device. The controller type (Xbox/PlayStation/Nintendo) comes
+ * from the USB/Bluetooth vendor id, so games show the right button symbols. Rumble from the host is played
+ * with a force-feedback effect when the device supports it.
  * Keys the host cannot use (volume, power, media) are not forwarded.
  */
 #define _GNU_SOURCE
@@ -41,6 +45,7 @@ typedef struct {
     signed char wheel, hwheel;
     struct input_absinfo abs[0x40];
     bool has_abs[0x40];
+    bool bt_xbox; /* triggers on ABS_BRAKE/ABS_GAS, right stick on ABS_Z/ABS_RZ */
 } Dev;
 
 typedef struct {
@@ -49,6 +54,9 @@ typedef struct {
     unsigned char lt, rt;
     short lx, ly, rx, ry;
     bool dirty;
+    bool rumble; /* fd below can play FF_RUMBLE (false for the remote and for pads without force feedback) */
+    int fd; /* the controller's device, for rumble */
+    int ff_id; /* uploaded rumble effect, -1 = none yet */
 } Pad;
 
 static Dev devs[MAX_DEV];
@@ -59,6 +67,7 @@ static pthread_t th;
 static volatile bool running;
 static char k_mods; /* MODIFIER_* currently held on the keyboard */
 static int remote_pad = -1; /* controller number for the remote (created on the first press) */
+static pthread_mutex_t pad_lock = PTHREAD_MUTEX_INITIALIZER; /* Pad.fd/ff_id: rumble comes from another thread */
 
 /* Linux keycode -> Windows virtual key code (US layout), indexed by the evdev code.
  * Same table as moonlight-embedded (GPL-3.0+, the license tvmoon already has). 0 = not sent. */
@@ -208,7 +217,8 @@ static void open_dev(const char *name) {
     snprintf(path, sizeof path, "/dev/input/%s", name);
     int fd = -1;
     for (int t = 0; t < 20 && fd < 0; t++) {
-        fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC); /* write access is needed for rumble */
+        if (fd < 0 && errno == EACCES) fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0 && errno == ENOENT) return;
         if (fd < 0) usleep(5000);
     }
@@ -234,14 +244,32 @@ static void open_dev(const char *name) {
             if (!pads[i].used) { d->pad = i; break; }
         if (d->pad >= 0) {
             Pad *p = &pads[d->pad];
+            pthread_mutex_lock(&pad_lock);
             memset(p, 0, sizeof *p);
+            pthread_mutex_unlock(&pad_lock);
             p->used = true;
             for (int a = 0; a < 0x40; a++)
                 if (ioctl(fd, EVIOCGABS(a), &d->abs[a]) == 0 && d->abs[a].maximum > d->abs[a].minimum) d->has_abs[a] = true;
+            d->bt_xbox = d->has_abs[ABS_GAS] && d->has_abs[ABS_BRAKE] && !d->has_abs[ABS_RX] && !d->has_abs[ABS_RY];
+            bool analog = d->bt_xbox || d->has_abs[ABS_Z];
+            struct input_id id = {0};
+            ioctl(fd, EVIOCGID, &id);
+            uint8_t type = id.vendor == 0x045e ? LI_CTYPE_XBOX : id.vendor == 0x054c ? LI_CTYPE_PS
+                         : id.vendor == 0x057e ? LI_CTYPE_NINTENDO : LI_CTYPE_UNKNOWN;
+            unsigned long ff[FF_CNT / (8 * sizeof(long)) + 1] = {0};
+            bool rumble = ioctl(fd, EVIOCGBIT(EV_FF, sizeof ff), ff) >= 0 && TEST_BIT(ff, FF_RUMBLE) &&
+                          (fcntl(fd, F_GETFL) & O_ACCMODE) == O_RDWR;
+            pthread_mutex_lock(&pad_lock);
+            p->fd = fd;
+            p->ff_id = -1;
+            p->rumble = rumble;
+            pthread_mutex_unlock(&pad_lock);
             uint32_t btns = A_FLAG | B_FLAG | X_FLAG | Y_FLAG | UP_FLAG | DOWN_FLAG | LEFT_FLAG | RIGHT_FLAG | LB_FLAG |
                             RB_FLAG | PLAY_FLAG | BACK_FLAG | LS_CLK_FLAG | RS_CLK_FLAG | SPECIAL_FLAG;
-            LiSendControllerArrivalEvent((uint8_t)d->pad, (uint16_t)pad_mask(), LI_CTYPE_UNKNOWN, btns,
-                                         d->has_abs[ABS_Z] ? LI_CCAP_ANALOG_TRIGGERS : 0);
+            LiSendControllerArrivalEvent((uint8_t)d->pad, (uint16_t)pad_mask(), type, btns,
+                                         (analog ? LI_CCAP_ANALOG_TRIGGERS : 0) | (rumble ? LI_CCAP_RUMBLE : 0));
+            tlog("input: controller %d: vendor %04x product %04x, type %d%s%s", d->pad, id.vendor, id.product, type,
+                 d->bt_xbox ? ", Bluetooth Xbox layout" : "", rumble ? ", rumble" : "");
         }
     }
     tlog("input: %s (%s)%s%s%s", path, devname,
@@ -251,6 +279,9 @@ static void open_dev(const char *name) {
 
 static void close_dev(int i) {
     if (devs[i].pad >= 0) {
+        pthread_mutex_lock(&pad_lock);
+        pads[devs[i].pad].rumble = false;
+        pthread_mutex_unlock(&pad_lock);
         pads[devs[i].pad].used = false;
         LiSendMultiControllerEvent((short)devs[i].pad, pad_mask(), 0, 0, 0, 0, 0, 0, 0);
     }
@@ -293,8 +324,8 @@ static void pad_event(Dev *d, const struct input_event *e) {
         case BTN_DPAD_DOWN: f = DOWN_FLAG; break;
         case BTN_DPAD_LEFT: f = LEFT_FLAG; break;
         case BTN_DPAD_RIGHT: f = RIGHT_FLAG; break;
-        case BTN_TL2: if (!d->has_abs[ABS_Z]) { p->lt = e->value ? 255 : 0; p->dirty = true; } return;
-        case BTN_TR2: if (!d->has_abs[ABS_RZ]) { p->rt = e->value ? 255 : 0; p->dirty = true; } return;
+        case BTN_TL2: if (!d->has_abs[ABS_Z] && !d->bt_xbox) { p->lt = e->value ? 255 : 0; p->dirty = true; } return;
+        case BTN_TR2: if (!d->has_abs[ABS_RZ] && !d->bt_xbox) { p->rt = e->value ? 255 : 0; p->dirty = true; } return;
         default: return;
         }
         if (e->value) p->buttons |= f;
@@ -307,10 +338,18 @@ static void pad_event(Dev *d, const struct input_event *e) {
         switch (e->code) {
         case ABS_X: p->lx = norm_axis(a, e->value, false); break;
         case ABS_Y: p->ly = norm_axis(a, e->value, true); break;
-        case ABS_RX: p->rx = norm_axis(a, e->value, false); break;
-        case ABS_RY: p->ry = norm_axis(a, e->value, true); break;
-        case ABS_Z: p->lt = norm_trigger(a, e->value); break;
-        case ABS_RZ: p->rt = norm_trigger(a, e->value); break;
+        case ABS_RX: if (!d->bt_xbox) p->rx = norm_axis(a, e->value, false); break;
+        case ABS_RY: if (!d->bt_xbox) p->ry = norm_axis(a, e->value, true); break;
+        case ABS_Z:
+            if (d->bt_xbox) p->rx = norm_axis(a, e->value, false);
+            else p->lt = norm_trigger(a, e->value);
+            break;
+        case ABS_RZ:
+            if (d->bt_xbox) p->ry = norm_axis(a, e->value, true);
+            else p->rt = norm_trigger(a, e->value);
+            break;
+        case ABS_BRAKE: if (d->bt_xbox) p->lt = norm_trigger(a, e->value); break;
+        case ABS_GAS: if (d->bt_xbox) p->rt = norm_trigger(a, e->value); break;
         case ABS_HAT0X:
             p->buttons &= ~(LEFT_FLAG | RIGHT_FLAG);
             if (e->value < 0) p->buttons |= LEFT_FLAG;
@@ -345,7 +384,9 @@ static void remote_key(const struct input_event *e) {
         for (int i = 0; i < MAX_PADS; i++)
             if (!pads[i].used) { remote_pad = i; break; }
         if (remote_pad < 0) return;
-        memset(&pads[remote_pad], 0, sizeof pads[remote_pad]);
+        pthread_mutex_lock(&pad_lock);
+        memset(&pads[remote_pad], 0, sizeof pads[remote_pad]); /* rumble = false: the remote cannot vibrate */
+        pthread_mutex_unlock(&pad_lock);
         pads[remote_pad].used = true;
         LiSendControllerArrivalEvent((uint8_t)remote_pad, (uint16_t)pad_mask(), LI_CTYPE_XBOX,
                                      A_FLAG | B_FLAG | UP_FLAG | DOWN_FLAG | LEFT_FLAG | RIGHT_FLAG, 0);
@@ -446,6 +487,36 @@ static void key_event(Dev *d, const struct input_event *e) {
     short vk = vk_codes[e->code];
     if (!vk) return;
     LiSendKeyboardEvent(vk, down ? KEY_ACTION_DOWN : KEY_ACTION_UP, k_mods);
+}
+
+/* rumble from the host (moonlight's thread): one FF_RUMBLE effect per controller, updated and played again.
+   0/0 stops it. The effect has no end time of its own; the host sends 0/0 when it should stop. */
+void input_rumble(unsigned short pad, unsigned short low, unsigned short high) {
+    if (pad >= MAX_PADS) return;
+    pthread_mutex_lock(&pad_lock);
+    Pad *p = &pads[pad];
+    if (p->used && p->rumble) {
+        if (!low && !high) {
+            if (p->ff_id >= 0) {
+                struct input_event e = {.type = EV_FF, .code = (unsigned short)p->ff_id, .value = 0};
+                if (write(p->fd, &e, sizeof e) < 0) {}
+            }
+        } else {
+            struct ff_effect fx = {.type = FF_RUMBLE, .id = (short)p->ff_id};
+            fx.u.rumble.strong_magnitude = low;
+            fx.u.rumble.weak_magnitude = high;
+            fx.replay.length = 0xffff; /* about a minute: the host sends 0/0 before that */
+            if (ioctl(p->fd, EVIOCSFF, &fx) < 0) {
+                tlog("input: rumble on controller %d failed: %s", pad, strerror(errno));
+                p->rumble = false; /* don't try again for this controller */
+            } else {
+                p->ff_id = fx.id;
+                struct input_event e = {.type = EV_FF, .code = (unsigned short)fx.id, .value = 1};
+                if (write(p->fd, &e, sizeof e) < 0) {}
+            }
+        }
+    }
+    pthread_mutex_unlock(&pad_lock);
 }
 
 static void *input_thread(void *arg) {

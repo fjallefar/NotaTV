@@ -18,6 +18,33 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.15
+
+> **In short:** New apps - DRTV, Weather and Electricity price - plus automatic sleep and power buttons on the phone page.
+> - New in the App Store: DRTV (DR's channels and programmes, free), Weather and Electricity price
+> - Live TV: reminders - Yellow on a coming program in the TV guide
+> - Automatic sleep: after 4 hours without a key press the box and the TV go to sleep (after a warning) - not while music or radio plays
+> - Phone page: Turn on (the TV turns on and switches to the box), Sleep and Restart
+> - Games: Xbox controllers over Bluetooth work fully, games show the right buttons, and the controller vibrates
+
+<!-- tldr:da
+Kort: Nye apps - DRTV, Vejr og Elpris - plus automatisk dvale og strømknapper på telefonsiden.
+- Nyt i App Store: DRTV (DR's kanaler og programmer, gratis), Vejr og Elpris
+- Live TV: påmindelser - Gul på et kommende program i TV-guiden
+- Automatisk dvale: efter 4 timer uden tastetryk går boksen og TV'et i dvale (efter en advarsel) - ikke mens der spilles musik eller radio
+- Telefonsiden: Tænd (TV'et tænder og skifter til boksen), Dvale og Genstart
+- Spil: Xbox-controllere over Bluetooth virker helt, spillene viser de rigtige knapper, og controlleren vibrerer
+-->
+
+- DRTV (new app): DR's live channels with now and next, the DRTV front page, categories, A-Z, kids and search, series with seasons, resume, skip the end credits and the next episode. Plain HLS, no DRM - no account needed; signing in with a DR account adds DR's own *Continue watching* and *My list*. A *Continue watching* row on the home screen
+- Weather (new app): now, the next 24 hours and 7 days from Open-Meteo, the temperature in the home screen's top bar, the town from the time zone until you choose one
+- Electricity price (new app): the Danish spot price with VAT hour by hour, today and tomorrow, from Energi Data Service - the price now in green/yellow/red, the cheapest hours and a chart, West or East Denmark
+- Live TV 1.0.8: reminders - Yellow on a coming program in the TV guide (or choose it in the channel's program schedule); a minute before it starts the TV offers to switch, and after a video if one was playing
+- Automatic sleep (*Settings → System*, off / 2 / 4 / 8 hours, 4 by default): a warning, then sleep a minute later unless a key is pressed. Not while music or radio plays; game streaming counts as use
+- Phone page: a *Power* box - *Turn on* sends HDMI-CEC power-on and switches the TV to the box (and wakes the screen), *Sleep* and *Restart* ask first. A sleeping box cannot be reached from the phone; the remote wakes it
+- Game streaming: Xbox controllers paired over Bluetooth report the triggers and the right stick on other axes - detected per controller, so both work; the PC is told whether it is an Xbox, PlayStation or Nintendo controller (the right button symbols in games); rumble from the PC is played on the controller
+- New tile pictures for DRTV, Weather and Electricity price
+
 ## 1.0.14
 
 > **In short:** NFS network drives work, controllers and keyboards can be paired from the TV, and apps can have their own picture.

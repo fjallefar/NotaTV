@@ -46,6 +46,14 @@ small{color:var(--dim)}
 </section>
 
 <section>
+<h2 data-t>Power</h2>
+<div class="row">
+<button onclick="power('on')" data-t>Turn on</button><button onclick="power('sleep')" data-t>Sleep</button><button onclick="power('reboot')" data-t>Restart</button>
+</div>
+<small data-t style="display:block;margin-top:8px">Turn on: the TV turns on and switches to the box. A box that sleeps is woken with the remote - the phone cannot reach it.</small>
+</section>
+
+<section>
 <h2 data-t>Type text on the TV</h2>
 <small data-t>Open a text field on the TV first (e.g. search or password).</small>
 <input id="text" placeholder="Text…" data-tp autocomplete="off">
@@ -153,6 +161,11 @@ function send(o){
 if(PIN)post('_ping=1').then(function(){show(true)}).catch(function(e){if(e.message!='auth')show(false,T('No connection to the TV'))});
 else show(false);
 function key(k){send({_key:k})}
+function power(p){
+  if(p=='sleep'&&!confirm(T('Put the box and the TV to sleep?')))return;
+  if(p=='reboot'&&!confirm(T('Restart the box?')))return;
+  send({_power:p});
+}
 function getLogs(){
   toast(T('Collecting logs…'));
   fetch('/cgi-bin/logs',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'_pin='+encodeURIComponent(PIN)})

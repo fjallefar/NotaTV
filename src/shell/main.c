@@ -740,6 +740,7 @@ static void inbox_check(void) {
         if (!strcmp(e->d_name, "_text")) keyboard_inject(val);
         else if (!strcmp(e->d_name, "_toast")) app_toast("%s", tr_msg(val));
         else if (!strcmp(e->d_name, "_pending")) pending_show(val);
+        else if (!strcmp(e->d_name, "_wake")) { screensaver = false; input_touch(); } /* "Turn on" on the phone page */
         else if (!strcmp(e->d_name, "_shot")) { /* developer mode only: writes a file to any path */
             if (cfg_int("ssh_enabled", 0)) snprintf(inbox_shot, sizeof inbox_shot, "%s", *val ? val : "/tmp/shot.bmp");
         }
@@ -775,6 +776,7 @@ void app_background_tick(bool playing) {
     inbox_check();
     bt_tick(); /* the Bluetooth agent answers pairing requests */
     appcat_tick(); /* finishes App Store installs; moves boxes from 1.0.x to App Store apps */
+    idle_sleep_tick(playing); /* automatic sleep - also while a video plays ("Are you still watching?") */
     if (playing) return;
     dlna_tick();
     mirror_tick();

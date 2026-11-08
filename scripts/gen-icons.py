@@ -114,12 +114,39 @@ ICONS = {
       <circle cx="248" cy="140" r="24" fill="#545C6B"/>"""),
 }
 
+# app packages with their own tile picture: written to src/apps/<id>/icon.png (shipped with the package)
+APP_ICONS = {
+    # DRTV: a screen with a play triangle, on red (our own drawing, not DR's logo)
+    "drtv": icon("#E8213F", "#7A0A1E", """
+      <rect x="160" y="70" width="176" height="118" rx="22" fill="none" stroke="#fff" stroke-width="15"/>
+      <path d="M212 212 H284" stroke="#fff" stroke-width="14" stroke-linecap="round"/>
+      <path d="M232 104 L276 129 L232 154 Z" fill="#fff" stroke="#fff" stroke-width="10" stroke-linejoin="round"/>"""),
+    # Weather: a sun behind a cloud
+    "weather": icon("#4FA3FF", "#1C4FA0", """
+      <g fill="#FFC93C">""" + "".join(f'<circle cx="{208 + 62 * math.cos(math.radians(a)):.1f}" cy="{108 + 62 * math.sin(math.radians(a)):.1f}" r="9"/>' for a in range(0, 360, 45)) + """
+      <circle cx="208" cy="108" r="40"/></g>
+      <g fill="#fff"><circle cx="232" cy="168" r="38"/><circle cx="282" cy="146" r="50"/><circle cx="326" cy="176" r="30"/>
+      <rect x="196" y="166" width="160" height="40" rx="20"/></g>""", glow="#FFC93C"),
+    # Electricity price: a lightning bolt over a small bar chart
+    "elpris": icon("#22C55E", "#0F5F33", """
+      <g fill="#fff" opacity="0.55"><rect x="166" y="170" width="26" height="40" rx="6"/><rect x="200" y="150" width="26" height="60" rx="6"/>
+      <rect x="270" y="160" width="26" height="50" rx="6"/><rect x="304" y="130" width="26" height="80" rx="6"/></g>
+      <path d="M262 56 L214 148 H248 L232 224 L290 122 H254 L276 56 Z" fill="#FFE14D" stroke="#FFE14D" stroke-width="6" stroke-linejoin="round"/>""", glow="#FFE14D"),
+}
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     only = set(sys.argv[1:])
     for name, svg in ICONS.items():
         if only and name not in only: continue
         png = os.path.join(OUT, name + ".png")
+        subprocess.run(["rsvg-convert", "-w", str(W), "-h", str(H), "-o", png], input=svg.encode(), check=True)
+        print(png)
+    for name, svg in APP_ICONS.items():
+        if only and name not in only: continue
+        d = os.path.join(ROOT, "src/apps", name)
+        if not os.path.isdir(d): continue
+        png = os.path.join(d, "icon.png")
         subprocess.run(["rsvg-convert", "-w", str(W), "-h", str(H), "-o", png], input=svg.encode(), check=True)
         print(png)
 

@@ -104,6 +104,7 @@ int moon_run(char *const *argv, void (*on_line)(const char *line, void *ud), voi
     if (video_off) app_video_resume();
     InputEvent ev;
     while (input_next(&ev)) {}
+    input_touch(); /* the controller/keyboard went to tvmoon: the game counts as activity (automatic sleep) */
     run_cmd("%s/music resume >/dev/null 2>&1", helper_path());
     if (timed_out) app_toast(T("Could not connect to the PC"));
     if (cancelled || timed_out) return 0;

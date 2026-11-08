@@ -1,0 +1,142 @@
+# NotaTV app "weather" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Clear"
+msgstr "Klart"
+
+msgid "Mainly clear"
+msgstr "Overvejende klart"
+
+msgid "Partly cloudy"
+msgstr "Delvis skyet"
+
+msgid "Overcast"
+msgstr "Overskyet"
+
+msgid "Fog"
+msgstr "Tåge"
+
+msgid "Drizzle"
+msgstr "Støvregn"
+
+msgid "Light rain"
+msgstr "Let regn"
+
+msgid "Rain"
+msgstr "Regn"
+
+msgid "Heavy rain"
+msgstr "Kraftig regn"
+
+msgid "Freezing rain"
+msgstr "Isslag"
+
+msgid "Snow"
+msgstr "Sne"
+
+msgid "Thunderstorm"
+msgstr "Torden"
+
+msgid "No town called \"%s\" was found"
+msgstr "Der blev ikke fundet en by, der hedder \"%s\""
+
+msgid "Choose the town"
+msgstr "Vælg byen"
+
+msgid "Weather for which town?"
+msgstr "Vejret for hvilken by?"
+
+msgid "Today"
+msgstr "I dag"
+
+msgid "Sun"
+msgstr "Søn"
+
+msgid "Mon"
+msgstr "Man"
+
+msgid "Tue"
+msgstr "Tir"
+
+msgid "Wed"
+msgstr "Ons"
+
+msgid "Thu"
+msgstr "Tor"
+
+msgid "Fri"
+msgstr "Fre"
+
+msgid "Sat"
+msgstr "Lør"
+
+msgid "Move app"
+msgstr "Flyt app"
+
+msgid "%s  ·  feels like %s  ·  wind %.0f m/s"
+msgstr "%s  ·  føles som %s  ·  vind %.0f m/s"
+
+msgid "No weather right now"
+msgstr "Intet vejr lige nu"
+
+msgid "The weather could not be fetched - check the network. Yellow chooses another town."
+msgstr "Vejret kunne ikke hentes - tjek netværket. Gul vælger en anden by."
+
+msgid "Change town"
+msgstr "Skift by"
+
+msgid "Weather"
+msgstr "Vejr"
+
+msgid "Feels like %s  ·  wind %.0f m/s"
+msgstr "Føles som %s  ·  vind %.0f m/s"
+
+msgid "Next 24 hours"
+msgstr "De næste 24 timer"
+
+msgid "Now"
+msgstr "Nu"
+
+msgid "Open-Meteo · updated just now"
+msgstr "Open-Meteo · opdateret lige nu"
+
+msgid "Open-Meteo · updated %d min ago"
+msgstr "Open-Meteo · opdateret for %d min siden"
+
+msgid "From the time zone"
+msgstr "Fra tidszonen"
+
+msgid "Off"
+msgstr "Fra"
+
+msgid "On"
+msgstr "Til"
+
+msgid "Town"
+msgstr "By"
+
+msgid "The weather is for this town"
+msgstr "Vejret gælder for denne by"
+
+msgid "Temperature in the top bar"
+msgstr "Temperatur i topbjælken"
+
+msgid "The temperature and an icon at the top of the home screen"
+msgstr "Temperaturen og et ikon øverst på forsiden"
+
+msgid "The weather now, the next hours and 7 days"
+msgstr "Vejret nu, de næste timer og 7 dage"
+
+msgid "Weather on NotaTV"
+msgstr "Vejr på NotaTV"
+
+msgid "The weather now, the next 24 hours and 7 days from Open-Meteo (open data, no account)"
+msgstr "Vejret nu, de næste 24 timer og 7 dage fra Open-Meteo (åbne data, ingen konto)"
+
+msgid "The temperature in the home screen's top bar, and the weather at the top when the app has focus"
+msgstr "Temperaturen i forsidens topbjælke, og vejret øverst, når appen har fokus"
+
+msgid "The town comes from the time zone - Yellow chooses another"
+msgstr "Byen kommer fra tidszonen - Gul vælger en anden"

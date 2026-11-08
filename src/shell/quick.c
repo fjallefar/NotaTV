@@ -1,6 +1,7 @@
 /* NotaTV shell - the quick panel: slides in from the right (Red on the home screen, or the Power key).
    Sleep timer, shortcuts into Settings, and sleep / restart / power off. */
 #include "tv.h"
+#include <glob.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,49 @@ void quick_tick(void) {
     if (left <= 60 && !sleep_warned) { sleep_warned = true; app_toast("%s", T("The box goes to sleep in 1 minute")); }
     if (left <= 0) {
         sleep_at = 0;
+        run_cmd("%s/power sleep &", helper_path());
+    }
+}
+
+/* automatic sleep (cfg auto_sleep in hours, default 4, 0 = off): after that long without a key press the box warns,
+   and goes to sleep a minute later unless a key is pressed. Not while music or radio plays: then the sound card is in
+   use while no video plays (AirPlay, Bluetooth, Radio) - they have the sleep timer. Checked every 5 seconds. */
+static bool sound_busy(void) {
+    glob_t g;
+    bool busy = false;
+    if (glob("/proc/asound/card*/pcm*p/sub*/status", 0, NULL, &g) == 0) {
+        for (size_t i = 0; i < g.gl_pathc && !busy; i++) {
+            char *s = file_read_all(g.gl_pathv[i], 4096);
+            if (s && strstr(s, "RUNNING")) busy = true;
+            free(s);
+        }
+        globfree(&g);
+    }
+    return busy;
+}
+void idle_sleep_tick(bool playing) {
+    static double next_check, slept_at;
+    static bool warned;
+    double now = app_time();
+    if (now < next_check) return;
+    next_check = now + 5;
+    int hours = cfg_int("auto_sleep", 4);
+    if (hours <= 0) { warned = false; return; }
+    double idle = now - fmax(fmax(input_last_activity(), 0), slept_at), limit = hours * 3600.0;
+    if (idle < limit - 60) { warned = false; return; }
+    if (!playing && sound_busy()) { input_touch(); return; } /* music or radio: counts as being used */
+    if (!warned) {
+        warned = true;
+        char m[240];
+        snprintf(m, sizeof m, T("No key pressed for %d hours - the box goes to sleep in 1 minute. Press a key to keep watching."), hours);
+        if (playing) player_osd(m, 20000);
+        else app_toast("%s", m);
+        return;
+    }
+    if (idle >= limit) {
+        warned = false;
+        slept_at = now; /* not again right after waking up */
+        SDL_Log("automatisk dvale efter %d timer uden tastetryk", hours);
         run_cmd("%s/power sleep &", helper_path());
     }
 }

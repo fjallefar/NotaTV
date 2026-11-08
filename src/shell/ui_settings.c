@@ -462,6 +462,7 @@ static const char *const lang_l[] = {N_("Danish"), N_("English"), N_("Swedish"),
 static const char *const alang_o[] = {"da,dan,en,eng", "en,eng", "sv,swe,en,eng", "no,nor,en,eng", "de,deu,ger,en,eng", NULL};
 static const char *const alang_l[] = {N_("Danish"), N_("English"), N_("Swedish"), N_("Norwegian"), N_("German"), NULL};
 static const char *const ss_o[] = {"0", "5", "10", "30", NULL}, *const ss_l[] = {N_("Off"), "5 min", "10 min", "30 min", NULL};
+static const char *const as_o[] = {"0", "2", "4", "8", NULL}, *const as_l[] = {N_("Off"), N_("2 hours"), N_("4 hours"), N_("8 hours"), NULL};
 static const char *const delay_o[] = {"-300", "-200", "-150", "-100", "-50", "0", "50", "100", "150", "200", "300", NULL};
 static const char *const delay_l[] = {"-300 ms", "-200 ms", "-150 ms", "-100 ms", "-50 ms", "0 ms", "+50 ms", "+100 ms", "+150 ms", "+200 ms", "+300 ms", NULL};
 
@@ -590,6 +591,8 @@ static const Item sys_items[] = {
     {N_("Hardware"), IT_INFO, .info_cmd = "sys hw"},
     {N_("Run the setup guide again"), IT_ACTION, .action = act_setup, .help = N_("Language, country, time, network, name and apps - like the first start")},
     {N_("Screensaver"), IT_CYCLE, "screensaver_min", "10", ss_o, ss_l},
+    {N_("Automatic sleep"), IT_CYCLE, "auto_sleep", "4", as_o, as_l,
+     .help = N_("When no key has been pressed for this long, the box and the TV go to sleep (after a warning). Not while music or radio plays")},
     {N_("Show FPS"), IT_TOGGLE, "show_fps", "0", onoff, .help = N_("Frames per second and slowest frame (ms) in the top right - for troubleshooting")},
     {N_("Troubleshooting log"), IT_TOGGLE, "debug_log", "0", onoff, .changed = debug_log_apply,
      .help = N_("Saves more details about playback and the network, also across restarts. Turn it off again when the problem is found")},

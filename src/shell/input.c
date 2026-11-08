@@ -23,6 +23,7 @@ static int q_head, q_tail;
 static double last_activity;
 
 double input_last_activity(void) { return last_activity; }
+void input_touch(void) { last_activity = app_time(); }
 bool input_evdev_active(void) { return evdev_on; }
 
 void input_push(Action a, uint32_t ch, bool repeat) {

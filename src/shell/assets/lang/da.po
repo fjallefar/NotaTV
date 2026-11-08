@@ -1781,3 +1781,48 @@ msgstr "Afspil fra en anden enhed"
 
 msgid "Allow %s to play on the TV (DLNA)?"
 msgstr "Må %s afspille på TV'et (DLNA)?"
+
+msgid "No key pressed for %d hours - the box goes to sleep in 1 minute. Press a key to keep watching."
+msgstr "Ingen tastetryk i %d timer - boksen går i dvale om 1 minut. Tryk på en knap for at se videre."
+
+msgid "2 hours"
+msgstr "2 timer"
+
+msgid "4 hours"
+msgstr "4 timer"
+
+msgid "8 hours"
+msgstr "8 timer"
+
+msgid "Automatic sleep"
+msgstr "Automatisk dvale"
+
+msgid "When no key has been pressed for this long, the box and the TV go to sleep (after a warning). Not while music or radio plays"
+msgstr "Når der ikke er trykket på en knap så længe, går boksen og TV'et i dvale (efter en advarsel). Ikke mens der spilles musik eller radio"
+
+msgid "Turn on"
+msgstr "Tænd"
+
+msgid "Turn on: the TV turns on and switches to the box. A box that sleeps is woken with the remote - the phone cannot reach it."
+msgstr "Tænd: TV'et tænder og skifter til boksen. En boks i dvale vækkes med fjernbetjeningen - telefonen kan ikke nå den."
+
+msgid "Put the box and the TV to sleep?"
+msgstr "Skal boksen og TV'et gå i dvale?"
+
+msgid "Restart the box?"
+msgstr "Genstart boksen?"
+
+msgid "The TV is turning on"
+msgstr "TV'et tænder"
+
+msgid "The box goes to sleep - wake it with the remote"
+msgstr "Boksen går i dvale - væk den med fjernbetjeningen"
+
+msgid "The box restarts - this page works again in about a minute"
+msgstr "Boksen genstarter - siden virker igen om cirka et minut"
+
+msgid "Sleep from the phone page (%s)"
+msgstr "Dvale fra telefonsiden (%s)"
+
+msgid "Restarting from the phone page (%s)"
+msgstr "Genstarter fra telefonsiden (%s)"

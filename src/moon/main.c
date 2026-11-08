@@ -401,6 +401,7 @@ static int cmd_stream(const char *host, int appid, const StreamOpts *o) {
     cl.logMessage = cl_log;
     cl.connectionStatusUpdate = cl_status;
     cl.setHdrMode = cl_hdr;
+    cl.rumble = input_rumble;
 
     r = LiStartConnection(&srv.serverInfo, &sc, &cl, &video_callbacks, &audio_callbacks, NULL, 0, NULL, 0);
     if (r != 0) {

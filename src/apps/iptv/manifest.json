@@ -1,19 +1,32 @@
 {
   "id": "iptv",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "api": 2,
   "name": "Live TV",
   "desc": "Watch live TV and channels from your IPTV provider",
   "icon": "tv",
-  "c1": [43, 95, 217],
-  "c2": [22, 52, 140],
-  "fg": [255, 255, 255],
+  "c1": [
+    43,
+    95,
+    217
+  ],
+  "c2": [
+    22,
+    52,
+    140
+  ],
+  "fg": [
+    255,
+    255,
+    255
+  ],
   "order": 10,
   "default": true,
   "changes": {
-    "summary": "Small fixes",
+    "summary": "Reminders",
     "points": [
-      "More robust when the saved program guide is damaged or memory runs low"
+      "Reminders: Yellow on a coming program in the TV guide - a minute before it starts, the TV offers to switch",
+      "A program in the channel's schedule can be chosen for a reminder too"
     ]
   }
 }

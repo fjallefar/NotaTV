@@ -50,6 +50,7 @@ bool input_next(InputEvent *ev);
 void input_handle_sdl(const SDL_Event *e);
 int input_fds(int *fds, int max);
 double input_last_activity(void);
+void input_touch(void); /* counts as a key press (activity) - e.g. after game streaming, where tvmoon had the input */
 
 /* ---------- Grafik ---------- */
 typedef enum { F_REG, F_SEMI, F_BOLD, F_COUNT } FontId;
@@ -590,6 +591,7 @@ void bt_forget(const char *path);       /* forget one paired device */
 void power_menu_open(void);
 NOTA_NEW void quick_open(void); /* the quick panel from the right (sleep timer, settings shortcuts, power) */
 void quick_tick(void);
+void idle_sleep_tick(bool playing); /* automatic sleep after cfg auto_sleep hours without a key press (quick.c) */
 
 /* Shared data for the home screen */
 struct HomeItem { char *title, *subtitle, *image, *key; double progress; char *logo; /* title logo (PNG) */ };

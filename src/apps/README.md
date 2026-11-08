@@ -4,7 +4,7 @@ Everything on the NotaTV home screen is an app. The system (`src/shell`) has the
 drawing, the player, the on-screen keyboard and dialogs, network calls, settings, jobs and translations. An app only
 adds its own screens and logic.
 
-Every app is a package, i.e. a folder here in `src/apps/`: Live TV (`iptv`), Plex, Jellyfin, YouTube, Twitch, TV 2 Play (`tv2`),
+Every app is a package, i.e. a folder here in `src/apps/`: Live TV (`iptv`), Plex, Jellyfin, YouTube, Twitch, TV 2 Play (`tv2`), DRTV (`drtv`), Weather (`weather`), Electricity price (`elpris`),
 Seerr, Music, Radio, Games, Tesla and Media. Each one is built into its own `app.so`. Only Settings and the App Store are part of
 `tvshell` itself. The image comes without apps: they are downloaded from the App Store (the GitHub release `apps`)
 into `/data/notatv/apps-pkg/<id>/`.
@@ -62,7 +62,7 @@ const NotaApp nota_app = {
 
 | Field | Purpose |
 |---|---|
-| `order` | Position on the home screen. Live TV is 10, Plex 20, Jellyfin 30, YouTube 40, Twitch 50, Seerr 60, Music 70, Radio 75, Games 80, Tesla 85, Media 90. |
+| `order` | Position on the home screen. Live TV is 10, Plex 20, Jellyfin 30, TV 2 Play 35, DRTV 36, YouTube 40, Twitch 50, Seerr 60, Music 70, Radio 75, Weather 77, Electricity price 78, Games 80, Tesla 85, Media 90. |
 | `flags` | `APP_DEFAULT_OFF`: not installed from the start. `APP_ROW_LOGOS`: the home row shows logos. |
 | `init` | Runs once per run of NotaTV: when it starts, or when the app is installed. Not again if the app is uninstalled and installed again before a restart. |
 | `tick` | Runs every frame while the app is installed. Use it for background services. |

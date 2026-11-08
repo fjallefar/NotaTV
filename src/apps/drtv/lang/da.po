@@ -1,0 +1,220 @@
+# NotaTV app "drtv" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "%s · %d min"
+msgstr "%s · %d min"
+
+msgid "%d min"
+msgstr "%d min"
+
+msgid "Live"
+msgstr "Live"
+
+msgid "Recommended"
+msgstr "Anbefalet"
+
+msgid "Continue watching"
+msgstr "Fortsæt med at se"
+
+msgid "DR responded with error %ld"
+msgstr "DR svarede med fejl %ld"
+
+msgid "Cannot reach DR - check the network"
+msgstr "Kan ikke nå DR - tjek netværket"
+
+msgid "Nothing here right now"
+msgstr "Her er ikke noget lige nu"
+
+msgid "Could not load your list from DR (%ld)"
+msgstr "Kunne ikke hente din liste fra DR (%ld)"
+
+msgid "Your list is empty - add programmes on dr.dk or in the DRTV app"
+msgstr "Din liste er tom - tilføj programmer på dr.dk eller i DRTV-appen"
+
+msgid "My list"
+msgstr "Min liste"
+
+msgid "Live now"
+msgstr "Live nu"
+
+msgid "Now: %s"
+msgstr "Nu: %s"
+
+msgid "Next %s: %s"
+msgstr "Kl. %s: %s"
+
+msgid "The programme guide could not be loaded"
+msgstr "Programoversigten kunne ikke hentes"
+
+msgid "1 episode"
+msgstr "1 afsnit"
+
+msgid "%d episodes"
+msgstr "%d afsnit"
+
+msgid "%s%d min"
+msgstr "%s%d min"
+
+msgid "Episodes"
+msgstr "Afsnit"
+
+msgid "Seasons"
+msgstr "Sæsoner"
+
+msgid "Season %d"
+msgstr "Sæson %d"
+
+msgid "You are here"
+msgstr "Du er her"
+
+msgid "This cannot be played right now"
+msgstr "Det kan ikke afspilles lige nu"
+
+msgid "Series"
+msgstr "Serier"
+
+msgid "Films"
+msgstr "Film"
+
+msgid "Nothing found"
+msgstr "Intet fundet"
+
+msgid "Starting DRTV…"
+msgstr "Starter DRTV…"
+
+msgid "DR only shows this in Denmark"
+msgstr "DR viser kun dette i Danmark"
+
+msgid "The channel could not be started"
+msgstr "Kanalen kunne ikke startes"
+
+msgid "DR's login did not answer as expected"
+msgstr "DR's login svarede ikke som forventet"
+
+msgid "There is no DR account with that e-mail"
+msgstr "Der er ingen DR-konto med den e-mail"
+
+msgid "Wrong e-mail or password"
+msgstr "Forkert e-mail eller adgangskode"
+
+msgid "Signing in to DR…"
+msgstr "Logger ind hos DR…"
+
+msgid "Signed in to DR"
+msgstr "Logget ind hos DR"
+
+msgid "Sign-in failed: %s"
+msgstr "Login mislykkedes: %s"
+
+msgid "unknown error"
+msgstr "ukendt fejl"
+
+msgid "That does not look like an e-mail address"
+msgstr "Det ligner ikke en e-mailadresse"
+
+msgid "Your DR password"
+msgstr "Din DR-adgangskode"
+
+msgid "Your DR account's e-mail"
+msgstr "E-mail til din DR-konto"
+
+msgid "Signed out of DR"
+msgstr "Logget ud af DR"
+
+msgid "Home"
+msgstr "Forside"
+
+msgid "Live TV"
+msgstr "Live TV"
+
+msgid "Categories"
+msgstr "Kategorier"
+
+msgid "A-Z"
+msgstr "A-Å"
+
+msgid "Kids"
+msgstr "Børn"
+
+msgid "Search"
+msgstr "Søg"
+
+msgid "Sign out"
+msgstr "Log ud"
+
+msgid "Sign in"
+msgstr "Log ind"
+
+msgid "Search: %s"
+msgstr "Søgning: %s"
+
+msgid "Search DRTV"
+msgstr "Søg i DRTV"
+
+msgid "Sign out of DR?"
+msgstr "Log ud af DR?"
+
+msgid "What you have watched on this box is forgotten too."
+msgstr "Det, du har set på boksen, bliver også glemt."
+
+msgid "Cancel"
+msgstr "Annuller"
+
+msgid "Your DR login has expired - sign in again"
+msgstr "Dit DR-login er udløbet - log ind igen"
+
+msgid "SERIES"
+msgstr "SERIE"
+
+msgid "Resume from %s"
+msgstr "Fortsæt fra %s"
+
+msgid "Start over"
+msgstr "Start forfra"
+
+msgid "Play"
+msgstr "Afspil"
+
+msgid "Watch"
+msgstr "Se"
+
+msgid "Open"
+msgstr "Åbn"
+
+msgid "Menu"
+msgstr "Menu"
+
+msgid "Sign out of DRTV"
+msgstr "Log ud af DRTV"
+
+msgid "Deletes the DR login and what you have watched from this box"
+msgstr "Sletter DR-login og det, du har set, fra boksen"
+
+msgid "DR's live channels and programmes - free, no account needed"
+msgstr "DR's kanaler og programmer - gratis, uden konto"
+
+msgid "DRTV on NotaTV"
+msgstr "DRTV på NotaTV"
+
+msgid "Live TV: DR1, DR2, DR Ramasjang, DRTV Ekstra and TVA Live, with what is on now and next"
+msgstr "Live TV: DR1, DR2, DR Ramasjang, DRTV Ekstra og TVA Live med det, der vises nu og bagefter"
+
+msgid "The DRTV front page, categories, A-Z, kids and search"
+msgstr "DRTV's forside, kategorier, A-Å, børn og søgning"
+
+msgid "Series with seasons and episodes, resume where you stopped and skip the end credits"
+msgstr "Serier med sæsoner og afsnit, fortsæt hvor du slap, og spring rulleteksterne over"
+
+msgid "Works without an account - sign in with your DR account for your own Continue watching and My list"
+msgstr "Virker uden konto - log ind med din DR-konto for din egen Fortsæt med at se og Min liste"
+
+msgid "Episode %d"
+msgstr "Afsnit %d"
+
+msgid "CONTINUE IN DRTV"
+msgstr "FORTSÆT I DRTV"
+
+msgid "Continue watching on the NotaTV home screen"
+msgstr "Fortsæt med at se på NotaTV's forside"

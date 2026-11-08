@@ -1,0 +1,70 @@
+# NotaTV app "elpris" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "West Denmark (DK1)"
+msgstr "Vestdanmark (DK1)"
+
+msgid "East Denmark (DK2)"
+msgstr "Østdanmark (DK2)"
+
+msgid "today"
+msgstr "i dag"
+
+msgid "tomorrow"
+msgstr "i morgen"
+
+msgid "kr/kWh now"
+msgstr "kr/kWh nu"
+
+msgid "Cheapest 3 hours: %s %s-%s (%s kr)"
+msgstr "Billigste 3 timer: %s kl. %s-%s (%s kr)"
+
+msgid "Electricity price"
+msgstr "Elpris"
+
+msgid "No prices right now"
+msgstr "Ingen priser lige nu"
+
+msgid "The prices could not be fetched - check the network."
+msgstr "Priserne kunne ikke hentes - tjek netværket."
+
+msgid "Switch area"
+msgstr "Skift område"
+
+msgid "Cheapest hour: %s %s-%s  ·  %s kr"
+msgstr "Billigste time: %s kl. %s-%s  ·  %s kr"
+
+msgid "Cheapest 3 hours: %s %s-%s  ·  %s kr"
+msgstr "Billigste 3 timer: %s kl. %s-%s  ·  %s kr"
+
+msgid "Today: lowest %s  ·  highest %s  ·  average %s kr"
+msgstr "I dag: lavest %s  ·  højest %s  ·  gennemsnit %s kr"
+
+msgid "Tomorrow's prices come at about 13:00"
+msgstr "Morgendagens priser kommer cirka kl. 13"
+
+msgid "Spot price with VAT - without the grid tariff, electricity tax and your supplier's fee. Source: Energi Data Service"
+msgstr "Spotpris inkl. moms - uden nettarif, elafgift og dit elselskabs tillæg. Kilde: Energi Data Service"
+
+msgid "Price area"
+msgstr "Prisområde"
+
+msgid "West: Jutland and Funen. East: Zealand, the islands and Bornholm"
+msgstr "Vest: Jylland og Fyn. Øst: Sjælland, øerne og Bornholm"
+
+msgid "The electricity price hour by hour, today and tomorrow"
+msgstr "Elprisen time for time, i dag og i morgen"
+
+msgid "Electricity price on NotaTV"
+msgstr "Elpris på NotaTV"
+
+msgid "The Danish spot price with VAT hour by hour, today and tomorrow (from about 13:00), from Energi Data Service"
+msgstr "Den danske spotpris inkl. moms time for time, i dag og i morgen (fra cirka kl. 13), fra Energi Data Service"
+
+msgid "The price now in green, yellow or red compared with the rest of the day, and the cheapest hours"
+msgstr "Prisen nu i grøn, gul eller rød i forhold til resten af dagen, og de billigste timer"
+
+msgid "West or East Denmark - guessed from the Weather app's town, Yellow switches"
+msgstr "Vest- eller Østdanmark - gættet ud fra Vejr-appens by, Gul skifter"

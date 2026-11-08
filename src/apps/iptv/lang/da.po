@@ -321,8 +321,46 @@ msgstr "Ingen programinfo"
 msgid "Loading…"
 msgstr "Indlæser…"
 
-msgid "Small fixes"
-msgstr "Små rettelser"
 
-msgid "More robust when the saved program guide is damaged or memory runs low"
-msgstr "Mere robust, når den gemte programguide er ødelagt, eller hukommelsen slipper op"
+
+msgid "Remove reminder"
+msgstr "Fjern påmindelse"
+
+msgid "Remind me"
+msgstr "Påmind mig"
+
+msgid "You can have at most %d reminders"
+msgstr "Du kan højst have %d påmindelser"
+
+msgid "Reminders are for programs that have not started"
+msgstr "Påmindelser er til programmer, der ikke er startet"
+
+msgid "You will be reminded at %s: %s"
+msgstr "Du bliver påmindet kl. %s: %s"
+
+msgid "Reminder removed: %s"
+msgstr "Påmindelse fjernet: %s"
+
+msgid "Starts in 1 minute on %s"
+msgstr "Starter om 1 minut på %s"
+
+msgid "Started %ld min ago on %s"
+msgstr "Startede for %ld min siden på %s"
+
+msgid "Switch now"
+msgstr "Skift nu"
+
+msgid "Not now"
+msgstr "Ikke nu"
+
+msgid "  (reminder)"
+msgstr "  (påmindelse)"
+
+msgid "Reminders: Yellow on a coming program in the TV guide - a minute before it starts, the TV offers to switch"
+msgstr "Påmindelser: Gul på et kommende program i TV-guiden - et minut før start tilbyder TV'et at skifte"
+
+msgid "A program in the channel's schedule can be chosen for a reminder too"
+msgstr "Et program i kanalens programoversigt kan også vælges til en påmindelse"
+
+msgid "Reminders"
+msgstr "Påmindelser"

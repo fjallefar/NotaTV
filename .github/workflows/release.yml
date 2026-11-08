@@ -52,15 +52,21 @@ jobs:
             echo "::warning::The TWITCH_CLIENT_ID secret is not set - Twitch login will not work in this image"
           fi
 
-      - name: TV 2 Client ID
+      - name: TV 2 and DRTV Client IDs
         env:
           TV2_CLIENT_ID: ${{ secrets.TV2_CLIENT_ID }}
+          DRTV_CLIENT_ID: ${{ secrets.DRTV_CLIENT_ID }}
         run: |
           mkdir -p "$TREE/secrets"
           if [ -n "$TV2_CLIENT_ID" ]; then
             printf '%s\n' "$TV2_CLIENT_ID" > "$TREE/secrets/tv2-client-id"
           else
             echo "::warning::The TV2_CLIENT_ID secret is not set - TV 2 Play login will not work"
+          fi
+          if [ -n "$DRTV_CLIENT_ID" ]; then
+            printf '%s\n' "$DRTV_CLIENT_ID" > "$TREE/secrets/drtv-client-id"
+          else
+            echo "::warning::The DRTV_CLIENT_ID secret is not set - DRTV works without an account only"
           fi
 
       - name: Decide what to rebuild

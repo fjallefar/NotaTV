@@ -1333,6 +1333,8 @@ static int guide_time_cmp(const void *a, const void *b) {
     time_t x = *(const time_t *)a, y = *(const time_t *)b;
     return x < y ? -1 : x > y;
 }
+static const Channel *tile_ch; /* the channel whose row draw_guide is drawing (for the reminder mark) */
+static bool rem_has(const Channel *c, const Prog *p);
 static bool guide_tile(const Prog *p, time_t a, time_t b, time_t v0, time_t v1,
                        float gx, float y, float h, float pps, time_t now, bool me) {
     a = a > v0 ? a : v0;
@@ -1356,6 +1358,7 @@ static bool guide_tile(const Prog *p, time_t a, time_t b, time_t v0, time_t v1,
         snprintf(span, sizeof span, "%s-%s", t1, t2);
         text_draw_clip(F_REG, 20, x + 14, y + 50, w - 24, C_TEXT3, AL_LEFT, span);
     }
+    if (w > 60 && rem_has(tile_ch, p)) draw_icon(ICON_CLOCK, x + w - 22, y + h - 22, 22, RGB(255, 196, 54));
     return true;
 }
 static void draw_guide(Iptv *v, float cx, float cy, float cw, float rh) {
@@ -1397,6 +1400,7 @@ static void draw_guide(Iptv *v, float cx, float cy, float cw, float rh) {
         text_draw_clip(F_SEMI, 24, cx + 58, y + h / 2 - 16, nw - 84, row ? C_TEXT : C_TEXT2, AL_LEFT, DNAME(c));
         /* programs: build a non-overlapping row (the provider's guide has duplicates and overlaps) */
         const Prog *selp = row ? prog_at(c, v->gtime, 0) : NULL;
+        tile_ch = c;
         bool any = false;
         GuideProg *gp = c->n_progs > 0 ? malloc(sizeof *gp * (size_t)c->n_progs) : NULL;
         time_t *tt = NULL;
@@ -1571,7 +1575,13 @@ static void iptv_draw(Screen *s) {
         text_draw(F_BOLD, 64, UI_W - 190, 156, C_TEXT, AL_CENTER, v->digits);
     }
     float hy = UI_H - 60;
-    draw_keybar(80, hy, T("Watch channel"), T("Channel menu"), T("Favorite"), NULL, "Menu");
+    const char *yellow = T("Favorite");
+    if (v->col == 1 && v->gsel == 1 && v->n_list && v->csel < v->n_list) { /* TV guide on a coming program */
+        Channel *c = &D.ch[v->list[v->csel]];
+        const Prog *p = prog_at(c, v->gtime, 0);
+        if (p && p->start > time(NULL)) yellow = rem_has(c, p) ? T("Remove reminder") : T("Remind me");
+    }
+    draw_keybar(80, hy, T("Watch channel"), T("Channel menu"), yellow, NULL, "Menu");
     /* status at the top, left of the clock (the bottom right holds the favorites hint) */
     const char *st = D.loading ? T("Updating channels…") : D.epg_msg;
     if (st[0]) text_draw(F_REG, 22, UI_W - 96 - text_width(F_SEMI, 34, "00:00") - 40, 72, C_TEXT3, AL_RIGHT, st);
@@ -1754,17 +1764,17 @@ static void play_list(int *list, int n, int start, int gen) {
     player_run(&rq);
 }
 
-void iptv_play_recent(int idx) {
-    recent_load();
-    if (idx < 0 || idx >= n_recent) return;
+/* a channel by its address (recent channels, reminders): in the loaded list when it is there, so up/down changes
+   channel; otherwise just this one */
+static void play_by_url(const char *url, const char *name, const char *logo) {
     /* find the channel in the loaded list to get channel changes: by address, otherwise by name
        (some providers give new addresses when the list is fetched again) */
     if (D.n_ch) {
         int start = -1;
         for (int i = 0; i < D.n_ch && start < 0; i++)
-            if (!strcmp(D.ch[i].url, recents[idx].url)) start = i;
+            if (!strcmp(D.ch[i].url, url)) start = i;
         for (int i = 0; i < D.n_ch && start < 0; i++)
-            if (!strcmp(DNAME(&D.ch[i]), recents[idx].name)) start = i;
+            if (!strcmp(DNAME(&D.ch[i]), name)) start = i;
         if (start >= 0) {
             int *all = malloc(sizeof(int) * D.n_ch);
             if (all) {
@@ -1778,19 +1788,134 @@ void iptv_play_recent(int idx) {
     /* only this channel: a banner of its own, so the OSD does not show the channel from the last time */
     cJSON *o = cJSON_CreateObject();
     cJSON_AddNumberToObject(o, "num", 1);
-    cJSON_AddStringToObject(o, "name", recents[idx].name);
+    cJSON_AddStringToObject(o, "name", name);
     cJSON_AddNumberToObject(o, "pos", 1);
     cJSON_AddNumberToObject(o, "total", 1);
     cJSON_AddNumberToObject(o, "now_t", (double)time(NULL));
-    osd_logo(o, recents[idx].logo, 0);
+    osd_logo(o, logo, 0);
     osd_write(o, "show");
     PlayRequest rq = {0};
-    rq.url = recents[idx].url;
-    rq.title = recents[idx].name;
+    rq.url = url;
+    rq.title = name;
     rq.is_live = true;
     static const char *extra[] = {"--user-agent=" IPTV_UA, NULL};
     rq.extra = extra;
     player_run(&rq);
+}
+void iptv_play_recent(int idx) {
+    recent_load();
+    if (idx < 0 || idx >= n_recent) return;
+    play_by_url(recents[idx].url, recents[idx].name, recents[idx].logo);
+}
+
+/* ---------- reminders: "Remind me" on a coming program (TV guide, or the channel's program schedule) ----------
+   Kept in <data>/iptv-remind.txt (start, stop, stream address, channel, title - tab separated), so they survive a
+   restart. A minute before the start a dialog offers to switch. During playback (also in other apps) it waits until
+   the video stops, and is then shown as long as the program is still on. */
+typedef struct { time_t start, stop; char *url, *chan, *title; } Remind;
+static Remind *rem;
+static int n_rem;
+static bool rem_loaded;
+#define REM_MAX 50
+static void rem_path(char *p, size_t n) { snprintf(p, n, "%s/iptv-remind.txt", data_dir()); }
+static void rem_drop(int i) {
+    free(rem[i].url); free(rem[i].chan); free(rem[i].title);
+    memmove(&rem[i], &rem[i + 1], sizeof(Remind) * (size_t)(n_rem - i - 1));
+    n_rem--;
+}
+static void rem_save(void) {
+    char p[512];
+    rem_path(p, sizeof p);
+    if (!n_rem) { unlink(p); return; }
+    char *tmp = str_printf("%s.tmp", p);
+    FILE *f = fopen(tmp, "w");
+    if (f) {
+        fchmod(fileno(f), 0600); /* the stream address can hold the provider login */
+        for (int i = 0; i < n_rem; i++)
+            fprintf(f, "%lld\t%lld\t%s\t%s\t%s\n", (long long)rem[i].start, (long long)rem[i].stop, rem[i].url, rem[i].chan, rem[i].title);
+        fclose(f);
+        rename(tmp, p);
+    }
+    free(tmp);
+}
+static void rem_load(void) {
+    if (rem_loaded) return;
+    rem_loaded = true;
+    char p[512];
+    rem_path(p, sizeof p);
+    FILE *f = fopen(p, "r");
+    if (!f) return;
+    char line[4096];
+    time_t now = time(NULL);
+    while (fgets(line, sizeof line, f) && n_rem < REM_MAX) {
+        line[strcspn(line, "\r\n")] = 0;
+        char *sv = NULL, *a = strtok_r(line, "\t", &sv), *b = strtok_r(NULL, "\t", &sv), *u = strtok_r(NULL, "\t", &sv),
+             *c = strtok_r(NULL, "\t", &sv), *t = strtok_r(NULL, "", &sv);
+        if (!a || !b || !u || !c || !t || atoll(b) <= now) continue;
+        if (!rem) rem = calloc(REM_MAX, sizeof *rem);
+        rem[n_rem++] = (Remind){(time_t)atoll(a), (time_t)atoll(b), str_dup(u), str_dup(c), str_dup(t)};
+    }
+    fclose(f);
+}
+static int rem_find(const char *url, time_t start) {
+    rem_load();
+    for (int i = 0; i < n_rem; i++) if (rem[i].start == start && !strcmp(rem[i].url, url)) return i;
+    return -1;
+}
+static bool rem_has(const Channel *c, const Prog *p) { return c && p && rem_find(c->url, p->start) >= 0; }
+/* true = now on, false = removed (or not possible) */
+static bool rem_toggle(const Channel *c, const Prog *p) {
+    int i = rem_find(c->url, p->start);
+    if (i >= 0) { rem_drop(i); rem_save(); return false; }
+    if (p->start <= time(NULL) || strchr(c->url, '\t') || strchr(p->title, '\t') || strchr(p->title, '\n')) return false;
+    if (n_rem >= REM_MAX) { app_toast(T("You can have at most %d reminders"), REM_MAX); return false; }
+    if (!rem) rem = calloc(REM_MAX, sizeof *rem);
+    rem[n_rem++] = (Remind){p->start, p->stop, str_dup(c->url), str_dup(DNAME(c)), str_dup(p->title)};
+    rem_save();
+    return true;
+}
+static void rem_toggle_toast(const Channel *c, const Prog *p) {
+    if (p->start <= time(NULL)) { app_toast("%s", T("Reminders are for programs that have not started")); return; }
+    char hm[8];
+    struct tm t;
+    localtime_r(&p->start, &t);
+    strftime(hm, sizeof hm, "%H:%M", &t);
+    bool had = rem_find(c->url, p->start) >= 0;
+    if (rem_toggle(c, p)) app_toast(T("You will be reminded at %s: %s"), hm, p->title);
+    else if (had) app_toast(T("Reminder removed: %s"), p->title);
+}
+static void rem_answer(void *ud, bool yes) {
+    Remind *r = ud;
+    if (yes) play_by_url(r->url, r->chan, NULL);
+    free(r->url); free(r->chan); free(r->title);
+    free(r);
+}
+static void rem_forget(void) {
+    for (int i = n_rem - 1; i >= 0; i--) rem_drop(i);
+    rem_loaded = false;
+}
+/* every few seconds (NotaApp.tick: not during playback, so a reminder then waits until the video stops) */
+static void iptv_tick(void) {
+    static double next;
+    if (app_time() < next) return;
+    next = app_time() + 5;
+    rem_load();
+    time_t now = time(NULL);
+    for (int i = 0; i < n_rem; i++) {
+        if (rem[i].stop <= now) { rem_drop(i); rem_save(); i--; continue; } /* over (the box was off or asleep) */
+        if (rem[i].start - 60 > now) continue;
+        Remind *r = malloc(sizeof *r);
+        *r = rem[i];
+        memmove(&rem[i], &rem[i + 1], sizeof(Remind) * (size_t)(n_rem - i - 1)); /* moved to r */
+        n_rem--;
+        rem_save();
+        char msg[300];
+        long mins = (long)(r->start - now);
+        if (mins > 0) snprintf(msg, sizeof msg, T("Starts in 1 minute on %s"), r->chan);
+        else snprintf(msg, sizeof msg, T("Started %ld min ago on %s"), (-mins) / 60, r->chan);
+        confirm_open(r->title, msg, T("Switch now"), T("Not now"), rem_answer, r);
+        break; /* one at a time */
+    }
 }
 
 static void url_entered(void *ud, const char *text) {
@@ -2066,7 +2191,8 @@ void iptv_account_switch(void) {
 /* what Live TV has stored from a provider: the playlist and guide (with the login in the stream addresses),
    favorites and recent channels (full stream addresses) */
 static void iptv_wipe_data(void) {
-    const char *const files[] = {"iptv.m3u", "iptv.url", "epg.xml", "epg.cache", "iptv-fav.txt", "iptv-recent.txt", NULL};
+    const char *const files[] = {"iptv.m3u", "iptv.url", "epg.xml", "epg.cache", "iptv-fav.txt", "iptv-recent.txt", "iptv-remind.txt", NULL};
+    rem_forget();
     for (int i = 0; files[i]; i++) {
         char p[512];
         snprintf(p, sizeof p, "%s/%s", data_dir(), files[i]);
@@ -2176,12 +2302,23 @@ static void play_current(Iptv *v) {
 }
 
 static Iptv *menu_owner;
-static void guide_shown(void *ud, int idx) { (void)ud; (void)idx; }
+/* the program schedule that is open: which channel and program each line is (the list may change meanwhile) */
+static struct { int gen, ch, prog[24]; } sched;
+static void guide_shown(void *ud, int idx) {
+    (void)ud;
+    if (idx < 0 || idx >= 24 || sched.gen != D.gen || sched.ch < 0 || sched.ch >= D.n_ch) return;
+    Channel *c = &D.ch[sched.ch];
+    int k = sched.prog[idx];
+    if (k < 0 || k >= c->n_progs) return;
+    if (c->progs[k].start > time(NULL)) rem_toggle_toast(c, &c->progs[k]); /* a coming program: remind me (or not) */
+}
 
 static void show_guide(Channel *c) {
     time_t now = time(NULL);
     char *items[24];
     int n = 0;
+    sched.gen = D.gen;
+    sched.ch = (int)(c - D.ch);
     for (int i = 0; i < c->n_progs && n < 24; i++) {
         if (c->progs[i].stop < now) continue;
         char a[8], b[8];
@@ -2190,7 +2327,8 @@ static void show_guide(Channel *c) {
         localtime_r(&c->progs[i].stop, &t2);
         strftime(a, sizeof a, "%H:%M", &t1);
         strftime(b, sizeof b, "%H:%M", &t2);
-        items[n++] = str_printf("%s-%s  %s", a, b, c->progs[i].title);
+        sched.prog[n] = i;
+        items[n++] = str_printf("%s-%s  %s%s", a, b, c->progs[i].title, rem_has(c, &c->progs[i]) ? T("  (reminder)") : "");
     }
     if (n == 0) { app_toast(T("No program guide for %s"), DNAME(c)); return; }
     choice_open(DNAME(c), (const char *const *)items, n, 0, guide_shown, NULL);
@@ -2306,6 +2444,11 @@ static bool iptv_input(Screen *s, const InputEvent *ev) {
         if (v->col == 1 && v->n_list) open_channel_menu(v);
         return true;
     case A_YELLOW:
+        if (v->col == 1 && v->gsel == 1 && v->n_list && !ev->repeat) { /* TV guide: a coming program -> remind me */
+            Channel *c = &D.ch[v->list[v->csel]];
+            const Prog *p = prog_at(c, v->gtime, 0);
+            if (p && p->start > time(NULL)) { rem_toggle_toast(c, p); return true; }
+        }
         if (v->col == 1 && v->n_list && !ev->repeat) {
             Channel *c = &D.ch[v->list[v->csel]];
             app_toast(toggle_fav(c->url) ? T("%s added to favorites") : T("%s removed from favorites"), DNAME(c));
@@ -2386,7 +2529,7 @@ static bool iptv_draw_shelf(float x, float y) {
 const NotaApp nota_app = {
     NOTA_API, "iptv", N_("Live TV"), N_("Watch live TV and channels from your IPTV provider"), APP_VERSION, 10, APP_ROW_LOGOS,
     ICON_TV, {43, 95, 217, 255}, {22, 52, 140, 255}, {255, 255, 255, 255},
-    .open = iptv_screen, .forget = iptv_forget_all,
+    .open = iptv_screen, .forget = iptv_forget_all, .tick = iptv_tick,
     .settings = live_items, .n_settings = sizeof live_items / sizeof live_items[0],
     .row_title = N_("Recent channels"), .row = iptv_recent, .row_open = iptv_row_open, .draw_shelf = iptv_draw_shelf,
 };

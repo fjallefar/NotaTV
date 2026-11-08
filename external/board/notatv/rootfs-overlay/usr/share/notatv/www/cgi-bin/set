@@ -29,6 +29,24 @@ fi
 # only a check of the code (the page remembers it)
 [ -n "$(getval _ping)" ] && reply "200 OK" "OK"
 
+# power: turn on the TV (and wake the screen), sleep, restart. The reply goes out before the box sleeps/restarts.
+# The phone cannot wake a sleeping box: the network sleeps with it (the remote wakes it).
+H=/usr/libexec/notatv
+case "$(getval _power)" in
+on)
+	printf '1\n' > $IN/.w.tmp && mv $IN/.w.tmp $IN/_wake
+	$H/cec tv-on >/dev/null 2>&1 </dev/null &
+	reply "200 OK" "The TV is turning on" ;;
+sleep)
+	toast "$(printf 'Sleep from the phone page (%%s)\037%s' "$FROM")"
+	( sleep 2; $H/power sleep ) >/dev/null 2>&1 </dev/null &
+	reply "200 OK" "The box goes to sleep - wake it with the remote" ;;
+reboot)
+	toast "$(printf 'Restarting from the phone page (%%s)\037%s' "$FROM")"
+	( sleep 2; $H/power reboot ) >/dev/null 2>&1 </dev/null &
+	reply "200 OK" "The box restarts - this page works again in about a minute" ;;
+esac
+
 # YouTube subscriptions from Google Takeout (only a channel list) - tvshell imports them the next time it opens
 yts=$(getval _ytsubs)
 if [ -n "$yts" ]; then

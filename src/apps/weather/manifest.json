@@ -1,0 +1,21 @@
+{
+  "id": "weather",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Weather",
+  "desc": "The weather now, the next hours and 7 days",
+  "icon": "star",
+  "c1": [64, 156, 255],
+  "c2": [28, 84, 170],
+  "fg": [255, 255, 255],
+  "order": 77,
+  "default": false,
+  "changes": {
+    "summary": "Weather on NotaTV",
+    "points": [
+      "The weather now, the next 24 hours and 7 days from Open-Meteo (open data, no account)",
+      "The temperature in the home screen's top bar, and the weather at the top when the app has focus",
+      "The town comes from the time zone - Yellow chooses another"
+    ]
+  }
+}

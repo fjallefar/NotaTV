@@ -50,6 +50,7 @@ void audio_stats(char *out, size_t n);
 /* input.c */
 bool input_start(void);   /* evdev thread: keyboard, mouse, controllers, CEC */
 void input_stop(void);
+void input_rumble(unsigned short pad, unsigned short low, unsigned short high); /* from the host */
 extern volatile bool quit_requested; /* quit combination pressed */
 /* Red = menu (like the rest of NotaTV): Resume / Stats / Quit. The remote's arrows/OK/Back control
  * the menu while it is open, and are not sent to the game */
