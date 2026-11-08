@@ -306,14 +306,20 @@ msgstr "Op til 1080p på en Raspberry Pi (YouTube har kun 1440p og 4K i formater
 msgid "Settings"
 msgstr "Indstillinger"
 
-msgid "No subscriptions yet - choose Info and comments at the bottom on a video, then Subscribe"
-msgstr "Ingen abonnementer endnu - vælg Info og kommentarer nederst på en video, og derefter Abonnér"
+msgid "No subscriptions yet - press OK on a video, choose Info and comments, then Subscribe"
+msgstr "Ingen abonnementer endnu - tryk OK på en video, vælg Info og kommentarer, og så Abonnér"
 
-msgid "Easier to use without colored keys"
-msgstr "Nemmere at bruge uden farveknapper"
+msgid "Play, info, channel"
+msgstr "Afspil, info, kanal"
 
-msgid "Settings in the side menu"
-msgstr "Indstillinger i sidemenuen"
+msgid "Menu and search"
+msgstr "Menu og søg"
 
-msgid "Subscribe: Info and comments at the bottom on a video"
-msgstr "Abonnér: Info og kommentarer nederst på en video"
+msgid "OK on a video opens its choices"
+msgstr "OK på en video åbner dens valg"
+
+msgid "OK on a video: Play, Info and comments, Go to channel - OK, OK plays"
+msgstr "OK på en video: Afspil, Info og kommentarer, Gå til kanal - OK, OK afspiller"
+
+msgid "While watching: Info and comments at the top of the menu (Down), and Play goes on from the same place"
+msgstr "Mens du ser: Info og kommentarer øverst i menuen (ned), og Afspil fortsætter fra samme sted"

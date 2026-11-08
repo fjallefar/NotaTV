@@ -189,9 +189,6 @@ msgstr "Serier"
 msgid "Recent searches"
 msgstr "Seneste søgninger"
 
-msgid "Press OK to open the keyboard"
-msgstr "Tryk OK for at åbne tastaturet"
-
 msgid "No earlier searches yet"
 msgstr "Ingen tidligere søgninger endnu"
 
@@ -252,9 +249,6 @@ msgstr "Venstre: menu"
 msgid "Nothing here"
 msgstr "Intet indhold"
 
-msgid "Clear"
-msgstr "Ryd"
-
 msgid "Select"
 msgstr "Vælg"
 
@@ -302,17 +296,23 @@ msgstr "TV 2 Play"
 msgid "Live TV"
 msgstr "Live TV"
 
-msgid "Menu"
-msgstr "Menu"
-
-msgid "Filter"
-msgstr "Filter"
-
 msgid "Settings"
 msgstr "Indstillinger"
 
-msgid "Easier to use without colored keys"
-msgstr "Nemmere at bruge uden farveknapper"
+msgid "Menu and search"
+msgstr "Menu og søg"
 
-msgid "Settings in the side menu"
-msgstr "Indstillinger i sidemenuen"
+msgid "Search…"
+msgstr "Søg…"
+
+msgid "Clear history"
+msgstr "Ryd historik"
+
+msgid "Search and filter without colored keys"
+msgstr "Søg og filtrér uden farveknapper"
+
+msgid "The search page has buttons: Search, earlier searches and Clear history"
+msgstr "Søgesiden har knapper: Søg, tidligere søgninger og Ryd historik"
+
+msgid "Search results: the filter (All, Movies, Series) is reached with Up"
+msgstr "Søgeresultater: filteret (Alle, Film, Serier) nås med op"

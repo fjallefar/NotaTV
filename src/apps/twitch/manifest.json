@@ -1,6 +1,6 @@
 {
   "id": "twitch",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "api": 2,
   "name": "Twitch",
   "desc": "Live streams from the channels you follow and all of Twitch",
@@ -11,9 +11,9 @@
   "order": 50,
   "default": true,
   "changes": {
-    "summary": "Signing out leaves nothing behind",
+    "summary": "Help line at the bottom instead of the button bar",
     "points": [
-      "Replies from Twitch that arrive after you sign out are thrown away, so nothing of the account is kept"
+      "OK watches, Left opens the menu with Search"
     ]
   }
 }

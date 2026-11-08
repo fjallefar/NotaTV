@@ -921,12 +921,15 @@ static void rd_draw(Screen *s) {
     const char *ok = T("Open"), *yellow = NULL;
     if (t && t->kind == K_STATION) {
         bool now = rd_playing() && !strcmp(pl.st.uuid, t->s.uuid);
-        ok = now ? T("Stop") : T("Listen");
-        yellow = fav_index(t->s.uuid) >= 0 ? T("Remove favourite") : T("Favourite");
+        ok = now ? T("Stop, favourite") : T("Listen, favourite");
     } else if (t && t->kind == K_COUNTRY) ok = T("Choose");
-    /* burn-in: the key hints (white, always in the same place) go away 30 s after the last key press */
-    if (!oled || app_time() - fmax(input_last_activity(), v->opened) < 30)
-        draw_keybar(x0, UI_H - 62, ok, NULL, yellow, T("Search"), T("Menu"));
+    (void)yellow;
+    /* burn-in: the key hints (white, always in the same place) go away 30 s after the last key press.
+       No button bar (it covered the stations and could not be reached): OK opens the station's sheet, ← the side menu */
+    if (!oled || app_time() - fmax(input_last_activity(), v->opened) < 30) {
+        draw_hint(x0, UI_H - 62, "OK", ok);
+        draw_hint(x0 + text_width(F_SEMI, 20, "OK") + 30 + text_width(F_REG, 22, ok) + 44, UI_H - 62, "←", T("Menu and search"));
+    }
     side_draw(&v->side);
     if (v->dim > 0.01f) { /* everything dims (menu icons and clock too); what plays stays bright on top */
         fill_rect(0, 0, UI_W, UI_H, RGBA(8, 9, 12, (uint8_t)(190 * v->dim)));
@@ -941,6 +944,30 @@ static void rd_draw(Screen *s) {
 static void play_or_stop(const Station *s) {
     if (rd_playing() && !strcmp(pl.st.uuid, s->uuid)) rd_stop();
     else rd_play(s);
+}
+
+/* OK on a station: its sheet, Listen (or Stop) first - OK, OK = listen (the same rule as everywhere, STATUS 104) */
+static struct { Rd *v; Station st; int i; } sheet;
+static void fav_toggle_at(Rd *v, Station *st, int i) {
+    fav_toggle(st);
+    if (v->view == V_FAV) { /* the favourites list changes under the focus */
+        show_list(v, V_FAV);
+        if (v->n) { v->row = (i < v->n ? i : v->n - 1) / GCOLS; v->col = (i < v->n ? i : v->n - 1) % GCOLS; }
+    }
+}
+static void station_sheet_done(void *ud, int idx) {
+    (void)ud;
+    if (!sheet.v || idx < 0) return;
+    if (idx == 0) play_or_stop(&sheet.st);
+    else if (idx == 1) fav_toggle_at(sheet.v, &sheet.st, sheet.i);
+}
+static void open_station_sheet(Rd *v, const Station *st, int i) {
+    sheet.v = v;
+    sheet.st = *st;
+    sheet.i = i;
+    bool now = rd_playing() && !strcmp(pl.st.uuid, st->uuid);
+    const char *items[2] = {now ? T("Stop") : T("Listen"), fav_index(st->uuid) >= 0 ? T("Remove favourite") : T("Favourite")};
+    choice_open(st->name[0] ? st->name : T("Radio"), items, 2, 0, station_sheet_done, NULL);
 }
 
 static bool rd_input(Screen *s, const InputEvent *ev) {
@@ -983,14 +1010,7 @@ static bool rd_input(Screen *s, const InputEvent *ev) {
         else app_toast(T("No favourite number %c"), (char)ev->ch);
         return true;
     case A_YELLOW:
-        if (!ev->repeat && t && t->kind == K_STATION) {
-            Station st = t->s;
-            fav_toggle(&st);
-            if (v->view == V_FAV) {
-                show_list(v, V_FAV);
-                if (v->n) { v->row = (i < v->n ? i : v->n - 1) / GCOLS; v->col = (i < v->n ? i : v->n - 1) % GCOLS; }
-            }
-        }
+        if (!ev->repeat && t && t->kind == K_STATION) { Station st = t->s; fav_toggle_at(v, &st, i); }
         return true;
     case A_STOP: rd_stop(); return true;
     case A_PLAYPAUSE: case A_PAUSE:
@@ -1003,7 +1023,7 @@ static bool rd_input(Screen *s, const InputEvent *ev) {
         if (t->kind == K_STATION) {
             Station st = t->s;
             if (ev->a == A_PLAY) rd_play(&st);
-            else play_or_stop(&st);
+            else open_station_sheet(v, &st, i);
         } else if (t->kind == K_GENRE) {
             char tag[64], label[96];
             copy_s(tag, sizeof tag, t->key);

@@ -1,6 +1,6 @@
 {
   "id": "radio",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "api": 2,
   "name": "Radio",
   "desc": "Radio stations from your country and the whole world",
@@ -11,10 +11,10 @@
   "order": 75,
   "default": false,
   "changes": {
-    "summary": "Easier to use without colored keys",
+    "summary": "OK on a station opens its choices",
     "points": [
-      "Settings in the side menu",
-      "Favourites are added with the Favourite button at the bottom"
+      "OK on a station: Listen (or Stop) and Favourite - OK, OK listens",
+      "The buttons at the bottom no longer cover the stations"
     ]
   }
 }

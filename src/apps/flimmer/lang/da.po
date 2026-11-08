@@ -1,0 +1,295 @@
+# NotaTV app "flimmer" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Requested"
+msgstr "Anmodet"
+
+msgid "Processing"
+msgstr "På vej"
+
+msgid "Partly available"
+msgstr "Delvist klar"
+
+msgid "Available"
+msgstr "Klar"
+
+msgid "Cannot reach Flimmertv at %s"
+msgstr "Kan ikke nå Flimmertv på %s"
+
+msgid "Flimmertv is not set up for Discover yet (no TMDB key)"
+msgstr "Flimmertv er ikke sat op til Udforsk endnu (ingen TMDB-nøgle)"
+
+msgid "Something went wrong (HTTP %ld)"
+msgstr "Noget gik galt (HTTP %ld)"
+
+msgid "Recommended for you"
+msgstr "Anbefalet til dig"
+
+msgid "Trending movies"
+msgstr "Populære film lige nu"
+
+msgid "Trending series"
+msgstr "Populære serier lige nu"
+
+msgid "Popular on Netflix (%s)"
+msgstr "Populært på Netflix (%s)"
+
+msgid "Popular movies"
+msgstr "Populære film"
+
+msgid "Popular series"
+msgstr "Populære serier"
+
+msgid "Upcoming movies"
+msgstr "Kommende film"
+
+msgid "Danish movies"
+msgstr "Danske film"
+
+msgid "Top rated movies"
+msgstr "Bedst bedømte film"
+
+msgid "Declined"
+msgstr "Afvist"
+
+msgid "Approved - on its way"
+msgstr "Godkendt - på vej"
+
+msgid "Removed"
+msgstr "Fjernet"
+
+msgid "Waiting for approval"
+msgstr "Venter på godkendelse"
+
+msgid "Season"
+msgstr "Sæson"
+
+msgid "Seasons"
+msgstr "Sæsoner"
+
+msgid "Request withdrawn"
+msgstr "Anmodningen er trukket tilbage"
+
+msgid "Open"
+msgstr "Åbn"
+
+msgid "Withdraw request"
+msgstr "Træk anmodningen tilbage"
+
+msgid "%s · %d requests left"
+msgstr "%s · %d anmodninger tilbage"
+
+msgid "Discover"
+msgstr "Udforsk"
+
+msgid "Search"
+msgstr "Søg"
+
+msgid "My requests"
+msgstr "Mine anmodninger"
+
+msgid "Popular on Netflix"
+msgstr "Populært på Netflix"
+
+msgid "Server and sign-in"
+msgstr "Server og login"
+
+msgid "Wrong email or password. Accounts that only sign in with Plex or Jellyfin cannot sign in here."
+msgstr "Forkert e-mail eller adgangskode. Konti, der kun logger ind med Plex eller Jellyfin, kan ikke logge ind her."
+
+msgid "Signing in…"
+msgstr "Logger ind…"
+
+msgid "Flimmertv: password"
+msgstr "Flimmertv: adgangskode"
+
+msgid "Flimmertv: email"
+msgstr "Flimmertv: e-mail"
+
+msgid "Signed out. Sign in again."
+msgstr "Du er logget ud. Log ind igen."
+
+msgid "Flimmertv address (e.g. 192.168.1.10:7676)"
+msgstr "Flimmertv-adresse (fx 192.168.1.10:7676)"
+
+msgid "No Flimmertv server found - enter the address"
+msgstr "Ingen Flimmertv-server fundet - skriv adressen"
+
+msgid "Enter address manually"
+msgstr "Skriv adressen selv"
+
+msgid "Found 1 Flimmertv server"
+msgstr "Fandt 1 Flimmertv-server"
+
+msgid "Flimmertv servers on the network"
+msgstr "Flimmertv-servere på netværket"
+
+msgid "Searching for Flimmertv on the network…"
+msgstr "Leder efter Flimmertv på netværket…"
+
+msgid "Change Flimmertv address"
+msgstr "Skift Flimmertv-adresse"
+
+msgid "Find server on the network"
+msgstr "Find server på netværket"
+
+msgid "Sign out of Flimmer"
+msgstr "Log ud af Flimmer"
+
+msgid "Results for \"%s\""
+msgstr "Resultater for \"%s\""
+
+msgid "Search Flimmer"
+msgstr "Søg i Flimmer"
+
+msgid "Connecting…"
+msgstr "Forbinder…"
+
+msgid "Series"
+msgstr "Serie"
+
+msgid "Movie"
+msgstr "Film"
+
+msgid "Sign in"
+msgstr "Log ind"
+
+msgid "Change address"
+msgstr "Skift adresse"
+
+msgid "Enter address"
+msgstr "Skriv adresse"
+
+msgid "Menu and search"
+msgstr "Menu og søg"
+
+msgid "No requests yet. Find a movie or a series and choose Request."
+msgstr "Ingen anmodninger endnu. Find en film eller en serie, og vælg Anmod."
+
+msgid "Open, withdraw"
+msgstr "Åbn, træk tilbage"
+
+msgid "Connect to Flimmertv"
+msgstr "Forbind til Flimmertv"
+
+msgid "Find and request movies and series on your Flimmertv server.\n\nFind it on the network, or enter its address, e.g. 192.168.1.10:7676. Then sign in with your Flimmertv email and password."
+msgstr "Find og anmod om film og serier på din Flimmertv-server.\n\nFind den på netværket, eller skriv adressen, fx 192.168.1.10:7676. Log så ind med din e-mail og adgangskode til Flimmertv."
+
+msgid "Could not sign in"
+msgstr "Kunne ikke logge ind"
+
+msgid "Left (from the first button): menu"
+msgstr "Venstre (fra første knap): menu"
+
+msgid "Nothing found"
+msgstr "Intet fundet"
+
+msgid "Comes when there are movies in the library"
+msgstr "Kommer, når der er film i biblioteket"
+
+msgid "Details and request"
+msgstr "Detaljer og anmod"
+
+msgid "%d min"
+msgstr "%d min"
+
+msgid "%s%d season"
+msgstr "%s%d sæson"
+
+msgid "%s%d seasons"
+msgstr "%s%d sæsoner"
+
+msgid "Requested: %s - waiting for approval"
+msgstr "Anmodet: %s - venter på godkendelse"
+
+msgid "Requested: %s - on its way"
+msgstr "Anmodet: %s - på vej"
+
+msgid "%s - trailer"
+msgstr "%s - trailer"
+
+msgid "Trailer"
+msgstr "Trailer"
+
+msgid "Select at least one season"
+msgstr "Vælg mindst én sæson"
+
+msgid "Could not fetch the details"
+msgstr "Kunne ikke hente detaljerne"
+
+msgid "Sending…"
+msgstr "Sender…"
+
+msgid "Request more seasons"
+msgstr "Anmod om flere sæsoner"
+
+msgid "Request"
+msgstr "Anmod"
+
+msgid "Already in the library - watch it in Plex or Jellyfin."
+msgstr "Findes allerede i biblioteket - se den i Plex eller Jellyfin."
+
+msgid "More like this"
+msgstr "Mere som dette"
+
+msgid "Choose seasons"
+msgstr "Vælg sæsoner"
+
+msgid "Request %d season"
+msgstr "Anmod om %d sæson"
+
+msgid "Request %d seasons"
+msgstr "Anmod om %d sæsoner"
+
+msgid "All seasons"
+msgstr "Alle sæsoner"
+
+msgid "Season %d"
+msgstr "Sæson %d"
+
+msgid "%d episodes"
+msgstr "%d afsnit"
+
+msgid "Withdraw request?"
+msgstr "Træk anmodningen tilbage?"
+
+msgid "Withdraw"
+msgstr "Træk tilbage"
+
+msgid "Cancel"
+msgstr "Annullér"
+
+msgid "Loading…"
+msgstr "Henter…"
+
+msgid "All seasons are already requested or available"
+msgstr "Alle sæsoner er allerede anmodet eller klar"
+
+msgid "Not set"
+msgstr "Ikke valgt"
+
+msgid "Server"
+msgstr "Server"
+
+msgid "The Flimmertv server the app talks to. Change it from inside the app (Server and sign-in)"
+msgstr "Den Flimmertv-server, appen taler med. Skift den inde i appen (Server og login)"
+
+msgid "Ends the sign-in at Flimmertv and deletes the address and sign-in from this box"
+msgstr "Afslutter login hos Flimmertv og sletter adressen og login fra boksen"
+
+msgid "Find and request movies and series on your Flimmertv server"
+msgstr "Find og anmod om film og serier på din Flimmertv-server"
+
+msgid "New app: Flimmer for Flimmertv"
+msgstr "Ny app: Flimmer til Flimmertv"
+
+msgid "Browse Discover, search, and request movies and series (choose the seasons)"
+msgstr "Udforsk, søg, og anmod om film og serier (vælg sæsonerne)"
+
+msgid "My requests: follow them, and withdraw one that is still waiting"
+msgstr "Mine anmodninger: følg dem, og træk en tilbage, der stadig venter"
+
+msgid "Finds Flimmertv on the network by itself (port 7676)"
+msgstr "Finder selv Flimmertv på netværket (port 7676)"

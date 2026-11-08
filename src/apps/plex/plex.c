@@ -609,8 +609,8 @@ int plex_ondeck(HomeItem **items) {
 /* ---------- watched / unwatched / remove from "Continue watching" ----------
    Chosen with the green key (or a button on the detail and series pages). Works for films, episodes, seasons and
    whole series (Plex marks all the episodes). Afterwards play_gen is bumped, so every open list fetches again. */
-enum { WA_SEEN, WA_UNSEEN, WA_DECK };
-static struct { int srv; char rk[32]; int acts[3], n; } watch_t;
+enum { WA_SEEN, WA_UNSEEN, WA_DECK, WA_FIRST };
+static struct { int srv; char rk[32]; int acts[4], n; void (*first)(void *ud); void *ud; } watch_t;
 
 static void watch_cb(void *ud, Req *r) {
     int a = (int)(intptr_t)ud;
@@ -644,23 +644,34 @@ static bool is_seen(const PItem *it) {
 
 static void watch_menu_cb(void *ud, int idx) {
     (void)ud;
-    if (idx >= 0 && idx < watch_t.n) watch_do(watch_t.srv, watch_t.rk, watch_t.acts[idx]);
+    if (idx < 0 || idx >= watch_t.n) return;
+    if (watch_t.acts[idx] == WA_FIRST) { if (watch_t.first) watch_t.first(watch_t.ud); }
+    else watch_do(watch_t.srv, watch_t.rk, watch_t.acts[idx]);
 }
 
 /* the green key's menu for an item. cont = it is shown in "Continue watching" */
-static void watch_menu(const PItem *it, bool cont) {
-    if (!can_mark(it)) return;
-    watch_t.srv = it->srv;
-    snprintf(watch_t.rk, sizeof watch_t.rk, "%s", it->rating_key);
-    const char *items[3];
+/* the item's sheet: first (e.g. "Play") on top when given, then mark watched/unwatched and remove from Continue
+   watching. cont = it is shown in "Continue watching". The same rule as everywhere: OK opens it, OK, OK = first. */
+static void watch_sheet(const PItem *it, bool cont, const char *first, void (*first_cb)(void *ud), void *ud) {
+    const char *items[4];
     int n = 0;
-    bool any = is_group(it) ? it->viewed_leaves > 0 : it->view_count > 0;
-    if (!is_seen(it)) { items[n] = T("Mark as watched"); watch_t.acts[n++] = WA_SEEN; }
-    if (any) { items[n] = T("Mark as unwatched"); watch_t.acts[n++] = WA_UNSEEN; }
-    if (!is_group(it) && (cont || it->offset > 0)) { items[n] = T("Remove from Continue watching"); watch_t.acts[n++] = WA_DECK; }
+    watch_t.first = first_cb;
+    watch_t.ud = ud;
+    if (first && first_cb) { items[n] = first; watch_t.acts[n++] = WA_FIRST; }
+    if (can_mark(it)) {
+        watch_t.srv = it->srv;
+        snprintf(watch_t.rk, sizeof watch_t.rk, "%s", it->rating_key);
+        bool any = is_group(it) ? it->viewed_leaves > 0 : it->view_count > 0;
+        if (!is_seen(it)) { items[n] = T("Mark as watched"); watch_t.acts[n++] = WA_SEEN; }
+        if (any) { items[n] = T("Mark as unwatched"); watch_t.acts[n++] = WA_UNSEEN; }
+        if (!is_group(it) && (cont || it->offset > 0)) { items[n] = T("Remove from Continue watching"); watch_t.acts[n++] = WA_DECK; }
+    }
     watch_t.n = n;
+    if (n == 1 && watch_t.acts[0] == WA_FIRST) { first_cb(ud); return; } /* nothing else to choose */
     if (n) choice_open(it->title ? it->title : "Plex", items, n, 0, watch_menu_cb, NULL);
 }
+/* the green key's menu (only the watched choices) */
+static void watch_menu(const PItem *it, bool cont) { watch_sheet(it, cont, NULL, NULL, NULL); }
 
 /* ---------- playback ---------- */
 typedef struct {
@@ -2712,6 +2723,7 @@ typedef struct {
     Req *req, *ereq;
     int gen;
 } Show;
+static Show *sheet_show; /* the series page whose sheet is open (cleared when the page closes) */
 
 static void show_pick_season(Show *sh, int si) {
     sh->ssel = si < 0 ? 0 : si >= sh->n_seasons ? sh->n_seasons - 1 : si;
@@ -2804,6 +2816,7 @@ static void show_leave(Screen *s) {
 }
 static void show_destroy(Screen *s) {
     Show *sh = s->st;
+    if (sheet_show == sh) sheet_show = NULL;
     if (sh->have_show) pitem_free(&sh->show);
     for (int i = 0; i < sh->n_eps; i++) pitem_free(&sh->eps[i]);
     free(sh->eps);
@@ -2842,8 +2855,22 @@ static int show_buttons(Show *sh, BtnKind *k) {
 }
 
 /* the green key on the series page: the series (buttons), the chosen season (pills) or the episode in focus */
-static void show_watch_menu(Show *sh) {
-    if (sh->row == 2 && sh->esel < sh->n_sidx) { watch_menu(&sh->eps[sh->sidx[sh->esel]], false); return; }
+static void show_sheet_play(void *ud) { /* "Play" in an episode's sheet */
+    Show *sh = ud;
+    if (sh != sheet_show || sh->row != 2 || sh->esel >= sh->n_sidx) return;
+    play_with_resume(&sh->eps[sh->sidx[sh->esel]], NULL);
+}
+static void show_sheet_eps(void *ud) { /* "Episodes" in a season's sheet */
+    Show *sh = ud;
+    if (sh == sheet_show && sh->n_sidx) sh->row = 2;
+}
+/* the sheet for what has focus: an episode (Play first), a season (Episodes first) or the series (only marks) */
+static void show_sheet(Show *sh, bool with_first) {
+    sheet_show = sh;
+    if (sh->row == 2 && sh->esel < sh->n_sidx) {
+        watch_sheet(&sh->eps[sh->sidx[sh->esel]], false, with_first ? T("Play") : NULL, show_sheet_play, sh);
+        return;
+    }
     PItem g = {0};
     char lbl[64];
     g.srv = sh->srv;
@@ -2853,14 +2880,16 @@ static void show_watch_menu(Show *sh) {
         season_label(sh->seasons[sh->ssel], lbl, sizeof lbl);
         g.title = lbl;
         show_seen(sh, sh->seasons[sh->ssel], &g.leaves, &g.viewed_leaves);
-    } else {
-        g.type = "show";
-        g.rating_key = sh->key;
-        g.title = sh->have_show ? sh->show.title : NULL;
-        show_seen(sh, -1, &g.leaves, &g.viewed_leaves);
+        watch_sheet(&g, false, with_first ? T("Episodes") : NULL, show_sheet_eps, sh); /* g only borrows strings */
+        return;
     }
-    watch_menu(&g, false); /* g only borrows strings: watch_menu copies what it needs */
+    g.type = "show";
+    g.rating_key = sh->key;
+    g.title = sh->have_show ? sh->show.title : NULL;
+    show_seen(sh, -1, &g.leaves, &g.viewed_leaves);
+    watch_menu(&g, false);
 }
+static void show_watch_menu(Show *sh) { show_sheet(sh, false); }
 
 #define SHOW_PILL_Y 610.0f
 #define SHOW_EP_Y 712.0f
@@ -2995,7 +3024,7 @@ static void show_draw(Screen *s) {
         }
     }
     clip_pop();
-    if (sh->row > 0) draw_keybar(x, UI_H - 62, NULL, sh->row == 1 ? T("Season watched / unwatched") : T("Watched / unwatched"), NULL, NULL, NULL);
+    if (sh->row > 0) draw_hint(x, UI_H - 62, "OK", sh->row == 1 ? T("Episodes, mark the season as watched") : T("Play, mark as watched"));
 }
 
 static bool show_input(Screen *s, const InputEvent *ev) {
@@ -3010,7 +3039,7 @@ static bool show_input(Screen *s, const InputEvent *ev) {
         return true;
     case A_DOWN:
         if (sh->row < 2 && (sh->row < 1 || sh->n_sidx)) { sh->row++; return true; }
-        return sh->row < 1; /* at the bottom: false lets the key bar take focus */
+        return true;
     case A_LEFT:
         if (sh->row == 0 && sh->bsel > 0) sh->bsel--;
         else if (sh->row == 1 && sh->ssel > 0) { show_pick_season(sh, sh->ssel - 1); sh->esel = 0; sh->sx_e = 0; }
@@ -3029,9 +3058,11 @@ static bool show_input(Screen *s, const InputEvent *ev) {
         } else if (sh->row == 0 && nb && sh->next >= 0) {
             PItem *ne = &sh->eps[sh->next];
             plex_play_chain(ne, k[sh->bsel] == B_RESUME ? ne->offset : 0, NULL);
-        } else if (sh->row == 1) {
-            if (sh->n_sidx) sh->row = 2;
-        } else if (sh->row == 2 && sh->esel < sh->n_sidx) play_with_resume(&sh->eps[sh->sidx[sh->esel]], NULL);
+        } else if (sh->row == 1 || (sh->row == 2 && sh->esel < sh->n_sidx)) {
+            /* a season or an episode: its sheet (Episodes / Play first); Play keys play at once */
+            if (ev->a == A_OK) show_sheet(sh, true);
+            else if (sh->row == 2) play_with_resume(&sh->eps[sh->sidx[sh->esel]], NULL);
+        }
         return true;
     case A_INFO: if (!ev->repeat) show_watch_menu(sh); return true;
     default: return false;

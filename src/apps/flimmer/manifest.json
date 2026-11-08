@@ -1,0 +1,21 @@
+{
+  "id": "flimmer",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Flimmer",
+  "desc": "Find and request movies and series on your Flimmertv server",
+  "icon": "film",
+  "c1": [251, 113, 133],
+  "c2": [124, 29, 79],
+  "fg": [255, 255, 255],
+  "order": 61,
+  "default": false,
+  "changes": {
+    "summary": "New app: Flimmer for Flimmertv",
+    "points": [
+      "Browse Discover, search, and request movies and series (choose the seasons)",
+      "My requests: follow them, and withdraw one that is still waiting",
+      "Finds Flimmertv on the network by itself (port 7676)"
+    ]
+  }
+}

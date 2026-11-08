@@ -1182,11 +1182,11 @@ typedef struct {
     char digits[8];
     double digit_t;
     int playing_list_owner;
-    double ok_pending; /* time of the OK press: short press = play, held down = menu */
     time_t gtime, gview; /* TV guide: the chosen time (picks the program) and the start of the visible window */
 } Iptv;
 
 static void play_current(Iptv *v);
+static void open_channel_menu(Iptv *v);
 
 #define GROW 66 /* row height in the group column */
 /* left column: 0 = Favorites, 1 = TV guide (the favorites on a timeline), 2.. = D.ui (country headings and groups) */
@@ -1270,7 +1270,6 @@ static void iptv_after_load(void) {
 
 static void iptv_update(Screen *s, float dt) {
     Iptv *v = s->st;
-    if (v->ok_pending && app_time() - v->ok_pending > HOLD_GAP) { v->ok_pending = 0; play_current(v); }
     sepg_drain(-1);
     if (v->cfg_seen != app_cfg_gen()) { /* new playlist from the phone */
         v->cfg_seen = app_cfg_gen();
@@ -1470,7 +1469,7 @@ static void iptv_draw(Screen *s) {
             draw_spinner(UI_W / 2, UI_H / 2 - 40, 34, C_TEXT);
             text_draw(F_REG, 28, UI_W / 2, UI_H / 2 + 30, C_TEXT2, AL_CENTER, D.status);
         } else {
-            draw_empty(T("No channels"), D.status[0] ? D.status : T("Choose Menu at the bottom to change the playlist."));
+            draw_empty(T("No channels"), D.status[0] ? D.status : T("Press Left or choose Menu at the bottom to change the playlist."));
             draw_keybar(80, UI_H - 60, NULL, NULL, NULL, NULL, "Menu"); /* ↓ gives it focus */
         }
         return;
@@ -1514,7 +1513,7 @@ static void iptv_draw(Screen *s) {
     time_t now = time(NULL);
     if (v->n_list == 0) {
         text_draw(F_REG, 28, cx + cw / 2, cy + 200, C_TEXT2, AL_CENTER,
-                  v->gsel == 0 ? T("No favorites yet. Choose a channel and press Favorite at the bottom.") : T("No channels in this group"));
+                  v->gsel == 0 ? T("No favorites yet. Press OK on a channel and choose Add to favorites.") : T("No channels in this group"));
     }
     for (int i = 0; i < v->n_list; i++) {
         float y = cy + i * rh - v->cscroll;
@@ -1572,7 +1571,7 @@ static void iptv_draw(Screen *s) {
         text_draw(F_REG, 22, cx + cw, UI_H - 56, C_TEXT3, AL_RIGHT, T("Left/right: earlier and later programs"));
     if (v->col == 1 && v->gsel == 0 && v->n_list > 1)
         text_draw(F_REG, 22, cx + cw, UI_H - 56, v->moving ? C_TEXT : C_TEXT3, AL_RIGHT,
-                  v->moving ? T("Move with up/down · OK when you are done") : T("Right: move channel · The Favorite button at the bottom removes it"));
+                  v->moving ? T("Move with up/down · OK when you are done") : T("OK: remove or move the favorite"));
     if (v->digits[0]) {
         fill_rrect(UI_W - 300, 140, 220, 110, 20, color_alpha(C_SURFACE2, 0.95f));
         text_draw(F_BOLD, 64, UI_W - 190, 156, C_TEXT, AL_CENTER, v->digits);
@@ -1584,7 +1583,11 @@ static void iptv_draw(Screen *s) {
         const Prog *p = prog_at(c, v->gtime, 0);
         if (p && p->start > time(NULL)) yellow = rem_has(c, p) ? T("Remove reminder") : T("Remind me");
     }
-    draw_keybar(80, hy, T("Watch channel"), T("Channel menu"), yellow, NULL, "Menu");
+    (void)yellow;
+    /* no button bar: OK opens the channel's sheet, ← the app's menu (both explained here, nothing to reach) */
+    draw_hint(80, hy, "OK", v->col == 1 ? T("Watch, favorite, program schedule") : T("Open"));
+    draw_hint(80 + text_width(F_SEMI, 20, "OK") + 30 + text_width(F_REG, 22, v->col == 1 ? T("Watch, favorite, program schedule") : T("Open")) + 44,
+              hy, "←", v->col == 1 ? T("Groups") : T("Menu"));
     /* status at the top, left of the clock (the bottom right holds the favorites hint) */
     const char *st = D.loading ? T("Updating channels…") : D.epg_msg;
     if (st[0]) text_draw(F_REG, 22, UI_W - 96 - text_width(F_SEMI, 34, "00:00") - 40, 72, C_TEXT3, AL_RIGHT, st);
@@ -1733,6 +1736,23 @@ static void on_tick(void *ud) {
     if (sepg_drain(pc->list[pc->shown])) osd_channel(pc, pc->shown, "update");
 }
 
+/* the player menu's own item: favorite for the channel being watched */
+static const char *on_action_label(void *ud, int idx) {
+    PlayCtx *pc = ud;
+    (void)idx;
+    if (!pc_index(pc, pc->cur)) return NULL;
+    return is_fav(D.ch[pc->list[pc->cur]].url) ? T("Remove from favorites") : T("Add to favorites");
+}
+
+static bool on_action(void *ud, int idx, char *msg, size_t n) {
+    PlayCtx *pc = ud;
+    (void)idx;
+    if (!pc_index(pc, pc->cur)) return true;
+    Channel *c = &D.ch[pc->list[pc->cur]];
+    snprintf(msg, n, toggle_fav(c->url) ? T("%s added to favorites") : T("%s removed from favorites"), DNAME(c));
+    return true;
+}
+
 static void play_list(int *list, int n, int start, int gen) {
     if (n <= 0 || gen != D.gen) return;
     for (int i = 0; i < n; i++) if (list[i] < 0 || list[i] >= D.n_ch) return;
@@ -1764,6 +1784,7 @@ static void play_list(int *list, int n, int start, int gen) {
     pc.gen = gen;
     rq.tick = on_tick;
     osd_channel(&pc, start, "show"); /* the banner for the first channel (mpv is not running yet - read at file-loaded) */
+    if (player_set_actions) player_set_actions(1, on_action_label, on_action, &pc); /* Favorite in the player menu */
     player_run(&rq);
 }
 
@@ -2339,16 +2360,25 @@ static void show_guide(Channel *c) {
     for (int i = 0; i < n; i++) free(items[i]);
 }
 
+/* the channel's sheet (OK on a channel): the first item watches it, so OK, OK = watch */
+enum { CM_WATCH, CM_FAV, CM_GUIDE, CM_MOVE, CM_REMIND };
+static struct { int act[5], n; time_t start; } cmenu;
 static void ch_menu_done(void *ud, int idx) {
     Iptv *v = ud;
-    if (v != menu_owner) return;
+    if (v != menu_owner || idx < 0 || idx >= cmenu.n) return;
     if (v->built_gen != D.gen) build_list(v); /* the channel list changed while the menu was open */
     if (!v->n_list || v->csel < 0 || v->csel >= v->n_list) return;
     Channel *c = &D.ch[v->list[v->csel]];
-    if (idx == 0) play_current(v);
-    else if (idx == 1) app_toast(toggle_fav(c->url) ? T("%s added to favorites") : T("%s removed from favorites"), DNAME(c));
-    else if (idx == 2) show_guide(c);
-    else if (idx == 3) { v->moving = true; v->col = 1; app_toast(T("Move with up/down - press OK when you are done")); }
+    switch (cmenu.act[idx]) {
+    case CM_WATCH: play_current(v); break;
+    case CM_FAV: app_toast(toggle_fav(c->url) ? T("%s added to favorites") : T("%s removed from favorites"), DNAME(c)); break;
+    case CM_GUIDE: show_guide(c); break;
+    case CM_MOVE: v->moving = true; v->col = 1; app_toast(T("Move with up/down - press OK when you are done")); break;
+    case CM_REMIND:
+        for (int k = 0; k < c->n_progs; k++)
+            if (c->progs[k].start == cmenu.start) { rem_toggle_toast(c, &c->progs[k]); break; }
+        break;
+    }
 }
 
 /* swap two favorites (in the list and in the file) */
@@ -2366,16 +2396,29 @@ static void fav_swap(Iptv *v, int a, int b) {
 static void open_channel_menu(Iptv *v) {
     if (!v->n_list) return;
     Channel *c = &D.ch[v->list[v->csel]];
-    const char *items[4] = {T("Watch channel"), is_fav(c->url) ? T("Remove from favorites") : T("Add to favorites"), T("Program schedule"),
-                            T("Move favorite")};
+    const char *items[5];
+    int n = 0;
+#define CM_ADD(a, label) do { cmenu.act[n] = (a); items[n++] = (label); } while (0)
+    CM_ADD(CM_WATCH, T("Watch channel"));
+    /* the TV guide: the program under the marker has not started -> remind me */
+    const Prog *p = v->gsel == 1 ? prog_at(c, v->gtime, 0) : NULL;
+    bool coming = p && p->start > time(NULL);
+    if (coming) { cmenu.start = p->start; CM_ADD(CM_REMIND, rem_has(c, p) ? T("Remove reminder") : T("Remind me")); }
+    CM_ADD(CM_FAV, is_fav(c->url) ? T("Remove from favorites") : T("Add to favorites"));
+    CM_ADD(CM_GUIDE, T("Program schedule"));
+    if (v->gsel == 0 && v->n_list > 1) CM_ADD(CM_MOVE, T("Move favorite"));
+#undef CM_ADD
+    cmenu.n = n;
     menu_owner = v;
-    choice_open(DNAME(c), items, v->gsel == 0 && v->n_list > 1 ? 4 : 3, 0, ch_menu_done, v);
+    choice_open(coming ? p->title : DNAME(c), items, n, 0, ch_menu_done, v);
 }
 
 static bool iptv_input(Screen *s, const InputEvent *ev) {
     Iptv *v = s->st;
     bool configured = iptv_configured();
-    if (ev->a == A_MENU || (!configured && ev->a == A_INFO)) {
+    /* the app's menu: the Menu key, or ← from the group column (as the side menu in the other apps) */
+    bool to_menu = configured && ev->a == A_LEFT && v->col == 0 && !ev->repeat;
+    if (ev->a == A_MENU || to_menu || (!configured && ev->a == A_INFO)) {
         const char *items[] = {T("Update channels now"), T("Change playlist (M3U link)"), T("Xtream Codes login"), T("Program guide (EPG) URL"),
                                T("Settings")};
         choice_open("Live TV", items, app_settings_open ? 5 : 4, 0, menu_done, NULL);
@@ -2440,12 +2483,9 @@ static bool iptv_input(Screen *s, const InputEvent *ev) {
         if (v->col == 0 && ui_country(v->gsel) >= 0) { /* country heading: expand/collapse */
             if (!ev->repeat) { D.cexp[ui_country(v->gsel)] ^= 1; rebuild_vis(); }
         } else if (v->col == 0) { if (!ev->repeat) { if (v->n_list) v->col = 1; v->csel = 0; v->gtime = time(NULL); } }
-        else if (v->n_list) {
-            if (!ev->repeat) v->ok_pending = app_time();          /* wait: short press or held? */
-            else if (v->ok_pending) { v->ok_pending = 0; open_channel_menu(v); }
-        }
+        else if (v->n_list && !ev->repeat) open_channel_menu(v); /* OK = the channel's sheet, Watch first: OK, OK = watch */
         return true;
-    case A_INFO: /* green: channel menu (same as held OK) */
+    case A_INFO: /* green: the channel's sheet (same as OK) */
         if (v->col == 1 && v->n_list) open_channel_menu(v);
         return true;
     case A_YELLOW:

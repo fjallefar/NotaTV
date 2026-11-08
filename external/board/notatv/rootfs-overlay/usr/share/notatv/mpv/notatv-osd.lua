@@ -643,6 +643,10 @@ local ASPECTS = {["-1"] = T("Automatic"), ["16:9"] = "16:9", ["4:3"] = "4:3", ["
 local stats_on = false
 local function sections()
     local s = {}
+    -- the app's own items first (Info and comments, Add to favorites ...): tvshell sends the labels when the menu opens
+    for i, l in ipairs(meta.actions or {}) do
+        if l ~= "" then table.insert(s, {id = "action", idx = i - 1, label = l}) end
+    end
     table.insert(s, {id = "sub", label = T("Subtitles"), value = current_label("sub")})
     table.insert(s, {id = "audio", label = T("Audio"), value = current_label("audio")})
     if meta.qualities then table.insert(s, {id = "quality", label = T("Quality"), value = meta.quality or "Original"}) end
@@ -782,6 +786,10 @@ local function menu_key(k)
                 mp.command("script-binding stats/display-stats-toggle")
                 close_menu()
                 return
+            elseif sec.id == "action" then -- tvshell does it; it either keeps playing (message) or stops
+                mp.commandv("script-message", "notatv-action", tostring(sec.idx))
+                close_menu()
+                return
             elseif sec.id == "channel" then
                 mp.commandv("script-message", "notatv-channel")
                 close_menu()
@@ -808,6 +816,10 @@ end
 
 mp.register_script_message("notatv-menu-open", function() if menu then close_menu() else open_menu() end end)
 mp.register_script_message("notatv-key", menu_key)
+mp.register_script_message("notatv-actions", function(js)
+    meta.actions = utils.parse_json(js) or meta.actions
+    if menu then render() end
+end)
 mp.register_script_message("notatv-subresults", function()
     local f = io.open("/tmp/notatv-subs.json", "r")
     subresults = {}

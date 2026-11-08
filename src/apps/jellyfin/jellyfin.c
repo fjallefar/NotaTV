@@ -956,9 +956,9 @@ static void side_activate(Jf *v, int idx) {
    The buttons on the detail page (Green on a tile or an episode is a shortcut). For a series or a season Jellyfin marks
    every episode. The open lists are changed in place (so the focus stays where it is); the series page fetches
    its episodes again. "Remove from Continue" sets the saved position back to 0. */
-enum { JW_SEEN, JW_UNSEEN, JW_DECK };
+enum { JW_SEEN, JW_UNSEEN, JW_DECK, JW_FIRST };
 typedef struct { int a; char id[64]; } JwJob;
-static struct { char id[64]; int acts[3], n; } jw;
+static struct { char id[64]; int acts[4], n; void (*first)(void *ud); void *ud; } jw;
 static void jd_marked(const char *id, int a); /* the detail page (further down) */
 
 static bool jw_group(const JItem *j) { return j->type && (!strcmp(j->type, "Series") || !strcmp(j->type, "Season")); }
@@ -1030,21 +1030,31 @@ static void jw_do(const char *id, int a) {
 
 static void jw_menu_cb(void *ud, int idx) {
     (void)ud;
-    if (idx >= 0 && idx < jw.n) jw_do(jw.id, jw.acts[idx]);
+    if (idx < 0 || idx >= jw.n) return;
+    if (jw.acts[idx] == JW_FIRST) { if (jw.first) jw.first(jw.ud); }
+    else jw_do(jw.id, jw.acts[idx]);
 }
 
-/* the green key's menu for an item */
-static void jw_menu(const JItem *j, const char *title) {
-    if (!jw_can(j)) return;
-    snprintf(jw.id, sizeof jw.id, "%s", j->id);
-    const char *items[3];
+/* the item's sheet: first (e.g. "Play") on top when given, then mark watched/unwatched and remove from Continue
+   watching - OK opens it, OK, OK = first (the same rule as everywhere) */
+static void jw_sheet(const JItem *j, const char *title, const char *first, void (*first_cb)(void *ud), void *ud) {
+    const char *items[4];
     int n = 0;
-    if (!jw_seen(j)) { items[n] = T("Mark as watched"); jw.acts[n++] = JW_SEEN; }
-    if (jw_any(j)) { items[n] = T("Mark as unwatched"); jw.acts[n++] = JW_UNSEEN; }
-    if (!jw_group(j) && j->pos > 0) { items[n] = T("Remove from Continue watching"); jw.acts[n++] = JW_DECK; }
+    jw.first = first_cb;
+    jw.ud = ud;
+    if (first && first_cb) { items[n] = first; jw.acts[n++] = JW_FIRST; }
+    if (jw_can(j)) {
+        snprintf(jw.id, sizeof jw.id, "%s", j->id);
+        if (!jw_seen(j)) { items[n] = T("Mark as watched"); jw.acts[n++] = JW_SEEN; }
+        if (jw_any(j)) { items[n] = T("Mark as unwatched"); jw.acts[n++] = JW_UNSEEN; }
+        if (!jw_group(j) && j->pos > 0) { items[n] = T("Remove from Continue watching"); jw.acts[n++] = JW_DECK; }
+    }
     jw.n = n;
+    if (n == 1 && jw.acts[0] == JW_FIRST) { first_cb(ud); return; } /* nothing else to choose */
     if (n) choice_open(title ? title : j->name ? j->name : "Jellyfin", items, n, 0, jw_menu_cb, NULL);
 }
+/* the green key's menu (only the watched choices) */
+static void jw_menu(const JItem *j, const char *title) { jw_sheet(j, title, NULL, NULL, NULL); }
 
 static void jf_enter(Screen *s) {
     Jf *v = s->st;
@@ -1539,6 +1549,7 @@ typedef struct {
     float ssx, esx;
     int gen; /* jf_play_gen when the episodes were fetched */
 } JDetail;
+static JDetail *sheet_jd; /* the series page whose sheet is open (cleared when the page closes) */
 static JDetail *live_d;
 
 /* which episode Play means (same rules as Plex): the one in progress if it was watched last, otherwise the first
@@ -1658,6 +1669,7 @@ static void jd_resume(Screen *s) {
 }
 
 static void jd_destroy(Screen *s) {
+    if (sheet_jd == s->st) sheet_jd = NULL;
     JDetail *d = s->st;
     if (live_d == d) live_d = NULL;
     jf_gen++; /* pending replies must not write into the freed page */
@@ -1744,8 +1756,22 @@ static void jd_marked(const char *id, int a) {
 }
 
 /* the green key on the series page: the series (buttons), the chosen season (pills) or the episode in focus */
-static void jd_watch_menu(JDetail *d) {
-    if (d->focus == 2 && d->ecol < d->n_sidx) { jw_menu(&d->eps.it[d->sidx[d->ecol]], NULL); return; }
+static void jd_sheet_play(void *ud) { /* "Play" in an episode's sheet */
+    JDetail *d = ud;
+    if (d != sheet_jd || d->focus != 2 || d->ecol >= d->n_sidx) return;
+    jf_play_chain(&d->eps.it[d->sidx[d->ecol]], true, NULL);
+}
+static void jd_sheet_eps(void *ud) { /* "Episodes" in a season's sheet */
+    JDetail *d = ud;
+    if (d == sheet_jd && d->n_sidx) d->focus = 2;
+}
+/* the sheet for what has focus: an episode (Play first), a season (Episodes first) or the series (only marks) */
+static void jd_sheet(JDetail *d, bool with_first) {
+    sheet_jd = d;
+    if (d->focus == 2 && d->ecol < d->n_sidx) {
+        jw_sheet(&d->eps.it[d->sidx[d->ecol]], NULL, with_first ? T("Play") : NULL, jd_sheet_play, d);
+        return;
+    }
     JItem g = {0};
     char lbl[64];
     if (d->focus == 1 && d->scol < d->n_seasons && d->n_sidx) {
@@ -1753,7 +1779,7 @@ static void jd_watch_menu(JDetail *d) {
         g.type = "Season";
         season_label(d->seasons[d->scol], lbl, sizeof lbl);
         g.played = jd_all_seen(d, d->seasons[d->scol], &g.played_pct);
-        jw_menu(&g, lbl);
+        jw_sheet(&g, lbl, with_first ? T("Episodes") : NULL, jd_sheet_eps, d);
     } else {
         g.id = d->it.id;
         g.type = "Series";
@@ -1761,6 +1787,7 @@ static void jd_watch_menu(JDetail *d) {
         jw_menu(&g, d->it.name);
     }
 }
+static void jd_watch_menu(JDetail *d) { jd_sheet(d, false); }
 
 static void youtube_trailer(const JItem *it) {
     char q[400];
@@ -1875,7 +1902,7 @@ static void jd_draw(Screen *s) {
         }
     }
     clip_pop();
-    if (d->focus > 0) draw_keybar(x, UI_H - 62, NULL, d->focus == 1 ? T("Season watched / unwatched") : T("Watched / unwatched"), NULL, NULL, NULL);
+    if (d->focus > 0) draw_hint(x, UI_H - 62, "OK", d->focus == 1 ? T("Episodes, mark the season as watched") : T("Play, mark as watched"));
 }
 
 static bool jd_input(Screen *s, const InputEvent *ev) {
@@ -1909,7 +1936,6 @@ static bool jd_input(Screen *s, const InputEvent *ev) {
     case A_DOWN:
         if (d->focus == 0) d->focus = 1;
         else if (d->focus == 1 && d->n_sidx) d->focus = 2;
-        else return false; /* at the bottom: the key bar takes focus */
         return true;
     case A_LEFT:
         if (d->focus == 0 && d->btn > 0) d->btn--;
@@ -1926,8 +1952,11 @@ static bool jd_input(Screen *s, const InputEvent *ev) {
         if (d->focus == 0 && nb && k[d->btn] == JB_SEEN) {
             if (ev->a == A_OK) jw_do(it->id, jd_seen(d) ? JW_UNSEEN : JW_SEEN);
         } else if (d->focus == 0 && nb && jd_target(d)) jf_play_chain(jd_target(d), k[d->btn] == JB_RESUME, NULL);
-        else if (d->focus == 1 && d->n_sidx) d->focus = 2;
-        else if (d->focus == 2 && d->ecol < d->n_sidx) jf_play_chain(&d->eps.it[d->sidx[d->ecol]], true, NULL);
+        else if ((d->focus == 1 && d->n_sidx) || (d->focus == 2 && d->ecol < d->n_sidx)) {
+            /* a season or an episode: its sheet (Episodes / Play first); Play keys play at once */
+            if (ev->a == A_OK) jd_sheet(d, true);
+            else if (d->focus == 2) jf_play_chain(&d->eps.it[d->sidx[d->ecol]], true, NULL);
+        }
         return true;
     case A_INFO: if (!ev->repeat) jd_watch_menu(d); return true;
     default: return false;

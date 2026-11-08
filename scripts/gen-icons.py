@@ -132,6 +132,13 @@ APP_ICONS = {
       <g fill="#fff" opacity="0.55"><rect x="166" y="170" width="26" height="40" rx="6"/><rect x="200" y="150" width="26" height="60" rx="6"/>
       <rect x="270" y="160" width="26" height="50" rx="6"/><rect x="304" y="130" width="26" height="80" rx="6"/></g>
       <path d="M262 56 L214 148 H248 L232 224 L290 122 H254 L276 56 Z" fill="#FFE14D" stroke="#FFE14D" stroke-width="6" stroke-linejoin="round"/>""", glow="#FFE14D"),
+    # Flimmer: a film frame with sprocket holes, a flicker of light in it and a plus (ask for a movie or a series)
+    "flimmer": icon("#FB7185", "#7C1D4F", """
+      <rect x="162" y="70" width="160" height="140" rx="20" fill="#fff"/>
+      <g fill="#BE185D">""" + "".join(f'<rect x="{x}" y="{y}" width="16" height="12" rx="3"/>' for x in (172, 296) for y in (84, 110, 136, 162, 188)) + """</g>
+      <polygon points=\"""" + star(242, 140, 40, 13, n=4, rot=-90) + """\" fill="#F43F5E"/>
+      <circle cx="334" cy="80" r="28" fill="#FFE4E6"/>
+      <path d="M334 66 V94 M320 80 H348" stroke="#BE185D" stroke-width="8" stroke-linecap="round"/>""", glow="#FDA4AF"),
 }
 
 def main():

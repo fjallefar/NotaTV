@@ -777,7 +777,11 @@ static void tw_draw(Screen *s) {
         draw_tile(&v->it[i], x, y, cf && v->row == i / nc && v->col == i % nc);
     }
     clip_pop();
-    draw_keybar(x0, UI_H - 62, v->view == V_CATS ? T("Open") : T("Watch"), NULL, NULL, T("Search"), "Menu");
+    { /* help line instead of a button bar (STATUS 104): OK, and ← for the side menu */
+        const char *ok_l = v->view == V_CATS ? T("Open") : T("Watch");
+        draw_hint(x0, UI_H - 62, "OK", ok_l);
+        draw_hint(x0 + text_width(F_SEMI, 20, "OK") + 30 + text_width(F_REG, 22, ok_l) + 44, UI_H - 62, "←", T("Menu and search"));
+    }
     side_draw(&v->side);
 }
 

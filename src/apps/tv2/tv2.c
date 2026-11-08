@@ -90,7 +90,8 @@ typedef struct {
     int detail_cta_ent;
     bool detail_focus;
     /* search */
-    int search_filter, hist_sel;
+    int search_filter, hist_sel; /* hist_sel on the search page: 0 = Search, 1..nhist = earlier searches, nhist + 1 = Clear */
+    bool filter_focus;           /* search results: the filter chips at the top have focus (↑ from the first row) */
     bool search_home;
     char hist[MAX_HIST][240];
     int nhist;
@@ -1834,6 +1835,7 @@ static void search_open(Tv2 *v) {
     v->search_home = true;
     v->search_filter = SF_ALL;
     v->hist_sel = 0;
+    v->filter_focus = false;
     v->heading[0] = 0;
     v->msg[0] = 0;
     clear_sections(v);
@@ -2110,6 +2112,7 @@ static void draw_search_filter(Tv2 *v) {
     const char *labels[3] = {T("All"), T("Movies"), T("Series")};
     for (int i = 0; i < 3; i++) {
         float w = text_width(F_SEMI, TS_LABEL, labels[i]) + 34;
+        if (v->filter_focus && v->search_filter == i) fill_rrect(x - 4, y - 4, w + 8, 44, 22, TV2_TEXT2); /* focus ring */
         fill_rrect(x, y, w, 36, 18, v->search_filter == i ? TV2_TEXT : TV2_SURFACE);
         text_draw(F_SEMI, TS_LABEL, x + w / 2, y + 9,
                   v->search_filter == i ? TV2_BLACK : TV2_TEXT2, AL_CENTER, labels[i]);
@@ -2117,26 +2120,35 @@ static void draw_search_filter(Tv2 *v) {
     }
 }
 
+/* the search page: a Search button, the earlier searches and (with any) a Clear button - all reached with ↑/↓ */
+/* help line at the bottom instead of a button bar (STATUS 104): what OK does, and ← for the side menu */
+static void tv2_hints(const char *ok, bool menu) {
+    float x = SIDE_W + 60;
+    if (ok) { draw_hint(x, UI_H - 62, "OK", ok); x += text_width(F_SEMI, 20, "OK") + 30 + text_width(F_REG, 22, ok) + 44; }
+    if (menu) draw_hint(x, UI_H - 62, "←", T("Menu and search"));
+}
+
 static void draw_search_home(Tv2 *v) {
     float x = SIDE_W + 60, y = 160;
+    text_draw(F_BOLD, TS_H1, x, y, TV2_TEXT, AL_LEFT, T("Search"));
+    float yy = y + 70;
+    bool sel = v->hist_sel == 0;
+    fill_rrect(x, yy, 760, 52, 10, sel ? TV2_TEXT : TV2_SURFACE2);
+    text_draw(F_SEMI, TS_BODY, x + 20, yy + 14, sel ? TV2_BLACK : TV2_TEXT, AL_LEFT, T("Search…"));
+    yy += 90;
     if (v->nhist > 0) {
-        text_draw(F_BOLD, TS_H2, x, y, TV2_TEXT, AL_LEFT, T("Recent searches"));
-        text_draw(F_REG, TS_BODY, x, y + 44, TV2_TEXT2, AL_LEFT,
-                  T("Press OK to open the keyboard"));
-        for (int i = 0; i < v->nhist; i++) {
-            float yy = y + 100 + i * 64;
-            bool sel = i == v->hist_sel;
+        text_draw(F_BOLD, TS_H2, x, yy, TV2_TEXT, AL_LEFT, T("Recent searches"));
+        yy += 56;
+        for (int i = 0; i < v->nhist; i++, yy += 64) {
+            sel = i + 1 == v->hist_sel;
             fill_rrect(x, yy, 760, 52, 10, sel ? TV2_TEXT : TV2_SURFACE);
-            text_draw(F_SEMI, TS_BODY, x + 20, yy + 14,
-                      sel ? TV2_BLACK : TV2_TEXT2, AL_LEFT, v->hist[i]);
+            text_draw(F_SEMI, TS_BODY, x + 20, yy + 14, sel ? TV2_BLACK : TV2_TEXT2, AL_LEFT, v->hist[i]);
         }
-    } else {
-        text_draw(F_BOLD, TS_H1, x, y, TV2_TEXT, AL_LEFT, T("Search"));
-        text_draw(F_REG, TS_BODY, x, y + 48, TV2_TEXT2, AL_LEFT,
-                  T("Press OK to open the keyboard"));
-        text_draw(F_REG, TS_BODY, x, y + 130, TV2_TEXT3, AL_LEFT,
-                  T("No earlier searches yet"));
-    }
+        sel = v->hist_sel == v->nhist + 1;
+        float w = text_width(F_SEMI, TS_BODY, T("Clear history")) + 48;
+        fill_rrect(x, yy + 8, w, 52, 26, sel ? TV2_TEXT : TV2_SURFACE);
+        text_draw(F_SEMI, TS_BODY, x + w / 2, yy + 22, sel ? TV2_BLACK : TV2_TEXT2, AL_CENTER, T("Clear history"));
+    } else text_draw(F_REG, TS_BODY, x, yy, TV2_TEXT3, AL_LEFT, T("No earlier searches yet"));
 }
 
 static void draw_profile(Tv2 *v) {
@@ -2284,7 +2296,7 @@ static void tv2_draw(Screen *s) {
         if (v->nsec) draw_sections(v);
         else if (!v->nhero) draw_empty("TV 2 Play", v->msg[0] ? v->msg : T("Nothing here"));
         draw_tv2_topbar(T("Home"));
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Play"), NULL, NULL, T("Search"), T("Menu"));
+        tv2_hints(T("Play"), true);
         break;
     case V_DETAIL:
         draw_detail_header(v);
@@ -2293,12 +2305,12 @@ static void tv2_draw(Screen *s) {
             text_draw_wrap(F_REG, TS_BODY, SIDE_W + 60, rows_top(v) - v->scroll,
                            UI_W - SIDE_W - 120, 4, 30, TV2_TEXT2, v->msg);
         draw_tv2_topbar("TV 2 Play");
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Play"), NULL, NULL, T("Search"), T("Menu"));
+        tv2_hints(T("Play"), true);
         break;
     case V_SEARCH:
         if (v->search_home) {
             draw_search_home(v);
-            draw_keybar(SIDE_W + 60, UI_H - 62, T("Search"), T("Clear"), NULL, T("Search"), T("Menu"));
+            tv2_hints(NULL, true);
         } else {
             draw_search_filter(v);
             if (v->nsec) draw_sections(v);
@@ -2306,25 +2318,25 @@ static void tv2_draw(Screen *s) {
                 text_draw_wrap(F_REG, TS_BODY, SIDE_W + 60, rows_top(v) - v->scroll,
                                UI_W - SIDE_W - 120, 4, 30, TV2_TEXT2,
                                v->msg[0] ? v->msg : T("No results"));
-            draw_keybar(SIDE_W + 60, UI_H - 62, T("Play"), T("Filter"), NULL, T("Search"), T("Menu"));
+            tv2_hints(T("Play"), true);
         }
         draw_tv2_topbar(T("Search"));
         break;
     case V_PROFILE:
         draw_profile(v);
         draw_tv2_topbar(T("My page"));
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Select"), NULL, NULL, NULL, T("Menu"));
+        tv2_hints(T("Select"), true);
         break;
     case V_WHO:
         draw_who(v);
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Select"), NULL, NULL, NULL, NULL);
+        tv2_hints(T("Select"), false);
         break;
     default:
         if (v->nsec) draw_sections(v);
         else draw_empty(v->heading[0] ? v->heading : "TV 2 Play",
                         v->msg[0] ? v->msg : T("Nothing here"));
         draw_tv2_topbar("TV 2 Play");
-        draw_keybar(SIDE_W + 60, UI_H - 62, T("Select"), NULL, NULL, T("Search"), T("Menu"));
+        tv2_hints(T("Select"), true);
         break;
     }
     tv2_side_draw(v);
@@ -2380,17 +2392,21 @@ static bool tv2_input(Screen *s, const InputEvent *ev) {
     }
 
     if (v->view == V_SEARCH && v->search_home) {
+        int last = v->nhist ? v->nhist + 1 : 0;
+        if (v->hist_sel > last) v->hist_sel = last;
         if (ev->a == A_UP && v->hist_sel > 0) v->hist_sel--;
-        else if (ev->a == A_DOWN && v->hist_sel + 1 < v->nhist) v->hist_sel++;
-        else if ((ev->a == A_OK || ev->a == A_PLAYPAUSE) && v->nhist > 0) {
-            snprintf(v->query, sizeof v->query, "%s", v->hist[v->hist_sel]);
-            v->search_home = false;
-            search_submit(v, v->query);
-        } else if (ev->a == A_INFO) {
+        else if (ev->a == A_DOWN && v->hist_sel < last) v->hist_sel++;
+        else if ((ev->a == A_OK && v->hist_sel == last && v->nhist) || ev->a == A_INFO) { /* Clear (Green: shortcut) */
+            if (ev->repeat) return true;
             v->nhist = 0;
             v->hist_sel = 0;
             history_save(v);
-        } else if (ev->a == A_SEARCH || ev->a == A_CHAR) {
+        } else if ((ev->a == A_OK || ev->a == A_PLAYPAUSE) && v->hist_sel > 0 && v->hist_sel <= v->nhist) {
+            snprintf(v->query, sizeof v->query, "%s", v->hist[v->hist_sel - 1]);
+            v->search_home = false;
+            v->filter_focus = false;
+            search_submit(v, v->query);
+        } else if ((ev->a == A_OK && v->hist_sel == 0) || ev->a == A_SEARCH || ev->a == A_CHAR) {
             char init[8] = {0};
             if (ev->a == A_CHAR) { init[0] = (char)ev->ch; init[1] = 0; }
             keyboard_open(T("Search TV 2 Play"), init, false, search_done, v);
@@ -2423,10 +2439,21 @@ static bool tv2_input(Screen *s, const InputEvent *ev) {
         return true;
     }
 
-    if (v->view == V_SEARCH && ev->a == A_INFO) {
+    if (v->view == V_SEARCH && ev->a == A_INFO) { /* Green: shortcut for the filter chips */
         v->search_filter = (v->search_filter + 1) % 3;
         if (v->query[0]) search_submit(v, v->query);
         return true;
+    }
+    if (v->view == V_SEARCH && (v->filter_focus || v->nsec == 0) && !v->search_home) {
+        /* the filter chips at the top (All / Movies / Series): ← → choose, ↓ back to the results */
+        if (ev->a == A_LEFT && v->search_filter == 0) { side_open(&v->side); return true; }
+        if ((ev->a == A_LEFT || ev->a == A_RIGHT) && !ev->repeat) {
+            int f = v->search_filter + (ev->a == A_RIGHT ? 1 : -1);
+            if (f >= 0 && f < 3) { v->search_filter = f; v->filter_focus = true; if (v->query[0]) search_submit(v, v->query); }
+            return true;
+        }
+        if (v->filter_focus && (ev->a == A_DOWN || ev->a == A_OK)) { if (v->nsec) v->filter_focus = false; return true; }
+        if (v->filter_focus && ev->a == A_UP) return true;
     }
 
     if (v->nsec == 0) {
@@ -2443,6 +2470,7 @@ static bool tv2_input(Screen *s, const InputEvent *ev) {
             if (v->col >= v->sec[v->row].n) v->col = v->sec[v->row].n - 1;
         } else if (v->view == V_HOME && v->nhero) v->hero_focus = true;
         else if (v->view == V_DETAIL) v->detail_focus = true;
+        else if (v->view == V_SEARCH && !v->search_home) v->filter_focus = true;
         return true;
     case A_DOWN:
         if (v->row + 1 >= v->nsec) return false;

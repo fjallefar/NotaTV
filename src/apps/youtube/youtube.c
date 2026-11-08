@@ -35,13 +35,13 @@ typedef struct {
     bool has_chans;
     int ccol;     /* focus in the channel row; row == -1 means the main row */
     float csx;
-    double ok_pending;                /* short press = play, held down = info */
     char wait_id[16];                 /* play when the prefetch for this video is done */
     double wait_t;
 } Yt;
 
 static Screen *channel_screen(const char *id, const char *name);
 static Screen *info_screen(Video *v);
+static void info_set_resume(Screen *s, double t);
 static bool yt_play_at(Video *v, double start);
 #define yt_play(v) yt_play_at((v), 0)
 
@@ -639,7 +639,7 @@ static void side_activate(Yt *y, int idx) {
     case M_SEARCH: keyboard_open(T("Search YouTube"), "", false, query_done, y); break;
     case M_SUBS:
         y->side.active = idx;
-        if (n_subs == 0) app_toast(T("No subscriptions yet - choose Info and comments at the bottom on a video, then Subscribe"));
+        if (n_subs == 0) app_toast(T("No subscriptions yet - press OK on a video, choose Info and comments, then Subscribe"));
         show_grid(y, T("Subscriptions"), "@subs");
         break;
     case M_REC: y->side.active = idx; show_grid(y, T("Recommended for you"), ":ytrec"); break;
@@ -673,7 +673,9 @@ static void yt_resume(Screen *s) {
     }
 }
 
+static Yt *sheet_yt; /* the screen whose video sheet is open */
 static void yt_destroy(Screen *s) {
+    if (sheet_yt == s->st) sheet_yt = NULL;
     Yt *y = s->st;
     yt_token++;
     clear_rows(y);
@@ -721,6 +723,22 @@ static void play_or_wait(Yt *y, Video *v) {
     yt_play(v);
 }
 
+/* OK on a video: its sheet, Play first (OK, OK = play) - the same rule as everywhere (STATUS 104) */
+static void video_sheet_done(void *ud, int idx) {
+    Yt *y = ud;
+    if (y != sheet_yt || idx < 0) return;
+    Video *fv = focused_video(y);
+    if (!fv) return;
+    if (idx == 0) play_or_wait(y, fv);
+    else if (idx == 1) app_push(info_screen(fv));
+    else if (idx == 2 && fv->channel_id) app_push(channel_screen(fv->channel_id, fv->channel ? fv->channel : ""));
+}
+static void open_video_sheet(Yt *y, Video *fv) {
+    const char *items[3] = {T("Play"), T("Info and comments"), T("Go to channel")};
+    sheet_yt = y;
+    choice_open(fv->title ? fv->title : "YouTube", items, fv->channel_id ? 3 : 2, 0, video_sheet_done, y);
+}
+
 static void yt_update(Screen *s, float dt) {
     Yt *y = s->st;
     side_update(&y->side, dt);
@@ -728,10 +746,6 @@ static void yt_update(Screen *s, float dt) {
     const char *ids[] = {pf_id(fv), fv ? pf_id(video_at(y, y->row, y->col + 1)) : NULL,
                          fv ? pf_id(video_at(y, y->row, y->col - 1)) : NULL, fv ? pf_id(video_at(y, y->row + 1, y->col)) : NULL};
     pf_consider(ids, 4);
-    if (y->ok_pending && app_time() - y->ok_pending > HOLD_GAP) {
-        y->ok_pending = 0;
-        if (fv) play_or_wait(y, fv);
-    }
     if (y->wait_id[0]) {
         if (!fv || strcmp(fv->id, y->wait_id)) y->wait_id[0] = 0; /* focus moved: cancel */
         else if (pf_find(fv->id) || strcmp(pf_busy_id, fv->id) || app_time() - y->wait_t > 25) {
@@ -824,7 +838,9 @@ static void draw_channel_tile(Video *c, float x, float y, bool f) {
 static void draw_hint_bar(float x0) {
     fill_vgrad(0, UI_H - 170, UI_W, 170, RGBA(7, 8, 12, 0), RGBA(7, 8, 12, 245)); /* the help text must not lie on top of the thumbnails */
     fill_vgrad(SIDE_W, UI_H - 150, UI_W - SIDE_W, 150, RGBA(7, 8, 12, 0), RGBA(7, 8, 12, 250));
-    draw_keybar(x0, UI_H - 62, T("Play"), T("Info and comments"), NULL, T("Search"), "Menu");
+    /* no button bar (it could not be reached in long lists): OK opens the video's sheet, ← the side menu */
+    draw_hint(x0, UI_H - 62, "OK", T("Play, info, channel"));
+    draw_hint(x0 + text_width(F_SEMI, 20, "OK") + 30 + text_width(F_REG, 22, T("Play, info, channel")) + 44, UI_H - 62, "←", T("Menu and search"));
 }
 
 static void yt_draw(Screen *s) {
@@ -971,6 +987,10 @@ static bool yt_casting; /* playback started from the YouTube app (ytcast.c contr
 static void yt_cast_tick(void *ud) { (void)ud; ytcast_play_tick(); }
 
 /* true = played to the end */
+/* the player menu's own item: "Info and comments" stops the video and opens the info page */
+static const char *yt_action_label(void *ud, int idx) { (void)ud; (void)idx; return T("Info and comments"); }
+static bool yt_action(void *ud, int idx, char *msg, size_t n) { (void)ud; (void)idx; (void)msg; (void)n; return false; }
+
 static bool yt_play_at(Video *v, double start) {
     watched_add(v);
     char url[128];
@@ -1017,12 +1037,18 @@ static bool yt_play_at(Video *v, double start) {
     rq.is_live = false;
     if (yt_casting) rq.tick = yt_cast_tick;
     if (!p) app_toast(T("Loading video…"));
+    /* "Info and comments" in the player menu (a NotaTV without it: not shown) */
+    bool acts = player_set_actions && player_action;
+    if (acts) player_set_actions(1, yt_action_label, yt_action, NULL);
     PlayResult res = player_run(&rq);
-    if (p && res.exit_code != 0 && res.dur <= 0 && !res.quality[0] && !res.goto_channel) { /* the URLs had expired */
+    int act = acts ? player_action() : 0;
+    if (p && res.exit_code != 0 && res.dur <= 0 && !res.quality[0] && !res.goto_channel && !act) { /* the URLs had expired */
         p->id[0] = 0;
         rq.url = url;
         rq.extra = extra;
+        if (acts) player_set_actions(1, yt_action_label, yt_action, NULL);
         res = player_run(&rq);
+        act = acts ? player_action() : 0;
     }
     free(fmt);
     free(castopt);
@@ -1035,6 +1061,11 @@ static bool yt_play_at(Video *v, double start) {
         return yt_play_at(v, res.pos);
     }
     if (res.goto_channel && v->channel_id) app_push(channel_screen(v->channel_id, v->channel ? v->channel : ""));
+    if (act == 1) {
+        Screen *is = info_screen(v);
+        info_set_resume(is, v->is_live || (res.dur > 0 && res.pos > res.dur - 10) ? 0 : res.pos);
+        app_push(is);
+    }
     return res.eof;
 }
 
@@ -1125,8 +1156,7 @@ static bool yt_input(Screen *s, const InputEvent *ev) {
     case A_OK: {
         Video *fv = focused_video(y);
         if (!fv) return true;
-        if (!ev->repeat) y->ok_pending = app_time();            /* short press: play (in update) */
-        else if (y->ok_pending) { y->ok_pending = 0; app_push(info_screen(fv)); } /* held down: info */
+        if (!ev->repeat) open_video_sheet(y, fv);
         return true;
     }
     case A_PLAYPAUSE: case A_PLAY: { Video *fv = focused_video(y); if (fv) play_or_wait(y, fv); return true; }
@@ -1179,7 +1209,9 @@ typedef struct {
     Comment *c;
     int n_c, sel, cscroll;
     int token;
+    double resume; /* opened from the player menu: Play goes on from here */
 } Info;
+static void info_set_resume(Screen *s, double t) { ((Info *)s->st)->resume = t; }
 static int info_token;
 
 typedef struct { int token; char id[16]; char cookies[512]; bool comments; char *out; int gen; } InfoJob;
@@ -1395,7 +1427,7 @@ static bool info_input(Screen *s, const InputEvent *ev) {
     case A_OK: case A_PLAYPAUSE:
         if (ev->repeat) return true;
         switch (in->sel) {
-        case IB_PLAY: yt_play(&in->v); break;
+        case IB_PLAY: yt_play_at(&in->v, in->resume); break;
         case IB_CHANNEL:
             if (in->v.channel_id) app_push(channel_screen(in->v.channel_id, in->v.channel));
             else app_toast(T("The channel is not known yet - wait a moment"));

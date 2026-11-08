@@ -252,20 +252,23 @@ msgstr "Fjernet fra Fortsæt med at se"
 msgid "The Jellyfin server did not accept the change"
 msgstr "Jellyfin-serveren tog ikke imod ændringen"
 
-msgid "Watched / unwatched"
-msgstr "Set / uset"
-
-msgid "Season watched / unwatched"
-msgstr "Sæson set / uset"
-
 msgid "Settings"
 msgstr "Indstillinger"
 
-msgid "Easier to use without colored keys"
-msgstr "Nemmere at bruge uden farveknapper"
+msgid "Episodes, mark the season as watched"
+msgstr "Afsnit, markér sæsonen som set"
 
-msgid "Settings in the side menu"
-msgstr "Indstillinger i sidemenuen"
+msgid "Play, mark as watched"
+msgstr "Afspil, markér som set"
 
-msgid "The colored keys still work as shortcuts"
-msgstr "Farveknapperne virker stadig som genveje"
+msgid "Episodes"
+msgstr "Afsnit"
+
+msgid "Mark episodes and seasons as watched without colored keys"
+msgstr "Markér afsnit og sæsoner som set uden farveknapper"
+
+msgid "OK on an episode: Play, mark as watched or unwatched"
+msgstr "OK på et afsnit: Afspil, markér som set eller uset"
+
+msgid "OK on a season: Episodes, mark the season as watched"
+msgstr "OK på en sæson: Afsnit, markér sæsonen som set"

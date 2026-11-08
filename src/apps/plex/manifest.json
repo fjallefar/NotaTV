@@ -1,6 +1,6 @@
 {
   "id": "plex",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "api": 2,
   "name": "Plex",
   "desc": "Movies and shows from your Plex server",
@@ -11,10 +11,10 @@
   "order": 20,
   "default": true,
   "changes": {
-    "summary": "Easier to use without colored keys",
+    "summary": "Mark episodes and seasons as watched without colored keys",
     "points": [
-      "Settings in the side menu",
-      "The colored keys still work as shortcuts"
+      "OK on an episode: Play, mark as watched or unwatched",
+      "OK on a season: Episodes, mark the season as watched"
     ]
   }
 }

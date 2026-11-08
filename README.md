@@ -21,6 +21,7 @@ NotaTV is its own Linux distribution (Buildroot) with its own user interface, wr
 - **Plex** and **Jellyfin** clients with direct play (4K HDR)
 - **YouTube** (yt-dlp) and **Twitch** with chat
 - **Seerr**: find and request movies and shows (Overseerr/Jellyseerr)
+- **Flimmer**: find and request movies and series on a Flimmertv server
 - **Music** from your phone via **AirPlay** and **Bluetooth**
 - **Radio**: stations from your own country and the whole world, playing while you use the rest of the box
 - **Game streaming** from a PC with Sunshine (Moonlight protocol, ~11 ms on the box)
@@ -75,6 +76,7 @@ The box only contacts outside services when you use a feature:
 | api.energidataservice.dk | Electricity price app, only when installed (the spot prices every 15 minutes, the grid tariffs every 6 hours) |
 | production.dr-massive.com, login.dr.dk + DR's image and video servers | DRTV app, only when installed (pages, programme guide, playback; login only if you sign in) |
 | Your Seerr server, TMDB images | Seerr app |
+| Your Flimmertv server (local network), TMDB images | Flimmer app, only when installed |
 | netflix.com (public top 10 data file) | Seerr → Netflix top 10 |
 | Your IPTV provider | Live TV |
 | Your TeslaMate's MQTT server (local network) | Tesla app |
@@ -118,12 +120,12 @@ At the end it shows a summary with the phone page address and code. Everything i
 
 ### Remote control
 
-The TV's own remote works over HDMI-CEC. Many TVs (LG in particular) only pass on the arrows, OK, Back, CH+/CH- and the four color keys. That is why the color keys have the same meaning everywhere:
+The TV's own remote works over HDMI-CEC. Many TVs (LG in particular) only pass on the arrows, OK, Back, CH+/CH- and the four color keys. The goal is that everything can be done with the arrows, OK and Back (a controller, the phone page or a remote without color keys); the color keys are shortcuts with the same meaning everywhere:
 
 | Key | Action |
 |---|---|
 | Arrows / OK / Back | Navigate / select / back |
-| **Hold OK** | Extra options (YouTube: info, Live TV: channel menu) |
+| **OK on a channel, video or station** | Opens its choices; the first one plays, so OK, OK plays |
 | **Hold Back** | Go to the home screen |
 | 🔴 Red | **Menu, always.** Actions such as quit, refresh, aspect ratio and technical info are found here. On the home screen: the quick panel |
 | 🟢 Green | Info |
@@ -131,14 +133,23 @@ The TV's own remote works over HDMI-CEC. Many TVs (LG in particular) only pass o
 | 🔵 Blue | Search (YouTube, Plex, Seerr, Jellyfin, Twitch) |
 | CH+ / CH- | Page up/down in lists (Live TV: change channel) |
 
-The bar at the bottom of the screen shows the same actions as buttons, in the order OK · Green · Yellow · Blue · Red. Press ↓ from the last row to reach the buttons. This means you can do everything with only the arrows and OK.
+**One rule since 1.0.17:** OK on something you can watch or hear (a channel, a video, a station, an episode) opens a sheet with its choices, and the first one plays it - so OK, OK plays. Folders, categories, menu items and buttons still act at once. ← opens the app's menu (the side menu with Search and Settings; in Live TV, ← from the groups). Movies and series in Plex, Jellyfin, Seerr and Flimmer open their page with the buttons on it. There is no button bar at the bottom of long lists any more (in 1.0.16 it could not be reached there).
+
+Without color keys:
+- **Live TV:** OK on a channel: *Watch channel*, favorite, program schedule and move favorite. In the TV guide, OK on a coming program also offers *Remind me*.
+- **YouTube:** OK on a video: *Play*, *Info and comments* and *Go to channel*.
+- **Plex and Jellyfin:** OK on an episode: *Play* and mark as watched or unwatched; OK on a season: *Episodes* and mark the season as watched.
+- **Home screen:** *Edit home screen* (↑ from the first row of apps) moves apps.
+- **App settings:** *Settings* in the menu of Plex, Jellyfin, YouTube, TV 2 Play, Radio and Live TV, and at the bottom in Games. Electricity price and Weather have their choices as buttons at the top.
+- **Player:** the app's own choices are at the top of the player menu (YouTube: *Info and comments*, Live TV: favorite).
 
 **During playback:**
 - OK pauses and resumes.
 - ←/→ seek, and seeking speeds up while you hold the key, from 10 s up to 10 min per step.
-- ↓ or 🔴 opens the player menu: subtitles, audio, quality, speed, subtitle search and aspect ratio.
+- ↓ or 🔴 opens the player menu: subtitles, audio, quality, speed, subtitle search and aspect ratio (Twitch: chat on/off).
 - 🟢 shows info, and Back stops.
-- In Live TV, ↑/↓ or CH± changes channel.
+- In Live TV, ↑/↓ or CH± changes channel, and → opens the menu.
+- Game streaming is the exception: the arrows, OK and Back go to the game, so 🔴 Red opens the menu (a controller quits with Select + Start + LB + RB).
 
 **Quick panel:** 🔴 Red on the home screen (or the Power key) opens a panel from the right with the time, the box's name and address, a **sleep timer** (off, 15, 30, 60, 90 or 120 minutes - ←/→ or OK; a message one minute before, then the box goes to sleep), shortcuts to Bluetooth, Picture and sound, Network and all settings, and Sleep, Restart and Power off.
 
@@ -170,7 +181,7 @@ In the App Store on the home screen you can install more apps, update apps (*Upd
 
 | App | Details |
 |---|---|
-| **Live TV** | M3U playlist or Xtream Codes login (live channels only). Channels are grouped by country. Favorites can be sorted. **TV guide** shows your favorites on a timeline (left/right moves between programs, OK watches the channel). Channel numbers and now/next information come from XMLTV or Xtream's short EPG. **Reminders:** Yellow on a coming program in the TV guide - a minute before it starts, the TV offers to switch (after the video, if something is playing). |
+| **Live TV** | M3U playlist or Xtream Codes login (live channels only). Channels are grouped by country. Favorites can be sorted. **TV guide** shows your favorites on a timeline (left/right moves between programs, OK watches the channel). Channel numbers and now/next information come from XMLTV or Xtream's short EPG. **Reminders:** OK on a coming program in the TV guide, then *Remind me* - a minute before it starts, the TV offers to switch (after the video, if something is playing). |
 | **Plex** | Sign in via `plex.tv/link`. Supports several servers, hubs, libraries, "Continue watching" and direct play. Search covers all servers. The home screen has two styles: *hero* or *focus*. *Search subtitles* in the player menu finds subtitles on OpenSubtitles (see below). |
 | **Jellyfin** | Server address, username and password. Libraries, a series page with seasons and episodes, and "Continue watching" and "Next episode" (also on the home screen). Always plays the original file (no server transcoding), with the audio and subtitles chosen for your Jellyfin user. Playback progress is reported to the server, and the server sees the box under its own name. *Search subtitles* in the player menu finds subtitles on OpenSubtitles (see below). |
 | **YouTube** | yt-dlp with Node.js and mpv. Videos are resolved while they are in focus, so playback starts almost instantly. Quality up to 1080p on a Raspberry Pi (1440p and 4K are greyed out: YouTube only has them as VP9/AV1). Optional account via cookies from the phone page. Subscriptions can be imported from Google Takeout. |
@@ -180,8 +191,9 @@ In the App Store on the home screen you can install more apps, update apps (*Upd
 | **Weather** | The weather now, the next 24 hours and 7 days from Open-Meteo (open data, no account). The temperature is shown in the home screen's top bar. The town comes from the time zone until you choose one (Yellow). |
 | **Electricity price** | The Danish spot price with VAT hour by hour, today and tomorrow (from about 13:00), from Energinet's Energi Data Service. The price now in green, yellow or red, the cheapest hours and a chart. West or East Denmark (Yellow switches). Choose your grid company in the app's settings for the full price (grid tariff, Energinet's tariffs and electricity tax), and add your supplier's surcharge if you like. |
 | **Seerr** | Find and request movies and shows (Overseerr/Jellyseerr) with Plex login. Season picker, trailers, "More like this" and Netflix top 10 for your country. |
+| **Flimmer** | Find and request movies and series on a Flimmertv server (one server that does the jobs of Seerr, Radarr and Sonarr). Finds the server on the network by itself (port 7676), and you sign in with your Flimmertv email and password. Discover, search, a season picker, trailers, "More like this", and *My requests*, where a request still waiting can be withdrawn. |
 | **Music** | Receives music from your phone over **AirPlay** (iPhone/iPad/Mac) or **Bluetooth** (any phone). "Now playing" shows cover art, title and progress. |
-| **Radio** | Stations from radio-browser.info (free and open, no login). The country follows the one chosen in the setup guide (the stations of another country can be chosen in the app). Popular, genres, search, recently played and favourites (Yellow; the first nine get a number you press on the remote). Plays in the background while you use the rest of the box, with a *Now playing* box in the top bar and the station on the home screen; it stops by itself when a video or game starts. |
+| **Radio** | Stations from radio-browser.info (free and open, no login). The country follows the one chosen in the setup guide (the stations of another country can be chosen in the app). Popular, genres, search, recently played and favourites (OK on a station, then *Favourite*; the first nine get a number you press on the remote). Plays in the background while you use the rest of the box, with a *Now playing* box in the top bar and the station on the home screen; it stops by itself when a video or game starts. |
 | **Games** | Game streaming from a PC running Sunshine with our own client `tvmoon`. HEVC is decoded in hardware straight to the screen, at 1080p 120 Hz. To pair, type the PIN shown on the TV on `https://localhost:47990` on the PC (Sunshine rejects it on the PC's IP address); Back cancels. |
 | **Tesla** | Reads your own TeslaMate over its MQTT server (port 1883), read only: nothing is sent to the car and nothing is saved on disk. Finds TeslaMate on the network or takes an address, and asks for an MQTT login when the server wants one. Battery, range, charging, climate, tyres, locks and doors, the car seen from above, where it is, route with arrival time and battery at arrival, model and software. The side menu (Left) chooses the car, turns each part on or off, and puts up to 3 cars small at the top of the home screen. Everything is fitted to one screen. |
 | **Media** | USB drives are mounted automatically. SMB network drives are supported, with a username and password or as a guest, and NFS drives (`nfs://server/path`, NFSv4 or v3). Plays movies, music and pictures. |

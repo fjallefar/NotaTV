@@ -247,6 +247,14 @@ void player_message(const char *msg, const char *arg); /* script-message to mpv'
 void player_cmd(const char *const *args);   /* mpv command during playback (e.g. {"seek","30","absolute",NULL}) */
 bool player_state(double *pos, double *dur, bool *paused); /* false = nothing is playing */
 PlayResult player_run(const PlayRequest *rq);
+/* The app's own items at the top of the player menu (e.g. "Info and comments", "Add to favorites"), for the next
+   player_run only. label: asked each time the menu opens (it may change with the channel); act: true = playback goes
+   on (msg = a short message, may stay empty), false = playback stops and player_action() says which (at most 4 items).
+   Functions, not PlayRequest fields: an app built against an older tv.h passes a smaller struct. */
+typedef const char *(*PlayActionLabel)(void *ud, int idx);
+typedef bool (*PlayAction)(void *ud, int idx, char *msg, size_t n);
+NOTA_NEW void player_set_actions(int n, PlayActionLabel label, PlayAction act, void *ud);
+NOTA_NEW int player_action(void); /* after player_run: the item that stopped playback, index + 1 (0 = none) */
 void drm_reset_hdr(void);
 bool display_hdr_ok(void);                 /* false if the connected display's EDID has no HDR support */
 bool display_known(void);                  /* a display is connected and its EDID could be read */

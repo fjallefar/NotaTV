@@ -256,6 +256,7 @@ typedef struct {
     bool menu;             /* the settings menu in mpv is open */
     char quality[32];      /* anmodet kvalitet */
     bool subsearch, goto_channel;
+    int action;            /* app item that stops playback: idx + 1 (0 = none) */
     int subpick;           /* -1 = none */
     int zap;               /* live: channel being browsed to (-1 = none) */
     double zap_t;
@@ -358,6 +359,36 @@ static void zap(const PlayRequest *rq, MpvState *st, int d) {
     if (rq->channel_preview) rq->channel_preview(rq->ud, st->zap);
 }
 
+/* the app's own menu items (player_set_actions): set for the next player_run, then taken by it */
+static struct { int n; PlayActionLabel label; PlayAction act; void *ud; } pact_next, pact;
+static int pact_result;
+void player_set_actions(int n, PlayActionLabel label, PlayAction act, void *ud) {
+    pact_next.n = label && act ? (n < 0 ? 0 : n > 4 ? 4 : n) : 0;
+    pact_next.label = label;
+    pact_next.act = act;
+    pact_next.ud = ud;
+}
+int player_action(void) { return pact_result; }
+
+static cJSON *actions_json(void) {
+    cJSON *a = cJSON_CreateArray();
+    for (int i = 0; i < pact.n; i++) {
+        const char *l = pact.label(pact.ud, i);
+        cJSON_AddItemToArray(a, cJSON_CreateString(l ? l : ""));
+    }
+    return a;
+}
+
+/* the labels as a JSON array for notatv-osd.lua */
+static void send_actions(void) {
+    if (pact.n <= 0) return;
+    cJSON *a = actions_json();
+    char *js = cJSON_PrintUnformatted(a);
+    if (js) CMD("script-message", "notatv-actions", js);
+    free(js);
+    cJSON_Delete(a);
+}
+
 static char ipc_buf[65536];
 static size_t ipc_blen; /* reset with every new connection (no half line from the previous mpv) */
 static bool ipc_skip;   /* a line longer than the buffer: dropped up to its end */
@@ -401,7 +432,18 @@ static void ipc_read(MpvState *st, const PlayRequest *rq) {
                     cJSON *a0 = cJSON_GetArrayItem(args, 0), *a1 = cJSON_GetArrayItem(args, 1);
                     const char *m = cJSON_IsString(a0) ? a0->valuestring : "";
                     const char *v = cJSON_IsString(a1) ? a1->valuestring : "";
-                    if (!strcmp(m, "notatv-menu")) st->menu = !strcmp(v, "1");
+                    if (!strcmp(m, "notatv-menu")) {
+                        st->menu = !strcmp(v, "1");
+                        if (st->menu) send_actions();
+                    }
+                    else if (!strcmp(m, "notatv-action") && *v && atoi(v) >= 0 && atoi(v) < pact.n) {
+                        char msg[160] = "";
+                        int idx = atoi(v);
+                        if (pact.act(pact.ud, idx, msg, sizeof msg)) {
+                            if (msg[0]) player_osd(msg, 2500);
+                            send_actions(); /* the label may have changed (e.g. Remove from favorites) */
+                        } else st->action = idx + 1;
+                    }
                     else if (!strcmp(m, "notatv-quality")) snprintf(st->quality, sizeof st->quality, "%s", v);
                     else if (!strcmp(m, "notatv-subsearch")) st->subsearch = true;
                     else if (!strcmp(m, "notatv-subpick")) st->subpick = atoi(v);
@@ -731,12 +773,17 @@ PlayResult player_run(const PlayRequest *rq) {
         SDL_Log("player: spiller allerede - %s ignoreret", rq && rq->title ? rq->title : "afspilning");
         PlayResult r = {0};
         r.cancelled = true;
+        pact_next.n = 0; /* its menu items are not for the next playback */
         return r;
     }
     active = true;
+    pact = pact_next; /* the app's menu items count for this playback only */
+    pact_next.n = 0;
+    pact_result = 0;
     audio_bg_take();
     run_cmd("%s/music pause >/dev/null 2>&1 &", helper_path());
     PlayResult res = player_run_inner(rq);
+    pact.n = 0;
     run_cmd("%s/music resume >/dev/null 2>&1 &", helper_path());
     active = false;
     return res;
@@ -802,6 +849,7 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
         }
         if (rq->speed) cJSON_AddBoolToObject(m, "speed", true);
         if (rq->channel) cJSON_AddStringToObject(m, "channel", rq->channel);
+        if (pact.n > 0) cJSON_AddItemToObject(m, "actions", actions_json()); /* first labels; sent again when the menu opens */
         if (rq->sub_search) cJSON_AddBoolToObject(m, "subsearch", true);
         /* without a key the menu explains where to add it instead of searching */
         if (rq->sub_search && !*cfg_get("os_apikey", "")) cJSON_AddBoolToObject(m, "subnokey", true);
@@ -944,9 +992,10 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
                 break;
             }
             /* menuens anmodninger */
-            if (st.quality[0] || st.goto_channel) {
+            if (st.quality[0] || st.goto_channel || st.action) {
                 snprintf(res.quality, sizeof res.quality, "%s", st.quality);
                 res.goto_channel = st.goto_channel;
+                pact_result = st.action;
                 quit = true;
                 continue;
             }
@@ -999,7 +1048,7 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
         ipc_fd = -1;
         res.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
         /* mpv failed before playback got going (e.g. the display mode does not exist): try the next one */
-        if (res.quality[0] || res.goto_channel) break;
+        if (res.quality[0] || res.goto_channel || pact_result) break;
         bool failed_early = !user_quit && res.exit_code != 0 && !st.have_dur && app_time() - started < 20;
         if (failed_early && attempt < n_modes - 1) {
             SDL_Log("player: mpv fejlede (kode %d) med mode '%s' - prøver igen", res.exit_code, modes[attempt]);
@@ -1013,7 +1062,7 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
     res.eof = st.eof || (st.dur > 0 && st.pos > st.dur - 3);
     if (rq->progress && st.have_dur) rq->progress(rq->ud, st.pos, st.dur, true, false);
     if (video_off) app_video_resume();
-    if (!user_quit && !res.quality[0] && !res.goto_channel && res.exit_code != 0 && !st.have_dur) {
+    if (!user_quit && !res.quality[0] && !res.goto_channel && !pact_result && res.exit_code != 0 && !st.have_dur) {
         /* mpv's log says why: a server that never answered is worth saying (it is not the box) */
         bool no_answer = false, http_error = false; /* an answer like 401/404 is not "did not answer" */
         FILE *lf = fopen(mpv_log_path(), "r");

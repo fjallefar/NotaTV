@@ -129,7 +129,7 @@ def not_english(ids, label):
 # App ids are English (the folder, manifest id, nota_app id, cfg app_<id>, data folder and App Store catalog all
 # use it, and it cannot be changed later without moving boxes over - see RENAMED_APPS in src/shell/apps.c).
 # A new app must be added here on purpose, after checking that the id is an English word or a name (not Danish).
-APP_IDS = {'drtv', 'electricity', 'games', 'iptv', 'jellyfin', 'media', 'music', 'plex', 'radio', 'seerr',
+APP_IDS = {'drtv', 'electricity', 'flimmer', 'games', 'iptv', 'jellyfin', 'media', 'music', 'plex', 'radio', 'seerr',
            'tesla', 'tv2', 'twitch', 'weather', 'youtube'}
 
 

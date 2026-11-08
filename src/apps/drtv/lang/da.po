@@ -183,9 +183,6 @@ msgstr "Se"
 msgid "Open"
 msgstr "Åbn"
 
-msgid "Menu"
-msgstr "Menu"
-
 msgid "Sign out of DRTV"
 msgstr "Log ud af DRTV"
 
@@ -195,26 +192,20 @@ msgstr "Sletter DR-login og det, du har set, fra boksen"
 msgid "DR's live channels and programmes - free, no account needed"
 msgstr "DR's kanaler og programmer - gratis, uden konto"
 
-msgid "DRTV on NotaTV"
-msgstr "DRTV på NotaTV"
-
-msgid "Live TV: DR1, DR2, DR Ramasjang, DRTV Ekstra and TVA Live, with what is on now and next"
-msgstr "Live TV: DR1, DR2, DR Ramasjang, DRTV Ekstra og TVA Live med det, der vises nu og bagefter"
-
-msgid "The DRTV front page, categories, A-Z, kids and search"
-msgstr "DRTV's forside, kategorier, A-Å, børn og søgning"
-
-msgid "Series with seasons and episodes, resume where you stopped and skip the end credits"
-msgstr "Serier med sæsoner og afsnit, fortsæt hvor du slap, og spring rulleteksterne over"
-
-msgid "Works without an account - sign in with your DR account for your own Continue watching and My list"
-msgstr "Virker uden konto - log ind med din DR-konto for din egen Fortsæt med at se og Min liste"
-
 msgid "Episode %d"
 msgstr "Afsnit %d"
 
 msgid "CONTINUE IN DRTV"
 msgstr "FORTSÆT I DRTV"
 
-msgid "Continue watching on the NotaTV home screen"
-msgstr "Fortsæt med at se på NotaTV's forside"
+msgid "Menu and search"
+msgstr "Menu og søg"
+
+msgid "Help line at the bottom instead of the button bar"
+msgstr "Hjælpelinje nederst i stedet for knapbjælken"
+
+msgid "OK opens or plays, Left opens the menu with Search"
+msgstr "OK åbner eller afspiller, venstre åbner menuen med Søg"
+
+msgid "Nothing at the bottom covers the rows any more"
+msgstr "Intet nederst dækker rækkerne længere"

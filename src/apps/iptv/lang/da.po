@@ -114,14 +114,11 @@ msgstr "Ingen kanaler i gruppen"
 msgid "Move with up/down · OK when you are done"
 msgstr "Flyt med op/ned · OK når du er færdig"
 
-msgid "Right: move channel · The Favorite button at the bottom removes it"
-msgstr "Højre: flyt kanal · Favorit-knappen nederst fjerner den"
+msgid "OK: remove or move the favorite"
+msgstr "OK: fjern eller flyt favoritten"
 
 msgid "Watch channel"
 msgstr "Se kanal"
-
-msgid "Channel menu"
-msgstr "Kanalmenu"
 
 msgid "Favorite"
 msgstr "Favorit"
@@ -309,8 +306,6 @@ msgstr "Ingen programinfo"
 msgid "Loading…"
 msgstr "Indlæser…"
 
-
-
 msgid "Remove reminder"
 msgstr "Fjern påmindelse"
 
@@ -350,23 +345,38 @@ msgstr "Ingen programguide - tilføj et link til programguiden med Menu nederst"
 msgid "Add favorites to see their programs here (Favorite at the bottom, on a channel)."
 msgstr "Tilføj favoritter for at se deres programmer her (Favorit nederst, på en kanal)."
 
-msgid "Choose Menu at the bottom to change the playlist."
-msgstr "Vælg Menu nederst for at skifte playliste."
+msgid "Press Left or choose Menu at the bottom to change the playlist."
+msgstr "Tryk til venstre eller vælg Menu nederst for at skifte playlist."
 
-msgid "No favorites yet. Choose a channel and press Favorite at the bottom."
-msgstr "Ingen favoritter endnu. Vælg en kanal, og tryk på Favorit nederst."
+msgid "No favorites yet. Press OK on a channel and choose Add to favorites."
+msgstr "Ingen favoritter endnu. Tryk OK på en kanal, og vælg Tilføj til favoritter."
 
 msgid "Settings"
 msgstr "Indstillinger"
 
-msgid "Easier to use without colored keys"
-msgstr "Nemmere at bruge uden farveknapper"
+msgid "Watch, favorite, program schedule"
+msgstr "Se, favorit, programoversigt"
 
-msgid "The menu is a button at the bottom on every screen, also when there are no channels"
-msgstr "Menuen er en knap nederst på alle skærme, også når der ikke er nogen kanaler"
+msgid "Groups"
+msgstr "Grupper"
 
-msgid "Settings in the menu"
-msgstr "Indstillinger i menuen"
+msgid "Open"
+msgstr "Åbn"
 
-msgid "The colored keys still work as shortcuts"
-msgstr "Farveknapperne virker stadig som genveje"
+msgid "Menu"
+msgstr "Menu"
+
+msgid "OK on a channel opens its choices"
+msgstr "OK på en kanal åbner dens valg"
+
+msgid "OK on a channel: Watch, favorite, program schedule, move favorite - OK, OK watches"
+msgstr "OK på en kanal: Se, favorit, programoversigt, flyt favorit - OK, OK ser kanalen"
+
+msgid "TV guide: OK on a coming program offers Remind me"
+msgstr "TV-guiden: OK på et kommende program giver Påmind mig"
+
+msgid "While watching: Right opens the menu with the favorite at the top"
+msgstr "Mens du ser: højre åbner menuen med favorit øverst"
+
+msgid "Left from the groups opens the Live TV menu"
+msgstr "Venstre fra grupperne åbner Live TV-menuen"

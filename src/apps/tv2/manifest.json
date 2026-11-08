@@ -1,6 +1,6 @@
 {
   "id": "tv2",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "api": 2,
   "name": "TV 2 Play",
   "desc": "Streaming from TV 2 Play (Widevine)",
@@ -11,11 +11,14 @@
   "order": 35,
   "default": false,
   "nonfree": true,
-  "helpers": ["wvserve"],
+  "helpers": [
+    "wvserve"
+  ],
   "changes": {
-    "summary": "Easier to use without colored keys",
+    "summary": "Search and filter without colored keys",
     "points": [
-      "Settings in the side menu"
+      "The search page has buttons: Search, earlier searches and Clear history",
+      "Search results: the filter (All, Movies, Series) is reached with Up"
     ]
   }
 }

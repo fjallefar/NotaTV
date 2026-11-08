@@ -75,9 +75,6 @@ msgstr "Lyt"
 msgid "Live"
 msgstr "Direkte"
 
-msgid "Menu"
-msgstr "Menu"
-
 msgid "News"
 msgstr "Nyheder"
 
@@ -168,11 +165,20 @@ msgstr "Ingen favoritter endnu. Vælg en station, og tryk på Favorit nederst - 
 msgid "Settings"
 msgstr "Indstillinger"
 
-msgid "Easier to use without colored keys"
-msgstr "Nemmere at bruge uden farveknapper"
+msgid "Stop, favourite"
+msgstr "Stop, favorit"
 
-msgid "Settings in the side menu"
-msgstr "Indstillinger i sidemenuen"
+msgid "Listen, favourite"
+msgstr "Lyt, favorit"
 
-msgid "Favourites are added with the Favourite button at the bottom"
-msgstr "Favoritter tilføjes med Favorit-knappen nederst"
+msgid "Menu and search"
+msgstr "Menu og søg"
+
+msgid "OK on a station opens its choices"
+msgstr "OK på en station åbner dens valg"
+
+msgid "OK on a station: Listen (or Stop) and Favourite - OK, OK listens"
+msgstr "OK på en station: Lyt (eller Stop) og Favorit - OK, OK lytter"
+
+msgid "The buttons at the bottom no longer cover the stations"
+msgstr "Knapperne nederst dækker ikke stationerne længere"

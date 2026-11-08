@@ -120,8 +120,15 @@ static void copy_item(HomeItem *d, const HomeItem *s) {
     d->logo = str_dup(s->logo);
 }
 
+/* The row below the apps (an app's "Continue watching", "Recent channels" ...) is switched off (9/11, the user:
+ * no longer useful on the home screen). The code stays so it can come back - STATUS Debat. 0 = no row is shown and
+ * the apps' rows are not fetched. */
+#define HOME_APP_ROWS 0
+
 /* row 2 per app: title (NULL = no row) */
-static const char *cont_title(const NotaApp *a) { return a && a->row ? T(a->row_title ? a->row_title : a->name) : NULL; }
+static const char *cont_title(const NotaApp *a) {
+    return HOME_APP_ROWS && a && a->row ? T(a->row_title ? a->row_title : a->name) : NULL;
+}
 
 /* the row below the apps: the focused app's, if it has one. Moving DOWN onto an app without a row keeps the row of
  * the app above, so e.g. "Recent channels" can be reached through the second row of apps; moving sideways to an
@@ -226,7 +233,7 @@ void home_hidden_forget(const char *app) {
 static void collect_continue(Home *h) {
     const NotaApp *app = pick_cont_app(h);
     HomeItem *all = NULL;
-    int nall = app && app->row ? app->row(&all) : 0;
+    int nall = HOME_APP_ROWS && app && app->row ? app->row(&all) : 0;
     if (!all) nall = 0;
     /* leave out what was removed from the row - unless it has been watched again since */
     hid_load();
@@ -261,7 +268,7 @@ static void home_enter(Screen *s) {
     h->moving = h->on_edit = h->editing = false;
     build_vis();
     if (h->col >= n_vis) h->col = 0;
-    for (int i = 0; i < n_vis; i++) if (vis[i]->row_refresh) vis[i]->row_refresh();
+    for (int i = 0; i < n_vis; i++) if (HOME_APP_ROWS && vis[i]->row_refresh) vis[i]->row_refresh();
     collect_continue(h);
     h->refreshed = h->fetched = app_time();
 }
@@ -297,7 +304,7 @@ static void home_update(Screen *s, float dt) {
        are fetched again every 5 minutes - not while nobody uses the box (screensaver, the box left on) */
     if (app_time() - h->refreshed > 2) {
         if (app_time() - h->fetched > 300 && app_time() - input_last_activity() < 600) {
-            for (int i = 0; i < n_vis; i++) if (vis[i]->row_refresh) vis[i]->row_refresh();
+            for (int i = 0; i < n_vis; i++) if (HOME_APP_ROWS && vis[i]->row_refresh) vis[i]->row_refresh();
             h->fetched = app_time();
         }
         collect_continue(h);
@@ -409,7 +416,9 @@ static void home_draw(Screen *s) {
     }
 
     float shift = home_shift(h); /* scroll up when row 2 is selected, or to a low app row */
-    clip_push(0, 150, UI_W, APPS_Y - 170);
+    /* the top text stops above the grid where it is now (it scrolls up to a third row of apps) */
+    float shelf_bottom = APPS_Y - 20 - shift;
+    clip_push(0, 150, UI_W, shelf_bottom > 150 ? shelf_bottom - 150 : 0);
     bool shelf_vis = h->row_anim < 0.2f; /* the row below the apps scrolls up over the top */
     if (shelf_vis && shelf_it && h->bg_url[0]) { /* big image behind: the title of what you can continue */
         float x = MARGIN, y = 230;

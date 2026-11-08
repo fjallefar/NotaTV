@@ -18,6 +18,27 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.17
+
+> **In short:** One rule for the remote everywhere: OK on something you can watch or hear opens its choices.
+> - OK on a channel, a video or a station opens a sheet with Play first (OK, OK plays) - nothing hides at the bottom of long lists any more
+> - The player's menu has the app's own choices at the top (YouTube: Info and comments, Live TV: favorite)
+> - New app in the App Store: Flimmer, for requesting movies and series on a Flimmertv server
+> - The row below the apps on the home screen is switched off for now
+
+- The bottom button bar could not be reached in long lists in 1.0.16 (YouTube, Live TV, Radio, Plex, TV 2, DRTV): it is gone from the lists. OK on an item opens its sheet, ← opens the app's menu.
+- Player: apps can put their own items at the top of the player's menu (`player_set_actions`, for apps built for NotaTV after 1.0.16; older apps are not affected).
+- New app: Flimmer 1.0.0 - Discover, search and request movies and series (choose the seasons) on a Flimmertv server, follow your requests and withdraw one that is still waiting. Finds the server on the network by itself (port 7676).
+- Home screen: the row below the apps ("Continue watching", "Recent channels" ...) is switched off, and the text at the top no longer shows behind the grid when it scrolls to a third row.
+
+<!-- tldr:da
+Kort: Én regel for fjernbetjeningen overalt: OK på noget, man kan se eller høre, åbner dets valg.
+- OK på en kanal, en video eller en station åbner et ark med Afspil øverst (OK, OK afspiller) - intet gemmer sig nederst i lange lister længere
+- Afspillerens menu har appens egne valg øverst (YouTube: Info og kommentarer, Live TV: favorit)
+- Ny app i App Store: Flimmer, til at anmode om film og serier på en Flimmertv-server
+- Rækken under apps på forsiden er slået fra indtil videre
+-->
+
 ## 1.0.16
 
 > **In short:** NotaTV no longer needs the colored keys - everything can be done with the arrows, OK and Back.

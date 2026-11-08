@@ -1739,7 +1739,11 @@ static void dr_draw(Screen *s) {
         text_draw_wrap(F_REG, 28, cx - 480, UI_H / 2, 960, 4, 40, C_TEXT2, v->msg);
     }
     bool chan = v->nrows && v->row < v->nrows && v->col < v->rows[v->row].n && v->rows[v->row].it[v->col].kind == K_CHANNEL;
-    draw_keybar(x0, UI_H - 62, chan ? T("Watch") : T("Open"), NULL, NULL, T("Search"), T("Menu"));
+    { /* help line instead of a button bar (STATUS 104): OK, and ← for the side menu */
+        const char *ok_l = chan ? T("Watch") : T("Open");
+        draw_hint(x0, UI_H - 62, "OK", ok_l);
+        draw_hint(x0 + text_width(F_SEMI, 20, "OK") + 30 + text_width(F_REG, 22, ok_l) + 44, UI_H - 62, "←", T("Menu and search"));
+    }
     side_draw(&v->side);
 }
 

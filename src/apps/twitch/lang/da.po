@@ -153,11 +153,11 @@ msgstr "Live-streams fra dine fulgte kanaler og hele Twitch"
 msgid "Quality: %s"
 msgstr "Kvalitet: %s"
 
+msgid "Menu and search"
+msgstr "Menu og søg"
 
+msgid "Help line at the bottom instead of the button bar"
+msgstr "Hjælpelinje nederst i stedet for knapbjælken"
 
-
-msgid "Signing out leaves nothing behind"
-msgstr "Log ud efterlader intet"
-
-msgid "Replies from Twitch that arrive after you sign out are thrown away, so nothing of the account is kept"
-msgstr "Svar fra Twitch, der kommer efter du er logget ud, smides væk, så intet fra kontoen gemmes"
+msgid "OK watches, Left opens the menu with Search"
+msgstr "OK ser, venstre åbner menuen med Søg"
