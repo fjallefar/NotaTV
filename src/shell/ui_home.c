@@ -91,8 +91,10 @@ typedef struct {
     char bg_url[512], prev_url[512], bgl_key[600];
     float bg_fade, bgl_fade;
     Layer *bgl;
-    bool moving;       /* move mode (Green on a tile): the arrows move the focused tile, OK/Back ends it */
-    float rest, hint_a; /* time on the same tile; the "Move app" hint fades in after a while there */
+    bool moving;       /* move mode: the arrows move the focused tile, OK/Back ends it */
+    /* "Edit home screen" (top right, ↑ from the first row of apps): OK on an app picks it up to move it, OK on the
+       row below asks to remove the item, Back ends it. Green is a shortcut (LG CEC has no real "held OK") */
+    bool on_edit, editing;
     float wiggle;
 } Home;
 static float home_shift(const Home *h) { return h->row_anim * 340 + h->grid_anim; }
@@ -256,7 +258,7 @@ static void collect_continue(Home *h) {
 static void home_enter(Screen *s) {
     Home *h = s->st;
     if (h->moving) save_order();
-    h->moving = false;
+    h->moving = h->on_edit = h->editing = false;
     build_vis();
     if (h->col >= n_vis) h->col = 0;
     for (int i = 0; i < n_vis; i++) if (vis[i]->row_refresh) vis[i]->row_refresh();
@@ -277,10 +279,8 @@ static void home_update(Screen *s, float dt) {
         collect_continue(h);
     }
     if (h->moving) h->wiggle += dt;
-    h->rest += dt;
-    h->hint_a = anim_to(h->hint_a, h->rest > 3 && (h->row == 0 || h->n_cont > 0) && !h->moving ? 1 : 0, dt, h->rest > 3 ? 4 : 18);
     for (int i = 0; i < n_vis; i++)
-        spring_to(&h->foc[i], (h->row == 0 && h->col == i && !h->moving) || (h->moving && h->col == i) ? 1 : 0, dt, SPRING_SNAPPY);
+        spring_to(&h->foc[i], (h->row == 0 && h->col == i && !h->moving && !h->on_edit) || (h->moving && h->col == i) ? 1 : 0, dt, SPRING_SNAPPY);
     for (int i = 0; i < 64; i++)
         spring_to(&h->foc2[i], h->row == 1 && h->col2 == i ? 1 : 0, dt, SPRING_SNAPPY);
     if (n_vis && vis[h->col] != h->tint_app) { h->tint_prev = h->tint_app; h->tint_app = vis[h->col]; h->tint_fade = 0; }
@@ -397,13 +397,15 @@ static void home_draw(Screen *s) {
     draw_topbar(NULL);
     const char *ip = app_ip();
     draw_icon(ip[0] ? ICON_WIFI : ICON_WIFI, UI_W - 250, 82, 34, ip[0] ? C_TEXT2 : C_DANGER);
-    if (h->hint_a > 0.01f && n_vis > 1) { /* how to move a tile: Green (there is no "hold OK" on CEC) - only after
-                                               resting on a tile for a while, so it is not mistaken for a status */
-        const char *l = h->row == 1 ? T("Remove from the row") : T("Move app");
-        float hx = UI_W - 310 - 36 - text_width(F_REG, 22, l);
-        fill_rrect(hx - 14, 58, text_width(F_REG, 22, l) + 64, 46, 23, RGBA(255, 255, 255, (uint8_t)(16 * h->hint_a)));
-        fill_circle(hx + 15, 81, 12, RGBA(64, 186, 92, (uint8_t)(255 * h->hint_a)));
-        text_draw(F_REG, 22, hx + 36, 68, color_alpha(C_TEXT2, h->hint_a), AL_LEFT, l);
+    if (n_vis > 1 && (h->on_edit || h->editing || (h->row == 0 && h->col < grid_cols()))) {
+        /* "Edit home screen" / "Done": a button reached with ↑ from the first row of apps */
+        const char *l = h->editing ? T("Done") : T("Edit home screen");
+        float right = MARGIN + grid_cols() * (TILE_W + TILE_GAP) - TILE_GAP; /* over the grid's right edge */
+        float w = text_width(F_SEMI, 24, l) + 48, bx = right - w, by = APPS_Y - 78 - home_shift(h);
+        draw_chips(bx, by, &l, 1, h->on_edit ? 0 : -1);
+        if (h->editing && !h->moving)
+            text_draw(F_REG, 22, bx - 24, by + 12, C_TEXT2, AL_RIGHT,
+                      h->row == 1 ? T("OK removes it from the row  ·  Back: done") : T("OK picks up the app to move it  ·  Back: done"));
     }
 
     float shift = home_shift(h); /* scroll up when row 2 is selected, or to a low app row */
@@ -546,7 +548,15 @@ static void remove_ask(Home *h) {
 
 static bool home_input(Screen *s, const InputEvent *ev) {
     Home *h = s->st;
-    h->rest = 0;
+    if (h->on_edit) { /* the "Edit home screen" button has focus */
+        switch (ev->a) {
+        case A_OK: if (!ev->repeat) { h->editing = !h->editing; h->on_edit = false; } return true;
+        case A_DOWN: case A_BACK: h->on_edit = false; return true;
+        case A_HOME: h->on_edit = h->editing = false; return true;
+        case A_LEFT: case A_RIGHT: case A_UP: return true;
+        default: break;
+        }
+    }
     if (h->moving) { /* move mode: the arrows move the tile, OK/Back/Home put it down */
         int cols = grid_cols(), to = h->col;
         switch (ev->a) {
@@ -587,8 +597,15 @@ static bool home_input(Screen *s, const InputEvent *ev) {
     case A_UP:
         if (h->row == 1) h->row = 0;
         else if (h->col >= grid_cols()) { h->col -= grid_cols(); h->keep_row = false; }
+        else if (n_vis > 1) h->on_edit = true;
         return true;
     case A_OK:
+        if (h->editing) { /* edit mode: pick up the app / remove the item instead of opening it */
+            if (ev->repeat) return true;
+            if (h->row == 0 && n_vis > 1) { h->moving = true; h->wiggle = 0; }
+            else if (h->row == 1 && h->col2 < h->n_cont && h->cont_app) remove_ask(h);
+            return true;
+        }
         if (h->row == 0) {
             /* the app grows out of its tile (and shrinks back into it on Back) */
             int cols = grid_cols(), r = h->col / cols, c = h->col % cols;
@@ -612,6 +629,7 @@ static bool home_input(Screen *s, const InputEvent *ev) {
         power_menu_open();
         return true;
     case A_BACK: case A_HOME:
+        if (h->editing) { h->editing = false; if (ev->a == A_BACK) return true; }
         h->row = 0;
         h->col = 0;
         h->keep_row = false;

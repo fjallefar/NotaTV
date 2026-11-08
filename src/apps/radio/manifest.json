@@ -1,6 +1,6 @@
 {
   "id": "radio",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "Radio",
   "desc": "Radio stations from your country and the whole world",
@@ -9,5 +9,12 @@
   "c2": [200, 70, 20],
   "fg": [255, 255, 255],
   "order": 75,
-  "default": false
+  "default": false,
+  "changes": {
+    "summary": "Easier to use without colored keys",
+    "points": [
+      "Settings in the side menu",
+      "Favourites are added with the Favourite button at the bottom"
+    ]
+  }
 }

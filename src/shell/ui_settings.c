@@ -698,6 +698,7 @@ typedef struct {
     Spring hl_sec, hl_item; /* the focus pills slide between rows */
     float col_f;            /* 0 = the menu on the left has focus, 1 = the list */
     int hl_sec_id;          /* the list the item pill belongs to (it jumps, not slides, to a new list) */
+    bool direct;            /* opened from an app (app_settings_open): leaving its list closes Settings */
 } Settings;
 
 typedef struct { Settings *s; int id; const Section *cs; char *vals[MAX_ITEMS]; int token; } InfoJob;
@@ -787,6 +788,7 @@ static int first_selectable(const Section *sec) {
 
 /* Back/Left: out of an app's settings to the list of apps, otherwise to the side menu */
 static bool leave_item(Settings *s) {
+    if (s->sub >= 0 && s->direct) { app_pop(); return true; } /* back to the app it was opened from */
     if (s->sub >= 0) {
         s->item = s->sub;
         s->sub = -1;
@@ -1033,6 +1035,32 @@ Screen *settings_screen(void) {
     s->input = settings_input;
     s->destroy = settings_destroy;
     return s;
+}
+
+/* an app's own settings (the same list as Settings → Apps → <app>), opened from inside the app: Back/Left returns
+   to the app. false = the app has nothing to show right now */
+bool app_settings_open(const char *id) {
+    const NotaApp *a = app_find(id);
+    if (!a || !a->settings) return false;
+    Screen *s = settings_screen(); /* builds the Apps list */
+    Settings *st = s->st;
+    for (int i = 0; i < N_SEC; i++) {
+        if (sections[i].items != apps_links) continue;
+        for (int k = 0; k < n_app_links; k++) {
+            if (app_subs[k].items != a->settings) continue;
+            st->sec = i;
+            st->sub = k;
+            st->col = 1;
+            st->col_f = 1;
+            st->direct = true;
+            st->hl_sec = (Spring){i * 76.0f, 0};
+            st->item = first_selectable(cur_sec(st));
+            app_push(s);
+            return true;
+        }
+    }
+    settings_destroy(s);
+    return false;
 }
 
 /* Settings opened on one section (0 = Network, 1 = Picture and sound, 3 = Bluetooth ...) with the list in focus */

@@ -84,9 +84,6 @@ msgstr "Programguide: ingen kanaler matchede"
 msgid "Program guide: %d of %d channels"
 msgstr "Programguide: %d af %d kanaler"
 
-msgid "No program guide - add an EPG URL under Settings (red button)"
-msgstr "Ingen programguide - tilføj en EPG-URL under Indstillinger (rød knap)"
-
 msgid "Loading program guide…"
 msgstr "Henter programguide…"
 
@@ -110,12 +107,6 @@ msgstr "Indtast M3U-link"
 
 msgid "No channels"
 msgstr "Ingen kanaler"
-
-msgid "Press the red button to change the playlist."
-msgstr "Tryk på den røde knap for at ændre playliste."
-
-msgid "No favorites yet. Choose a channel and press Favorite at the bottom (or Yellow)."
-msgstr "Ingen favoritter endnu. Vælg en kanal og tryk Favorit nederst (eller Gul)."
 
 msgid "No channels in this group"
 msgstr "Ingen kanaler i gruppen"
@@ -312,9 +303,6 @@ msgstr "TV-guide"
 msgid "Left/right: earlier and later programs"
 msgstr "Venstre/højre: tidligere og senere programmer"
 
-msgid "Add favorites to see their programs here (Yellow on a channel)."
-msgstr "Tilføj favoritter for at se deres programmer her (gul på en kanal)."
-
 msgid "No program info"
 msgstr "Ingen programinfo"
 
@@ -356,11 +344,29 @@ msgstr "Ikke nu"
 msgid "  (reminder)"
 msgstr "  (påmindelse)"
 
-msgid "Reminders: Yellow on a coming program in the TV guide - a minute before it starts, the TV offers to switch"
-msgstr "Påmindelser: Gul på et kommende program i TV-guiden - et minut før start tilbyder TV'et at skifte"
+msgid "No program guide - add a program guide link with Menu at the bottom"
+msgstr "Ingen programguide - tilføj et link til programguiden med Menu nederst"
 
-msgid "A program in the channel's schedule can be chosen for a reminder too"
-msgstr "Et program i kanalens programoversigt kan også vælges til en påmindelse"
+msgid "Add favorites to see their programs here (Favorite at the bottom, on a channel)."
+msgstr "Tilføj favoritter for at se deres programmer her (Favorit nederst, på en kanal)."
 
-msgid "Reminders"
-msgstr "Påmindelser"
+msgid "Choose Menu at the bottom to change the playlist."
+msgstr "Vælg Menu nederst for at skifte playliste."
+
+msgid "No favorites yet. Choose a channel and press Favorite at the bottom."
+msgstr "Ingen favoritter endnu. Vælg en kanal, og tryk på Favorit nederst."
+
+msgid "Settings"
+msgstr "Indstillinger"
+
+msgid "Easier to use without colored keys"
+msgstr "Nemmere at bruge uden farveknapper"
+
+msgid "The menu is a button at the bottom on every screen, also when there are no channels"
+msgstr "Menuen er en knap nederst på alle skærme, også når der ikke er nogen kanaler"
+
+msgid "Settings in the menu"
+msgstr "Indstillinger i menuen"
+
+msgid "The colored keys still work as shortcuts"
+msgstr "Farveknapperne virker stadig som genveje"

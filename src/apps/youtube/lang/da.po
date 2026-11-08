@@ -81,9 +81,6 @@ msgstr "Ingen abonnementer endnu - åbn en kanal og vælg Abonnér"
 msgid "Your channels"
 msgstr "Dine kanaler"
 
-msgid "No subscriptions yet - open a channel (hold OK on a video) and choose Subscribe"
-msgstr "Ingen abonnementer endnu - åbn en kanal (hold OK på en video) og vælg Abonnér"
-
 msgid "%.1fM views"
 msgstr "%.1f mio. visninger"
 
@@ -306,8 +303,17 @@ msgstr "YouTube: %s er forbundet"
 msgid "Up to 1080p on a Raspberry Pi (YouTube has 1440p and 4K only in formats it cannot decode)"
 msgstr "Op til 1080p på en Raspberry Pi (YouTube har kun 1440p og 4K i formater, den ikke kan afkode)"
 
-msgid "Small fixes"
-msgstr "Små rettelser"
+msgid "Settings"
+msgstr "Indstillinger"
 
-msgid "Casting and preparing videos are more reliable when several things happen at once"
-msgstr "Cast og forberedelse af videoer er mere stabile, når flere ting sker samtidig"
+msgid "No subscriptions yet - choose Info and comments at the bottom on a video, then Subscribe"
+msgstr "Ingen abonnementer endnu - vælg Info og kommentarer nederst på en video, og derefter Abonnér"
+
+msgid "Easier to use without colored keys"
+msgstr "Nemmere at bruge uden farveknapper"
+
+msgid "Settings in the side menu"
+msgstr "Indstillinger i sidemenuen"
+
+msgid "Subscribe: Info and comments at the bottom on a video"
+msgstr "Abonnér: Info og kommentarer nederst på en video"

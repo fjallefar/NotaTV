@@ -1,6 +1,6 @@
 {
   "id": "media",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "Media",
   "desc": "Movies, music and pictures from USB and network",
@@ -11,9 +11,9 @@
   "order": 90,
   "default": true,
   "changes": {
-    "summary": "A slow drive no longer freezes the screen",
+    "summary": "Easier to use without colored keys",
     "points": [
-      "Folders are read in the background with a spinner, so a slow or hung network drive does not freeze the box"
+      "Refresh is a button at the bottom - press down to reach it"
     ]
   }
 }

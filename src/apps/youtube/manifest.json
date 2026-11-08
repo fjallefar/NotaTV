@@ -1,6 +1,6 @@
 {
   "id": "youtube",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "api": 2,
   "name": "YouTube",
   "desc": "Search and watch videos on YouTube",
@@ -11,9 +11,10 @@
   "order": 40,
   "default": true,
   "changes": {
-    "summary": "Small fixes",
+    "summary": "Easier to use without colored keys",
     "points": [
-      "Casting and preparing videos are more reliable when several things happen at once"
+      "Settings in the side menu",
+      "Subscribe: Info and comments at the bottom on a video"
     ]
   }
 }

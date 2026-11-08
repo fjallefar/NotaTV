@@ -4,7 +4,7 @@ Everything on the NotaTV home screen is an app. The system (`src/shell`) has the
 drawing, the player, the on-screen keyboard and dialogs, network calls, settings, jobs and translations. An app only
 adds its own screens and logic.
 
-Every app is a package, i.e. a folder here in `src/apps/`: Live TV (`iptv`), Plex, Jellyfin, YouTube, Twitch, TV 2 Play (`tv2`), DRTV (`drtv`), Weather (`weather`), Electricity price (`elpris`),
+Every app is a package, i.e. a folder here in `src/apps/`: Live TV (`iptv`), Plex, Jellyfin, YouTube, Twitch, TV 2 Play (`tv2`), DRTV (`drtv`), Weather (`weather`), Electricity price (`electricity`),
 Seerr, Music, Radio, Games, Tesla and Media. Each one is built into its own `app.so`. Only Settings and the App Store are part of
 `tvshell` itself. The image comes without apps: they are downloaded from the App Store (the GitHub release `apps`)
 into `/data/notatv/apps-pkg/<id>/`.
@@ -32,7 +32,12 @@ src/apps/<id>/
 
 The installed package is `manifest.json`, `app.so` and `lang/`.
 
-- `id` contains only lowercase letters, digits, `-` and `_`. It must match the folder name.
+- `id` contains only lowercase letters, digits, `-` and `_`. It must match the folder name and the id in `nota_app`.
+  **It is English** (or a name like `plex`), like everything in the code - never Danish (`electricity`, not `elpris`).
+  The id is the folder, `app_<id>` in the settings, the data folder and the App Store entry, so it cannot simply be
+  changed later: a renamed app needs an entry in `RENAMED_APPS` in `src/shell/apps.c`. `scripts/i18n-check.py` stops
+  on an id it does not know - add a new one to `APP_IDS` there on purpose.
+- Settings keys (`cfg`) start with a short English prefix of the id (`wx_`, `el_`, `tw_`).
 - `version` is the app's own version. The code gets it as `APP_VERSION` (src/apps/Makefile reads it from the
   manifest), so write `APP_VERSION` in `nota_app` - never a version number.
 - `api` is `NOTA_API` from `tv.h`. If a package is built for another API version, it is skipped when NotaTV starts.

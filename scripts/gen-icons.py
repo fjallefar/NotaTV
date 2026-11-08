@@ -128,7 +128,7 @@ APP_ICONS = {
       <g fill="#fff"><circle cx="232" cy="168" r="38"/><circle cx="282" cy="146" r="50"/><circle cx="326" cy="176" r="30"/>
       <rect x="196" y="166" width="160" height="40" rx="20"/></g>""", glow="#FFC93C"),
     # Electricity price: a lightning bolt over a small bar chart
-    "elpris": icon("#22C55E", "#0F5F33", """
+    "electricity": icon("#22C55E", "#0F5F33", """
       <g fill="#fff" opacity="0.55"><rect x="166" y="170" width="26" height="40" rx="6"/><rect x="200" y="150" width="26" height="60" rx="6"/>
       <rect x="270" y="160" width="26" height="50" rx="6"/><rect x="304" y="130" width="26" height="80" rx="6"/></g>
       <path d="M262 56 L214 148 H248 L232 224 L290 122 H254 L276 56 Z" fill="#FFE14D" stroke="#FFE14D" stroke-width="6" stroke-linejoin="round"/>""", glow="#FFE14D"),

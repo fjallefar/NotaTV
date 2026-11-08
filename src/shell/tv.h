@@ -339,6 +339,9 @@ typedef struct {
 #define ITEM_HIDDEN "" /* returned by Item.locked: hide the item (older NotaTV shows it empty and locked) */
 extern const char *const set_onoff[]; /* {"0","1",NULL} for IT_TOGGLE */
 const char *set_hdr_locked(void);     /* "Not supported by the display" when the display has no HDR */
+/* the app's own settings (NotaApp.settings) opened from inside the app - e.g. "Settings" in its side menu - so they
+   are where they are used; Back returns to the app. false = nothing to show (NotaTV 1.0.16+: check it is not NULL) */
+NOTA_NEW bool app_settings_open(const char *id);
 /* "Sign out of <app>?" - confirmed, forget() runs and a toast says so */
 void app_ask_signout(const char *app, void (*forget)(void));
 
@@ -364,7 +367,7 @@ typedef struct NotaApp {
     void (*tick)(void);        /* every frame while installed (background services) */
     void (*apply)(void);       /* installed/uninstalled or settings changed: start/stop background services */
     void (*forget)(void);      /* delete everything saved (sign out, uninstall); NULL = nothing saved */
-    const Item *settings;      /* Settings → Apps → <name>; NULL = none */
+    const Item *settings;      /* Settings → Apps → <name>, and from inside the app with app_settings_open; NULL = none */
     int n_settings;
     /* the row under the apps on the home screen (all optional) */
     const char *row_title;                         /* "Continue watching" */
@@ -483,6 +486,11 @@ bool app_wait_frame(const char *msg);
 void draw_buttons(float cx, float y, const char *const *labels, int n, int sel);
 /* left/right between the buttons; false when left is pressed on the first button (then the side menu can open) */
 bool buttons_nav(int *sel, int n, const InputEvent *ev);
+/* a row of small buttons ("chips") on a screen, left-aligned from x: the screen's own actions and choices, e.g.
+   "East (DK2)" · "Grid company: N1" in Electricity price. sel = the chip in focus, -1 = none. Returns the x after
+   the last one. Use buttons_nav for left/right. Everything a screen can do must be reachable like this (or in a
+   list/sheet) with the arrows, OK and Back - the color keys and Menu are only shortcuts (docs/navigation-redesign.md) */
+NOTA_NEW float draw_chips(float x, float y, const char *const *labels, int n, int sel);
 char *fmt_duration(double secs, char *buf, size_t n);
 char *str_dup(const char *s);
 char *file_read_all(const char *path, long max); /* whole file, 0-terminated; NULL if missing or > max */
@@ -503,6 +511,8 @@ void confirm_open(const char *title, const char *msg, const char *yes, const cha
 void notes_open(const char *kicker, const char *title, const char *summary, const char *const *points, int n,
                 const char *yes, const char *no, ConfirmDone cb, void *ud);
 typedef void (*ChoiceDone)(void *ud, int idx); /* -1 = cancelled */
+/* a list to choose from (a sheet over the screen). "Title\nExplanation" shows a short explanation under the title
+   (NotaTV 1.0.16+; older ones show it on one line) */
 void choice_open(const char *title, const char *const *items, int n, int sel, ChoiceDone cb, void *ud);
 
 /* "Next episode" countdown overlay (auto-advance). play=true: the user pressed OK or the countdown ran out;

@@ -610,7 +610,7 @@ static void show_lib(Jf *v, int li) {
     show_grid(v, v->libs[li].name, p);
 }
 
-/* side menu: 0 Home, 1 Search, 2.. libraries, last Log out */
+/* side menu: 0 Home, 1 Search, 2.. libraries, Change server, Sign out, Settings (signed in) */
 static void build_side(Jf *v) {
     side_clear(&v->side);
     snprintf(v->side.subtitle, sizeof v->side.subtitle, "%s", cfg_get("jf_name", ""));
@@ -620,6 +620,7 @@ static void build_side(Jf *v) {
     if (*jf_token()) { /* only when signed in */
         side_add(&v->side, T("Change server"), ICON_SEARCH, true);
         side_add(&v->side, T("Sign out"), ICON_LOCK, false);
+        if (app_settings_open) side_add(&v->side, T("Settings"), ICON_GEAR, false); /* the app's settings, right here */
     }
 }
 
@@ -946,11 +947,13 @@ static void side_activate(Jf *v, int idx) {
         v->state = 0;
         v->btn = 0;
         v->msg[0] = 0;
+    } else if (idx - 2 == v->n_libs + 2) {
+        app_settings_open("jellyfin");
     } else confirm_open(T("Sign out of Jellyfin?"), T("You will need to sign in again to watch your movies and shows."), T("Sign out"), T("Cancel"), logout_cb, v);
 }
 
 /* ---------- watched / unwatched / remove from "Continue watching" ----------
-   The green key on a tile or an episode (and buttons on the detail page). For a series or a season Jellyfin marks
+   The buttons on the detail page (Green on a tile or an episode is a shortcut). For a series or a season Jellyfin marks
    every episode. The open lists are changed in place (so the focus stays where it is); the series page fetches
    its episodes again. "Remove from Continue" sets the saved position back to 0. */
 enum { JW_SEEN, JW_UNSEEN, JW_DECK };

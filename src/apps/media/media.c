@@ -182,6 +182,7 @@ static void media_draw(Screen *s) {
         draw_empty(m->root ? T("No drives found") : T("Empty folder"),
                    m->root ? T("Plug a USB drive into the box, or add a network drive under Settings → Cast and sharing.") :
                              T("There are no movies, music or pictures in this folder."));
+        draw_keybar(96, UI_H - 62, NULL, NULL, NULL, NULL, T("Refresh"));
         return;
     }
     clip_push(0, 160, UI_W, UI_H - 220);
@@ -189,7 +190,7 @@ static void media_draw(Screen *s) {
         float y = 170 + i * 84 - m->scroll;
         if (y < 90 || y > UI_H) continue;
         Entry *e = &m->e[i];
-        bool f = i == m->sel;
+        bool f = i == m->sel && !keybar_focused();
         if (f) fill_rrect(96, y, UI_W - 192, 74, 14, C_FOCUS);
         Color tc = f ? RGB(10, 10, 10) : C_TEXT;
         IconId ic = m->root ? ICON_USB : e->dir ? ICON_FOLDER : has_ext(e->name, audio_ext) ? ICON_MUSIC : ICON_FILM;
@@ -204,6 +205,7 @@ static void media_draw(Screen *s) {
         }
     }
     clip_pop();
+    draw_keybar(96, UI_H - 62, NULL, NULL, NULL, NULL, T("Refresh")); /* ↓ below the last row (also the Menu key) */
 }
 
 static Screen *media_at(const char *path);
@@ -250,7 +252,7 @@ static bool media_input(Screen *s, const InputEvent *ev) {
     Media *m = s->st;
     switch (ev->a) {
     case A_UP: if (m->sel > 0) m->sel--; return true;
-    case A_DOWN: if (m->sel < m->n - 1) m->sel++; return true;
+    case A_DOWN: if (m->sel < m->n - 1) { m->sel++; return true; } return false; /* below the last: the bar */
     case A_CHUP: m->sel = m->sel > 8 ? m->sel - 8 : 0; return true;
     case A_CHDOWN: m->sel = m->sel + 8 < m->n ? m->sel + 8 : (m->n ? m->n - 1 : 0); return true;
     case A_OK: case A_RIGHT: case A_PLAYPAUSE:
@@ -263,11 +265,7 @@ static bool media_input(Screen *s, const InputEvent *ev) {
         } else if (ev->a != A_RIGHT) play_entry(m, m->sel);
         return true;
     case A_LEFT: app_pop(); return true;
-    case A_MENU: {
-        static const char *items[] = {N_("Refresh")};
-        choice_open(T("Media"), items, 1, 0, media_menu_cb, m);
-        return true;
-    }
+    case A_MENU: media_menu_cb(m, 0); return true; /* the only choice: refresh right away */
     default: return false;
     }
 }

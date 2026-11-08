@@ -1,5 +1,5 @@
 {
-  "id": "elpris",
+  "id": "electricity",
   "version": "1.0.1",
   "api": 2,
   "name": "Electricity price",
@@ -13,8 +13,8 @@
   "changes": {
     "summary": "Electricity price on NotaTV",
     "points": [
-      "The full price with the grid tariff: choose your grid company in the app's settings",
-      "Your electricity company's surcharge can be added too"
+      "The full price with the grid tariff: choose your grid company at the top of the app - the first time, the app asks",
+      "Price area and your electricity company's surcharge are chosen at the top too"
     ]
   }
 }

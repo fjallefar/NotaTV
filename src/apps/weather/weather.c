@@ -401,7 +401,15 @@ static bool wx_shelf(float x, float y) {
 }
 
 /* ---------- the app's screen ---------- */
-typedef struct { int dummy; } WxView;
+typedef struct { int sel; } WxView;
+/* the choices at the top (chips): town and the home screen temperature, changed right here */
+enum { WC_TOWN, WC_TOPBAR, N_WC };
+static void wx_chips(WxView *v, float x, float y) {
+    char tb[96];
+    snprintf(tb, sizeof tb, "%s: %s", T("Temperature on the home screen"), cfg_int("wx_topbar", 1) ? T("On") : T("Off"));
+    const char *chips[N_WC] = {T("Change town"), tb};
+    draw_chips(x, y, chips, N_WC, v->sel);
+}
 
 static void wx_enter(Screen *s) {
     (void)s;
@@ -410,19 +418,24 @@ static void wx_enter(Screen *s) {
 static void wx_update(Screen *s, float dt) { (void)s; (void)dt; wx_tick(); }
 
 static void wx_draw(Screen *s) {
-    (void)s;
+    WxView *v = s->st;
     draw_background();
     draw_topbar(NULL);
     float x0 = 120;
     if (!W.ok) {
         if (fetching) draw_spinner(UI_W / 2, UI_H / 2, 30, C_TEXT);
-        else draw_empty(T("No weather right now"), T("The weather could not be fetched - check the network. Yellow chooses another town."));
-        draw_keybar(x0, UI_H - 62, NULL, NULL, T("Change town"), NULL, NULL);
+        else draw_empty(T("No weather right now"), draw_chips ? T("The weather could not be fetched - check the network, or choose another town at the top.")
+                                                              : T("The weather could not be fetched - check the network. Yellow chooses another town."));
+        if (draw_chips) {
+            text_draw(F_BOLD, 52, x0, 130, C_TEXT, AL_LEFT, *town() ? town() : T("Weather"));
+            wx_chips(v, x0, 196);
+        } else draw_keybar(x0, UI_H - 62, NULL, NULL, T("Change town"), NULL, NULL);
         return;
     }
     char b[200], f[16];
     /* now */
     text_draw(F_BOLD, 52, x0, 130, C_TEXT, AL_LEFT, *town() ? town() : T("Weather"));
+    if (draw_chips) wx_chips(v, x0, 196);
     draw_wx_icon(W.code, W.day, x0 + 120, 360, 230);
     fmt_temp(W.temp, b, sizeof b);
     text_draw(F_BOLD, 150, x0 + 270, 250, C_TEXT, AL_LEFT, b);
@@ -481,12 +494,18 @@ static void wx_draw(Screen *s) {
         else snprintf(b, sizeof b, T("Open-Meteo · updated %d min ago"), mins);
         text_draw(F_REG, 20, UI_W - x0, UI_H - 50, C_TEXT3, AL_RIGHT, b);
     }
-    draw_keybar(x0, UI_H - 62, NULL, NULL, T("Change town"), NULL, NULL);
+    if (!draw_chips) draw_keybar(x0, UI_H - 62, NULL, NULL, T("Change town"), NULL, NULL);
 }
 
 static bool wx_input(Screen *s, const InputEvent *ev) {
-    (void)s;
-    if ((ev->a == A_YELLOW || ev->a == A_OK) && !ev->repeat) { choose_town(); return true; }
+    WxView *v = s->st;
+    if (ev->a == A_YELLOW && !ev->repeat) { choose_town(); return true; } /* shortcut */
+    if (ev->a == A_OK && !ev->repeat) {
+        if (!draw_chips || v->sel == WC_TOWN) choose_town();
+        else { cfg_set_int("wx_topbar", !cfg_int("wx_topbar", 1)); }
+        return true;
+    }
+    if (draw_chips && (ev->a == A_LEFT || ev->a == A_RIGHT)) { buttons_nav(&v->sel, N_WC, ev); return true; }
     return false;
 }
 static void wx_destroy(Screen *s) {
@@ -523,7 +542,7 @@ static const char *town_value(void) { return *town() ? town() : T("From the time
 static const char *const onoff_v[] = {"0", "1", NULL}, *const onoff_l[] = {N_("Off"), N_("On"), NULL};
 static const Item wx_items[] = {
     {N_("Town"), IT_ACTION, .action = choose_town, .value = town_value, .help = N_("The weather is for this town")},
-    {N_("Temperature in the top bar"), IT_CYCLE, "wx_topbar", "1", onoff_v, onoff_l,
+    {N_("Temperature on the home screen"), IT_CYCLE, "wx_topbar", "1", onoff_v, onoff_l,
      .help = N_("The temperature and an icon at the top of the home screen")},
 };
 const NotaApp nota_app = {

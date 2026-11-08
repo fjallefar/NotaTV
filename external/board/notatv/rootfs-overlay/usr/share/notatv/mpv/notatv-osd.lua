@@ -89,6 +89,7 @@ local timer
 
 -- ---- Twitch chat state and text measuring (also used by the info bar and loading) ----
 local chat_on, chat_msgs, chat_dirty = false, {}, false
+local chat_avail = false -- this stream has a chat (Twitch): "Chat" in the menu
 local CHAT_W, CHAT_PAD, CHAT_FS = 400, 20, 25
 local CHAT_RATIO = CHAT_W / W
 local CHAT_X = W - CHAT_W
@@ -568,6 +569,8 @@ function render()
     else
         table.insert(parts, rrect(96, H - 124, 104, 44, 22, RED, "00"))
         table.insert(parts, text(148, H - 102, 24, true, "FFFFFF", "LIVE", 5))
+        -- live: up/down change channel, so the menu is on the right arrow (shown here, no color key needed)
+        if not menu then table.insert(parts, text(226, H - 102, 26, false, "D8D8D8", T("Right: menu"), 4)) end
     end
     -- clock in the corner
     if not menu then table.insert(parts, text(W - 96, 70, 40, true, "FFFFFF", os.date("%H:%M"), 9)) end
@@ -647,7 +650,7 @@ local function sections()
     if meta.subsearch then table.insert(s, {id = "subsearch", label = T("Search subtitles"), value = meta.subnokey and T("Needs a key") or ""}) end
     if meta.channel then table.insert(s, {id = "channel", label = T("Go to channel"), value = meta.channel}) end
     table.insert(s, {id = "subdelay", label = T("Subtitle delay"), value = string.format("%+.1f s", mp.get_property_number("sub-delay", 0))})
-    -- used to be on Blue/Yellow; now gathered in the menu (Red = menu everywhere in NotaTV)
+    if chat_avail then table.insert(s, {id = "chat", label = T("Chat"), value = chat_on and T("On") or T("Off")}) end
     local asp = mp.get_property("video-aspect-override", "-1")
     table.insert(s, {id = "aspect", label = T("Aspect ratio"), value = ASPECTS[asp] or T("Automatic")})
     table.insert(s, {id = "stats", label = T("Technical info"), value = stats_on and T("On") or T("Off")})
@@ -683,6 +686,11 @@ local function options(id)
         for _, v in ipairs({"-1", "16:9", "4:3", "2.35:1"}) do
             table.insert(o, {label = ASPECTS[v], on = cur == v or (v == "-1" and not ASPECTS[cur]),
                 act = function() mp.set_property("video-aspect-override", v) end})
+        end
+    elseif id == "chat" then -- tvshell keeps the setting (tw_chat); the app shows or hides the chat
+        for _, v in ipairs({"1", "0"}) do
+            table.insert(o, {label = v == "1" and T("On") or T("Off"), on = chat_on == (v == "1"),
+                act = function() mp.commandv("script-message", "notatv-chat-set", v) end})
         end
     elseif id == "subdelay" then
         for _, v in ipairs({-2, -1, -0.5, 0, 0.5, 1, 2}) do
@@ -973,7 +981,7 @@ scrub_timer = mp.add_periodic_timer(1 / 60, function()
 end)
 scrub_timer:kill()
 
--- ---- Twitch chat: sidebar in the right quarter; the video is scaled down next to it (yellow toggles) ----
+-- ---- Twitch chat: sidebar in the right quarter; the video is scaled down next to it ("Chat" in the menu, Yellow) ----
 local ovc = mp.create_osd_overlay("ass-events")
 ovc.z = 5
 ovc.res_x, ovc.res_y = W, H
@@ -1014,6 +1022,7 @@ mp.register_script_message("notatv-chat", function(s)
     chat_dirty = true
 end)
 mp.register_script_message("notatv-chat-show", function(v)
+    chat_avail = true
     local on = v == "1"
     if on == chat_on then return end
     chat_on = on

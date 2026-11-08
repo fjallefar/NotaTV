@@ -430,9 +430,6 @@ msgstr "Gå til forsiden"
 msgid "Good afternoon"
 msgstr "God eftermiddag"
 
-msgid "Move app"
-msgstr "Flyt app"
-
 msgid "Move with the arrows · OK when you are done"
 msgstr "Flyt med pilene · OK, når du er færdig"
 
@@ -1698,9 +1695,6 @@ msgstr "Den kommer selv tilbage, når du ser den igen."
 msgid "Remove"
 msgstr "Fjern"
 
-msgid "Remove from the row"
-msgstr "Fjern fra rækken"
-
 msgid "%s forgotten"
 msgstr "%s er glemt"
 
@@ -1826,3 +1820,18 @@ msgstr "Dvale fra telefonsiden (%s)"
 
 msgid "Restarting from the phone page (%s)"
 msgstr "Genstarter fra telefonsiden (%s)"
+
+msgid "Edit home screen"
+msgstr "Redigér forside"
+
+msgid "OK removes it from the row  ·  Back: done"
+msgstr "OK fjerner den fra rækken  ·  Tilbage: færdig"
+
+msgid "OK picks up the app to move it  ·  Back: done"
+msgstr "OK samler appen op, så den kan flyttes  ·  Tilbage: færdig"
+
+msgid "Right: menu"
+msgstr "Højre: menu"
+
+msgid "Chat"
+msgstr "Chat"

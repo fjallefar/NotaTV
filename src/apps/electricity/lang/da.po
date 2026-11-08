@@ -1,4 +1,4 @@
-# NotaTV app "elpris" - Danish
+# NotaTV app "electricity" - Danish
 msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -57,14 +57,6 @@ msgstr "Elprisen time for time, i dag og i morgen"
 msgid "Electricity price on NotaTV"
 msgstr "Elpris på NotaTV"
 
-msgid "The Danish spot price with VAT hour by hour, today and tomorrow (from about 13:00), from Energi Data Service"
-msgstr "Den danske spotpris inkl. moms time for time, i dag og i morgen (fra cirka kl. 13), fra Energi Data Service"
-
-msgid "The price now in green, yellow or red compared with the rest of the day, and the cheapest hours"
-msgstr "Prisen nu i grøn, gul eller rød i forhold til resten af dagen, og de billigste timer"
-
-msgid "West or East Denmark - guessed from the Weather app's town, Yellow switches"
-msgstr "Vest- eller Østdanmark - gættet ud fra Vejr-appens by, Gul skifter"
 
 msgid "Full price with VAT: spot price, grid tariff from %s, Energinet's tariffs, electricity tax and your supplier's surcharge"
 msgstr "Samlet pris med moms: spotpris, nettarif fra %s, Energinets tariffer, elafgift og dit elselskabs tillæg"
@@ -96,8 +88,40 @@ msgstr "Ikke valgt"
 msgid "None"
 msgstr "Intet"
 
-msgid "The full price with the grid tariff: choose your grid company in the app's settings"
-msgstr "Den samlede pris med nettarif: vælg dit netselskab i appens indstillinger"
 
-msgid "Your electricity company's surcharge can be added too"
-msgstr "Dit elselskabs tillæg kan også lægges til"
+
+msgid "I don't know - show the spot price"
+msgstr "Ved ikke - vis spotprisen"
+
+msgid "Grid company\nThe company that owns the cables to your home - it is on your electricity bill"
+msgstr "Netselskab\nSelskabet, der ejer ledningerne til dit hjem - det står på din elregning"
+
+msgid "Supplier's surcharge\nWhat your electricity company adds per kWh, with VAT - on your bill or in your contract"
+msgstr "Elselskabets tillæg\nHvad dit elselskab lægger på pr. kWh med moms - står på regningen eller i aftalen"
+
+msgid "Who owns the cables to your home?\nIt is on your electricity bill - it gives the full price. You can change it at the top"
+msgstr "Hvem ejer ledningerne til dit hjem?\nDet står på din elregning og giver den samlede pris. Du kan ændre det øverst"
+
+msgid "Grid company: %s"
+msgstr "Netselskab: %s"
+
+msgid "Choose grid company"
+msgstr "Vælg netselskab"
+
+msgid "Surcharge: %s"
+msgstr "Tillæg: %s"
+
+msgid "Price with VAT: spot price, grid tariff from %s, Energinet's tariffs and electricity tax - add your supplier's surcharge at the top"
+msgstr "Pris med moms: spotpris, nettarif fra %s, Energinets tariffer og elafgift - tilføj elselskabets tillæg øverst"
+
+msgid "Spot price with VAT only - choose your grid company at the top to see the full price"
+msgstr "Kun spotpris med moms - vælg dit netselskab øverst for at se den samlede pris"
+
+msgid "The full price with the grid tariff: choose your grid company at the top of the app - the first time, the app asks"
+msgstr "Den samlede pris med nettarif: vælg dit netselskab øverst i appen - første gang spørger appen selv"
+
+msgid "Price area and your electricity company's surcharge are chosen at the top too"
+msgstr "Prisområde og dit elselskabs tillæg vælges også øverst"
+
+msgid "Price area\nWest: Jutland and Funen. East: Zealand, the islands and Bornholm"
+msgstr "Prisområde\nVest: Jylland og Fyn. Øst: Sjælland, øerne og Bornholm"

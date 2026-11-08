@@ -1,6 +1,6 @@
 {
   "id": "games",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": 2,
   "name": "Games",
   "desc": "Play games from your PC via Sunshine (Moonlight)",
@@ -11,9 +11,10 @@
   "order": 80,
   "default": true,
   "changes": {
-    "summary": "Small fixes",
+    "summary": "Easier to use without colored keys",
     "points": [
-      "Searching for PCs is more reliable while other things happen at the same time"
+      "Settings and Search for PCs again are buttons at the bottom - press down to reach them",
+      "The colored keys still work as shortcuts"
     ]
   }
 }

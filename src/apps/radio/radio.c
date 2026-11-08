@@ -763,7 +763,7 @@ static void search_done(void *ud, const char *q) {
 }
 static void open_search(Rd *v, const char *init) { keyboard_open(T("Search radio stations"), init, false, search_done, v); }
 
-enum { M_POP, M_FAV, M_RECENT, M_GENRES, M_COUNTRY, M_SEARCH };
+enum { M_POP, M_FAV, M_RECENT, M_GENRES, M_COUNTRY, M_SEARCH, M_SETTINGS };
 static void build_side(Rd *v) {
     side_clear(&v->side);
     const char *cc = radio_cc();
@@ -774,10 +774,11 @@ static void build_side(Rd *v) {
     side_add(&v->side, T("Genres"), ICON_FOLDER, false);
     side_add(&v->side, T("Change country"), ICON_TV, true);
     side_add(&v->side, T("Search"), ICON_SEARCH, false);
+    if (app_settings_open) side_add(&v->side, T("Settings"), ICON_GEAR, true); /* the app's settings, right here */
 }
 
 static void side_activate(Rd *v, int item) {
-    if (item != M_SEARCH) v->side.active = item;
+    if (item != M_SEARCH && item != M_SETTINGS) v->side.active = item;
     switch (item) {
     case M_POP: show_pop(v); break;
     case M_FAV: show_list(v, V_FAV); break;
@@ -785,6 +786,7 @@ static void side_activate(Rd *v, int item) {
     case M_GENRES: show_genres(v); break;
     case M_COUNTRY: show_countries(v); break;
     case M_SEARCH: open_search(v, ""); break;
+    case M_SETTINGS: app_settings_open("radio"); break;
     default: break;
     }
 }
@@ -903,7 +905,7 @@ static void rd_draw(Screen *s) {
     if (v->loading && !v->n) draw_spinner(cx, UI_H / 2, 30, C_TEXT);
     else if (!v->n) {
         const char *m = v->msg[0] ? v->msg
-                        : v->view == V_FAV ? T("No favourites yet. Press Yellow on a station to add it - the first nine get a number you can press on the remote.")
+                        : v->view == V_FAV ? T("No favourites yet. Choose a station and press Favourite at the bottom - the first nine get a number you can press on the remote.")
                         : v->view == V_RECENT ? T("The stations you listen to show up here.")
                         : T("Nothing found");
         text_draw_wrap(F_REG, 26, x0, top + 60, 1100, 4, 38, C_TEXT3, m);

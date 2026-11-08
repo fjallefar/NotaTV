@@ -126,12 +126,35 @@ def not_english(ids, label):
     return bool(bad)
 
 
+# App ids are English (the folder, manifest id, nota_app id, cfg app_<id>, data folder and App Store catalog all
+# use it, and it cannot be changed later without moving boxes over - see RENAMED_APPS in src/shell/apps.c).
+# A new app must be added here on purpose, after checking that the id is an English word or a name (not Danish).
+APP_IDS = {'drtv', 'electricity', 'games', 'iptv', 'jellyfin', 'media', 'music', 'plex', 'radio', 'seerr',
+           'tesla', 'tv2', 'twitch', 'weather', 'youtube'}
+
+
+def check_app_id(d):
+    folder = os.path.basename(d)
+    bad = False
+    mid = json.load(open(os.path.join(d, 'manifest.json'), encoding='utf-8')).get('id')
+    if mid != folder:
+        print(f'app {folder}: manifest id {mid!r} is not the folder name'); bad = True
+    if folder not in APP_IDS:
+        print(f'app {folder}: unknown app id - ids must be English (or a name); add it to APP_IDS in scripts/i18n-check.py'); bad = True
+    src = ''.join(open(f, encoding='utf-8', errors='replace').read() for f in glob.glob(os.path.join(d, '*.c')))
+    m = re.search(r'NOTA_API,\s*"([^"]*)"', src)
+    if not m or m.group(1) != folder:
+        print(f'app {folder}: nota_app id {m.group(1) if m else None!r} is not the folder name'); bad = True
+    return bad
+
+
 def main():
     ids = source_ids()
     bad = check(ids, LANG_DIR, '')
     bad |= not_english(ids, 'NotaTV')
     for app in sorted(glob.glob(os.path.join(ROOT, 'src/apps/*/manifest.json'))):
         d = os.path.dirname(app)
+        bad |= check_app_id(d)
         ids = c_ids(glob.glob(os.path.join(d, '*.c')), {})
         ch = json.load(open(app, encoding='utf-8')).get('changes') or {}  # what is new (shown in the App Store)
         for t in [ch.get('summary', '')] + list(ch.get('points', [])):

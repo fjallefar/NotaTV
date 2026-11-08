@@ -84,9 +84,6 @@ msgstr "Nyheder"
 msgid "No favourite number %c"
 msgstr "Ingen favorit nummer %c"
 
-msgid "No favourites yet. Press Yellow on a station to add it - the first nine get a number you can press on the remote."
-msgstr "Ingen favoritter endnu. Tryk Gul på en station for at tilføje den - de første ni får et nummer, du kan trykke på fjernbetjeningen."
-
 msgid "Nothing found"
 msgstr "Intet fundet"
 
@@ -164,3 +161,18 @@ msgstr "Beskyt OLED-skærme mod indbrænding"
 
 msgid "While the radio plays, everything on the Radio screen and the Now playing box moves very slowly, and the stations dim when you only listen. You will not notice it"
 msgstr "Mens radioen spiller, flytter alt på Radio-skærmen og Spiller nu-boksen sig meget langsomt, og kanalerne dæmpes, når du bare lytter. Du lægger ikke mærke til det"
+
+msgid "No favourites yet. Choose a station and press Favourite at the bottom - the first nine get a number you can press on the remote."
+msgstr "Ingen favoritter endnu. Vælg en station, og tryk på Favorit nederst - de første ni får et nummer, du kan trykke på fjernbetjeningen."
+
+msgid "Settings"
+msgstr "Indstillinger"
+
+msgid "Easier to use without colored keys"
+msgstr "Nemmere at bruge uden farveknapper"
+
+msgid "Settings in the side menu"
+msgstr "Indstillinger i sidemenuen"
+
+msgid "Favourites are added with the Favourite button at the bottom"
+msgstr "Favoritter tilføjes med Favorit-knappen nederst"

@@ -406,6 +406,10 @@ static void ipc_read(MpvState *st, const PlayRequest *rq) {
                     else if (!strcmp(m, "notatv-subsearch")) st->subsearch = true;
                     else if (!strcmp(m, "notatv-subpick")) st->subpick = atoi(v);
                     else if (!strcmp(m, "notatv-channel")) st->goto_channel = true;
+                    else if (!strcmp(m, "notatv-chat-set")) { /* "Chat" in the menu: the app (Twitch) follows tw_chat */
+                        cfg_set_int("tw_chat", atoi(v) != 0);
+                        CMD("script-message", "notatv-chat-show", atoi(v) ? "1" : "0");
+                    }
                     else if (!strcmp(m, "notatv-scrub-stop") && st->scrub >= 0 && *v) {
                         /* the key was released: the OSD has braked the marker - jump there shortly */
                         st->scrub = atof(v);
@@ -550,9 +554,9 @@ static void handle_action(const InputEvent *ev, const PlayRequest *rq, MpvState 
         if (!rq->is_live) scrub(st, -1, false);
         else CMD("script-message", "notatv-show");
         break;
-    case A_RIGHT:
+    case A_RIGHT: /* live: up/down change channel, so the menu (also Menu/Red) is on the right arrow */
         if (!rq->is_live) scrub(st, 1, false);
-        else CMD("script-message", "notatv-show");
+        else CMD("script-message", "notatv-menu-open");
         break;
     case A_FF: if (!rq->is_live) scrub(st, 1, true); break;
     case A_REW: if (!rq->is_live) scrub(st, -1, true); break;
@@ -587,7 +591,7 @@ static void handle_action(const InputEvent *ev, const PlayRequest *rq, MpvState 
         CMD("cycle", "audio");
         CMD("script-message", "notatv-track-osd", "audio");
         break;
-    case A_YELLOW: /* Yellow = action on what is shown: Twitch chat on/off (remembered). Aspect ratio and technical info are in the menu (Red) */
+    case A_YELLOW: /* shortcut: Twitch chat on/off (remembered) - also "Chat" in the menu */
         if (rq->chat) {
             int on = !cfg_int("tw_chat", 1);
             cfg_set_int("tw_chat", on);

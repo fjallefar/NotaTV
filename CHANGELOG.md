@@ -20,18 +20,27 @@ Kort: Én sætning om opdateringen.
 
 ## 1.0.16
 
-> **In short:** The app names under the bottom row of the home screen can be read again, and the Electricity price app can show the full price.
-> - Home screen: with many apps installed the grid slides up to the bottom row, so its names stay on screen
-> - Electricity price 1.0.1 (App Store): choose your grid company for the full price with the grid tariff
+> **In short:** NotaTV no longer needs the colored keys - everything can be done with the arrows, OK and Back.
+> - Electricity price and Weather: the choices are buttons at the top of the app (grid company, area, surcharge, town)
+> - Home screen: *Edit home screen* above the apps moves apps and removes items from the row below
+> - Settings in the apps' own menus, and the menu buttons at the bottom no longer have color dots
+> - The names under the third row of apps can be read again
 
 <!-- tldr:da
-Kort: Navnene under den nederste række på forsiden kan ses igen, og Elpris-appen kan vise den samlede pris.
-- Forsiden: med mange apps installeret glider gitteret op til den nederste række, så navnene kan ses
-- Elpris 1.0.1 (App Store): vælg dit netselskab for at få den samlede pris med nettarif
+Kort: NotaTV kræver ikke længere farveknapperne - alt kan gøres med pilene, OK og Tilbage.
+- Elpris og Vejr: valgene er knapper øverst i appen (netselskab, område, tillæg, by)
+- Forsiden: *Redigér forside* over apps flytter apps og fjerner punkter fra rækken nedenunder
+- Indstillinger i appenes egne menuer, og knapperne nederst har ikke længere farveprikker
+- Navnene under den tredje række apps kan ses igen
 -->
 
-- Home screen: with all apps installed there are three rows, and the names under the third row ended below the screen. The grid now slides up a little when the focus is in a low row
-- Electricity price 1.0.1 (an app update from the App Store): *Settings → Electricity price → Grid company* (28 Danish grid companies) gives the full price - spot price, the grid company's hourly tariff, Energinet's tariffs and electricity tax, with VAT, from Energi Data Service. *Supplier's surcharge* (0-1 kr per kWh) can be added. Without a grid company the app shows the spot price as before
+- **Without colored keys:** everything can be reached with the arrows, OK and Back, so a controller, the phone page or a remote without colored keys can do it all. The colored keys and Menu still work as shortcuts. The buttons at the bottom of a screen (reached with down) no longer have color dots
+- **Home screen:** *Edit home screen* (up from the first row of apps): OK picks up an app to move it, OK on the row below removes an item, Back ends it (Green still works as a shortcut). With all apps installed the grid slides up a little in a low row, so the names under the third row stay on screen
+- **Settings in the apps:** *Settings* in the menu of Plex, Jellyfin, YouTube, TV 2 Play, Radio and Live TV, and at the bottom in Games - the same settings as under Settings → Apps, and Back goes back to the app
+- **Live TV playback:** the right arrow opens the menu (up/down change channel); the menu shows *Right: menu*. Twitch: *Chat* on/off is in the player menu
+- **Electricity price 1.0.1** (App Store): the full price with the grid tariff - choose your grid company at the top of the app (the first time, the app asks). Price area and supplier's surcharge are chosen at the top too. The app's id is now `electricity` (was `elpris`): a box that has it is moved over by itself and downloads the new package
+- **Weather 1.0.1:** *Change town* and *Temperature on the home screen* are buttons at the top
+- App updates in the App Store: Games 1.0.5, Live TV 1.0.9, Jellyfin 1.0.7, Plex 1.0.8, Radio 1.0.1, Tesla 1.0.2, TV 2 Play 1.0.6, YouTube 1.0.8, Media 1.0.3
 
 ## 1.0.15
 

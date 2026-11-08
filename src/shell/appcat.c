@@ -26,6 +26,7 @@
 static CatApp cat[MAX_CAT];
 static int n_cat;
 static CatState state = CAT_NONE;
+static int cat_gen; /* counted up for every catalog read */
 static char cat_err[160];
 static bool restart_needed;
 
@@ -257,6 +258,7 @@ static void cat_done(void *arg) {
         state = CAT_ERROR;
     } else {
         n_cat = 0;
+        cat_gen++;
         cJSON *a;
         cJSON_ArrayForEach(a, apps) {
             if (n_cat >= MAX_CAT) break;
@@ -474,7 +476,24 @@ static void bg_check_tick(void) {
     appcat_refresh();
 }
 
+/* an app that is installed (app_<id>=1) but has no package - e.g. renamed (apps.c RENAMED_APPS: the old package
+   was deleted) or a package folder that went missing: downloaded again, once per fetched catalog */
+static int missing_gen;
+static void missing_tick(void) {
+    if (state != CAT_OK || missing_gen == cat_gen || !cfg_int("apps_migrated", 0) || appcat_busy(NULL, NULL, NULL)) return;
+    missing_gen = cat_gen;
+    int n = 0;
+    for (int i = 0; i < appcat_count(); i++) {
+        const CatApp *c = appcat_at(i);
+        char k[48];
+        snprintf(k, sizeof k, "app_%s", c->id);
+        if (atoi(cfg_get(k, "0")) != 0 && !app_find(c->id)) { appcat_install(c->id); n++; }
+    }
+    if (n) SDL_Log("appcat: %d installed apps had no package - downloading them", n);
+}
+
 void appcat_tick(void) {
     migrate_tick();
+    missing_tick();
     bg_check_tick();
 }

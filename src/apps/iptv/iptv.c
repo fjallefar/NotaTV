@@ -1001,7 +1001,7 @@ static int key_idx_cmp(const void *a, const void *b) { return strcmp(sort_keys[*
 
 static void epg_start(void) {
     if (D.short_epg) { D.epg_msg[0] = 0; return; } /* fetched per channel, see epg_want */
-    if (!D.epg_url || !*D.epg_url) { snprintf(D.epg_msg, sizeof D.epg_msg, T("No program guide - add an EPG URL under Settings (red button)")); return; }
+    if (!D.epg_url || !*D.epg_url) { snprintf(D.epg_msg, sizeof D.epg_msg, T("No program guide - add a program guide link with Menu at the bottom")); return; }
     if (D.epg_loading || D.n_ch == 0) return;
     EpgJob *j = calloc(1, sizeof *j);
     j->url = strdup(D.epg_url);
@@ -1366,7 +1366,7 @@ static void draw_guide(Iptv *v, float cx, float cy, float cw, float rh) {
     float nw = 250, gx = cx + nw, gw = cw - nw, top = cy + 46;
     float pps = gw / (float)GUIDE_SPAN; /* pixels per second */
     if (v->n_list == 0) {
-        text_draw(F_REG, 28, cx + cw / 2, cy + 200, C_TEXT2, AL_CENTER, T("Add favorites to see their programs here (Yellow on a channel)."));
+        text_draw(F_REG, 28, cx + cw / 2, cy + 200, C_TEXT2, AL_CENTER, T("Add favorites to see their programs here (Favorite at the bottom, on a channel)."));
         return;
     }
     /* time labels every half hour */
@@ -1469,7 +1469,10 @@ static void iptv_draw(Screen *s) {
         if (D.loading) {
             draw_spinner(UI_W / 2, UI_H / 2 - 40, 34, C_TEXT);
             text_draw(F_REG, 28, UI_W / 2, UI_H / 2 + 30, C_TEXT2, AL_CENTER, D.status);
-        } else draw_empty(T("No channels"), D.status[0] ? D.status : T("Press the red button to change the playlist."));
+        } else {
+            draw_empty(T("No channels"), D.status[0] ? D.status : T("Choose Menu at the bottom to change the playlist."));
+            draw_keybar(80, UI_H - 60, NULL, NULL, NULL, NULL, "Menu"); /* ↓ gives it focus */
+        }
         return;
     }
     /* groups */
@@ -1511,7 +1514,7 @@ static void iptv_draw(Screen *s) {
     time_t now = time(NULL);
     if (v->n_list == 0) {
         text_draw(F_REG, 28, cx + cw / 2, cy + 200, C_TEXT2, AL_CENTER,
-                  v->gsel == 0 ? T("No favorites yet. Choose a channel and press Favorite at the bottom (or Yellow).") : T("No channels in this group"));
+                  v->gsel == 0 ? T("No favorites yet. Choose a channel and press Favorite at the bottom.") : T("No channels in this group"));
     }
     for (int i = 0; i < v->n_list; i++) {
         float y = cy + i * rh - v->cscroll;
@@ -2278,6 +2281,7 @@ static void menu_done(void *ud, int idx) {
     case 1: keyboard_open(T("Playlist URL (M3U)"), cfg_get("iptv_url", "http://"), false, url_entered, NULL); break;
     case 2: iptv_xtream_login(); break;
     case 3: keyboard_open(T("Program guide URL (XMLTV)"), cfg_get("iptv_epg", D.epg_url ? D.epg_url : "http://"), false, epg_entered, NULL); break;
+    case 4: app_settings_open("iptv"); break; /* accounts and links: the app's settings, from here */
     default: break;
     }
 }
@@ -2372,8 +2376,9 @@ static bool iptv_input(Screen *s, const InputEvent *ev) {
     Iptv *v = s->st;
     bool configured = iptv_configured();
     if (ev->a == A_MENU || (!configured && ev->a == A_INFO)) {
-        const char *items[] = {T("Update channels now"), T("Change playlist (M3U link)"), T("Xtream Codes login"), T("Program guide (EPG) URL")};
-        choice_open("Live TV", items, 4, 0, menu_done, NULL);
+        const char *items[] = {T("Update channels now"), T("Change playlist (M3U link)"), T("Xtream Codes login"), T("Program guide (EPG) URL"),
+                               T("Settings")};
+        choice_open("Live TV", items, app_settings_open ? 5 : 4, 0, menu_done, NULL);
         return true;
     }
     if (!configured || D.n_ch == 0) {

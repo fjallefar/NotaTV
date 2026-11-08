@@ -1,6 +1,6 @@
 {
   "id": "jellyfin",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "api": 2,
   "name": "Jellyfin",
   "desc": "Movies and shows from your Jellyfin server",
@@ -11,9 +11,10 @@
   "order": 30,
   "default": false,
   "changes": {
-    "summary": "Small fixes",
+    "summary": "Easier to use without colored keys",
     "points": [
-      "A new sign-in gets a truly random device id on the server"
+      "Settings in the side menu",
+      "The colored keys still work as shortcuts"
     ]
   }
 }

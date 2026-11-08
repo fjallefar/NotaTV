@@ -1,9 +1,10 @@
-/* NotaTV app package "elpris" - the Danish electricity spot price per hour, today and tomorrow (from about 13:00),
+/* NotaTV app package "electricity" - the Danish electricity spot price per hour, today and tomorrow (from about 13:00),
  * from Energi Data Service (Energinet's open data, no key or account): the price now, the cheapest hours and a
- * chart. With the grid company chosen in Settings the price is the full one: spot price + the grid company's hourly
+ * chart. With the grid company chosen the price is the full one: spot price + the grid company's hourly
  * tariff + Energinet's tariffs + electricity tax (all from Energi Data Service's DatahubPricelist), with VAT, plus the
  * supplier's surcharge if one is set (it cannot be fetched). Without a grid company it is the spot price with VAT.
- * Price area West (DK1) or East (DK2): guessed from the Weather app's town, Yellow switches.
+ * Price area West (DK1) or East (DK2): guessed from the Weather app's town. Area, grid company and surcharge are
+ * chosen with the chips at the top (also in Settings); the first time the app asks for the grid company.
  * Built as app.so (see src/apps/README.md). */
 #include "tv.h"
 #include "vendor/cJSON.h"
@@ -431,25 +432,88 @@ static bool el_shelf(float x, float y) {
     return true;
 }
 
-typedef struct { int dummy; } ElView;
+/* ---------- the choices at the top (chips): area, grid company, surcharge - chosen right here, not in Settings ---------- */
+typedef struct { int sel; } ElView;
+enum { CH_AREA, CH_GRID, CH_FEE, N_CH };
+static int opt_at(const char *const *o, const char *key, const char *def) {
+    const char *v = cfg_get(key, def);
+    for (int i = 0; o[i]; i++) if (!strcmp(o[i], v)) return i;
+    return 0;
+}
+static void area_picked(void *ud, int idx) {
+    (void)ud;
+    if (idx < 0 || !strcmp(area(), idx == 0 ? "DK1" : "DK2")) return;
+    switch_area();
+}
+static void grid_picked(void *ud, int idx) {
+    (void)ud;
+    if (idx < 0) return;
+    cfg_set("el_grid", grid_o[idx]);
+    grid_changed();
+}
+static void fee_picked(void *ud, int idx) {
+    (void)ud;
+    if (idx < 0) return;
+    cfg_set("el_fee", fee_o[idx]);
+    el_recalc();
+}
+/* translated copies of a label list for choice_open; [0] can be replaced */
+static int labels_tr(const char *const *l, const char **out, int max, const char *first) {
+    int n = 0;
+    for (; l[n] && n < max; n++) out[n] = T(l[n]);
+    if (first && n) out[0] = first;
+    return n;
+}
+static void pick_grid(const char *title) {
+    const char *it[40];
+    int n = labels_tr(grid_l, it, 40, T("I don't know - show the spot price"));
+    choice_open(title, it, n, opt_at(grid_o, "el_grid", ""), grid_picked, NULL);
+}
+static void chip_open(int c) {
+    if (c == CH_AREA) {
+        const char *it[] = {T("West Denmark (DK1)"), T("East Denmark (DK2)")};
+        choice_open(T("Price area\nWest: Jutland and Funen. East: Zealand, the islands and Bornholm"), it, 2, !strcmp(area(), "DK1") ? 0 : 1, area_picked, NULL);
+    } else if (c == CH_GRID) {
+        pick_grid(T("Grid company\nThe company that owns the cables to your home - it is on your electricity bill"));
+    } else {
+        const char *it[20];
+        int n = labels_tr(fee_l, it, 20, NULL);
+        choice_open(T("Supplier's surcharge\nWhat your electricity company adds per kWh, with VAT - on your bill or in your contract"), it, n, opt_at(fee_o, "el_fee", "0"), fee_picked, NULL);
+    }
+}
 static void el_enter(Screen *s) {
     (void)s;
     if (!P.ok || app_time() - fetched_at > 5 * 60 || strcmp(P.area, area())) { next_fetch = 0; el_tick(); }
+    /* the first time: ask the one thing that cannot be guessed (the area is guessed from the Weather town) */
+    if (draw_chips && !cfg_int("el_asked", 0)) {
+        cfg_set_int("el_asked", 1);
+        if (!grid()) pick_grid(T("Who owns the cables to your home?\nIt is on your electricity bill - it gives the full price. You can change it at the top"));
+    }
 }
 static void el_update(Screen *s, float dt) { (void)s; (void)dt; el_tick(); }
 
 static void el_draw(Screen *s) {
-    (void)s;
     draw_background();
     draw_topbar(NULL);
     float x0 = 120;
     text_draw(F_BOLD, 52, x0, 130, C_TEXT, AL_LEFT, T("Electricity price"));
-    text_draw(F_REG, 26, x0, 196, C_TEXT3, AL_LEFT, area_name(area()));
+    ElView *v = s->st;
+    if (draw_chips) {
+        char g[96], f[64];
+        const char *gn = grid_name();
+        if (*gn) snprintf(g, sizeof g, T("Grid company: %s"), gn);
+        else snprintf(g, sizeof g, "%s", T("Choose grid company"));
+        snprintf(f, sizeof f, T("Surcharge: %s"), T(fee_l[opt_at(fee_o, "el_fee", "0")]));
+        const char *chips[N_CH] = {area_name(area()), g, f};
+        draw_chips(x0, 196, chips, N_CH, v->sel);
+    } else {
+        text_draw(F_REG, 26, x0, 196, C_TEXT3, AL_LEFT, area_name(area()));
+    }
     int ni = now_idx();
     if (!P.ok || ni < 0) {
         if (fetching) draw_spinner(UI_W / 2, UI_H / 2, 30, C_TEXT);
         else draw_empty(T("No prices right now"), T("The prices could not be fetched - check the network."));
-        draw_keybar(x0, UI_H - 62, NULL, NULL, T("Switch area"), NULL, NULL);
+        if (!draw_chips) draw_keybar(x0, UI_H - 62, NULL, NULL, T("Switch area"), NULL, NULL);
         return;
     }
     char b[64], k[16], line[400];
@@ -493,28 +557,36 @@ static void el_draw(Screen *s) {
     if (with_tariffs()) {
         snprintf(line, sizeof line,
                  fee() > 0 ? T("Full price with VAT: spot price, grid tariff from %s, Energinet's tariffs, electricity tax and your supplier's surcharge")
-                           : T("Price with VAT: spot price, grid tariff from %s, Energinet's tariffs and electricity tax - your supplier's surcharge can be added in Settings"),
+                 : draw_chips ? T("Price with VAT: spot price, grid tariff from %s, Energinet's tariffs and electricity tax - add your supplier's surcharge at the top")
+                              : T("Price with VAT: spot price, grid tariff from %s, Energinet's tariffs and electricity tax - your supplier's surcharge can be added in Settings"),
                  grid_name());
-        text_draw(F_REG, 20, x0, UI_H - 108, C_TEXT3, AL_LEFT, line);
+        text_draw(F_REG, 22, x0, UI_H - 70, C_TEXT3, AL_LEFT, line);
     } else {
-        text_draw(F_REG, 20, x0, UI_H - 108, C_TEXT3, AL_LEFT,
+        text_draw(F_REG, 22, x0, UI_H - 70, C_TEXT3, AL_LEFT,
                   grid() ? T("Spot price with VAT - the grid tariff is being fetched")
-                         : T("Spot price with VAT only - choose your grid company in Settings to see the full price"));
+                  : draw_chips ? T("Spot price with VAT only - choose your grid company at the top to see the full price")
+                               : T("Spot price with VAT only - choose your grid company in Settings to see the full price"));
     }
-    draw_keybar(x0, UI_H - 62, NULL, NULL, T("Switch area"), NULL, NULL);
+    if (!draw_chips) draw_keybar(x0, UI_H - 62, NULL, NULL, T("Switch area"), NULL, NULL);
 }
 static bool el_input(Screen *s, const InputEvent *ev) {
-    (void)s;
-    if ((ev->a == A_YELLOW || ev->a == A_OK) && !ev->repeat) { switch_area(); return true; }
+    ElView *v = s->st;
+    if (ev->a == A_YELLOW && !ev->repeat) { switch_area(); return true; } /* shortcut */
+    if (!draw_chips) {
+        if (ev->a == A_OK && !ev->repeat) { switch_area(); return true; }
+        return false;
+    }
+    if (ev->a == A_OK && !ev->repeat) { chip_open(v->sel); return true; }
+    if (ev->a == A_LEFT || ev->a == A_RIGHT) { buttons_nav(&v->sel, N_CH, ev); return true; }
     return false;
 }
 static void el_destroy(Screen *s) {
     free(s->st);
     free(s);
 }
-static Screen *elpris_screen(void) {
+static Screen *electricity_screen(void) {
     Screen *s = calloc(1, sizeof *s);
-    s->name = "elpris";
+    s->name = "electricity";
     s->st = calloc(1, sizeof(ElView));
     s->enter = el_enter;
     s->update = el_update;
@@ -525,7 +597,7 @@ static Screen *elpris_screen(void) {
 }
 
 /* ---------- the app ---------- */
-static void elpris_forget(void) {
+static void electricity_forget(void) {
     el_gen++;
     fetching = false;
     memset(&P, 0, sizeof P);
@@ -540,6 +612,7 @@ static void elpris_forget(void) {
     n_tr = 0;
     cfg_set("el_grid", "");
     cfg_set("el_fee", "");
+    cfg_set("el_asked", "");
 }
 static const char *area_value(void) { return area_name(area()); }
 static const Item el_items[] = {
@@ -551,9 +624,9 @@ static const Item el_items[] = {
      .help = N_("What your electricity company adds per kWh, with VAT - it is on your bill or in your contract")},
 };
 const NotaApp nota_app = {
-    NOTA_API, "elpris", "Electricity price", N_("The electricity price hour by hour, today and tomorrow"), APP_VERSION, 78, 0,
+    NOTA_API, "electricity", "Electricity price", N_("The electricity price hour by hour, today and tomorrow"), APP_VERSION, 78, 0,
     ICON_STAR, {34, 197, 94, 255}, {15, 95, 51, 255}, {255, 255, 255, 255},
-    .open = elpris_screen, .tick = el_tick, .forget = elpris_forget,
+    .open = electricity_screen, .tick = el_tick, .forget = electricity_forget,
     .settings = el_items, .n_settings = sizeof el_items / sizeof el_items[0],
     .draw_shelf = el_shelf,
 };

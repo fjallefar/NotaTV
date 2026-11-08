@@ -203,9 +203,6 @@ msgstr "Kan ikke nå serveren - viser det sidst kendte"
 msgid "Login refused"
 msgstr "Login afvist"
 
-msgid "The MQTT server did not accept the username or password. Press Red to choose the server again."
-msgstr "MQTT-serveren godtog ikke brugernavnet eller adgangskoden. Tryk Rød for at vælge serveren igen."
-
 msgid "Can't reach the server"
 msgstr "Kan ikke nå serveren"
 
@@ -293,9 +290,6 @@ msgstr "Ikke valgt"
 
 msgid "TeslaMate server"
 msgstr "TeslaMate-server"
-
-msgid "Choose another one with Red inside the Tesla app"
-msgstr "Vælg en anden med Rød inde i Tesla-appen"
 
 msgid "Forget the TeslaMate server"
 msgstr "Glem TeslaMate-serveren"
@@ -510,13 +504,17 @@ msgstr "Brugbart batteri"
 msgid "charging|Requested"
 msgstr "Ønsket strøm"
 
+msgid "Choose another one in the Tesla app's menu (press left)"
+msgstr "Vælg en anden i Tesla-appens menu (tryk venstre)"
 
+msgid "The MQTT server did not accept the username or password. Press left to open the menu and choose the server again."
+msgstr "MQTT-serveren godtog ikke brugernavn eller adgangskode. Tryk venstre for at åbne menuen og vælge serveren igen."
 
+msgid "Easier to use without colored keys"
+msgstr "Nemmere at bruge uden farveknapper"
 
+msgid "Search again is a button at the bottom"
+msgstr "Søg igen er en knap nederst"
 
-
-msgid "The cars and Music's Now playing box side by side"
-msgstr "Bilerne og Musiks Spiller nu-boks side om side"
-
-msgid "The cars on the home screen and Music's Now playing box no longer lie on top of each other (needs NotaTV 1.0.6)"
-msgstr "Bilerne på forsiden og Musiks Spiller nu-boks ligger ikke længere oven i hinanden (kræver NotaTV 1.0.6)"
+msgid "The menu is on the left arrow - no Red needed"
+msgstr "Menuen ligger på venstre pil - rød er ikke nødvendig"

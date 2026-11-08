@@ -1,6 +1,6 @@
 {
   "id": "plex",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "api": 2,
   "name": "Plex",
   "desc": "Movies and shows from your Plex server",
@@ -11,9 +11,10 @@
   "order": 20,
   "default": true,
   "changes": {
-    "summary": "Small fixes",
+    "summary": "Easier to use without colored keys",
     "points": [
-      "A small memory leak when a series has nothing to play is fixed"
+      "Settings in the side menu",
+      "The colored keys still work as shortcuts"
     ]
   }
 }

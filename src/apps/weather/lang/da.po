@@ -81,8 +81,6 @@ msgstr "%s  ·  føles som %s  ·  vind %.0f m/s"
 msgid "No weather right now"
 msgstr "Intet vejr lige nu"
 
-msgid "The weather could not be fetched - check the network. Yellow chooses another town."
-msgstr "Vejret kunne ikke hentes - tjek netværket. Gul vælger en anden by."
 
 msgid "Change town"
 msgstr "Skift by"
@@ -120,8 +118,8 @@ msgstr "By"
 msgid "The weather is for this town"
 msgstr "Vejret gælder for denne by"
 
-msgid "Temperature in the top bar"
-msgstr "Temperatur i topbjælken"
+msgid "Temperature on the home screen"
+msgstr "Temperatur på forsiden"
 
 msgid "The temperature and an icon at the top of the home screen"
 msgstr "Temperaturen og et ikon øverst på forsiden"
@@ -132,11 +130,11 @@ msgstr "Vejret nu, de næste timer og 7 dage"
 msgid "Weather on NotaTV"
 msgstr "Vejr på NotaTV"
 
-msgid "The weather now, the next 24 hours and 7 days from Open-Meteo (open data, no account)"
-msgstr "Vejret nu, de næste 24 timer og 7 dage fra Open-Meteo (åbne data, ingen konto)"
+msgid "The weather could not be fetched - check the network, or choose another town at the top."
+msgstr "Vejret kunne ikke hentes - tjek netværket, eller vælg en anden by øverst."
 
-msgid "The temperature in the home screen's top bar, and the weather at the top when the app has focus"
-msgstr "Temperaturen i forsidens topbjælke, og vejret øverst, når appen har fokus"
+msgid "Change town and turn the temperature on the home screen on or off right at the top of the app - no colored keys"
+msgstr "Skift by og slå temperaturen på forsiden til eller fra øverst i appen - uden farveknapper"
 
-msgid "The town comes from the time zone - Yellow chooses another"
-msgstr "Byen kommer fra tidszonen - Gul vælger en anden"
+msgid "The weather could not be fetched - check the network. Yellow chooses another town."
+msgstr "Vejret kunne ikke hentes - tjek netværket. Gul vælger en anden by."

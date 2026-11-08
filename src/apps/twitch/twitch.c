@@ -555,7 +555,7 @@ static int chat_thread(void *arg) {
 
 static void chat_tick(void *ud) {
     ChatSession *cs = ud;
-    int want = cfg_int("tw_chat", 1) != 0; /* yellow in the player toggles tw_chat */
+    int want = cfg_int("tw_chat", 1) != 0; /* "Chat" in the player menu (or Yellow) sets tw_chat */
     if (want && !cs->conn) cs->conn = chat_start(cs->chan);
     else if (!want && cs->conn) { chat_stop(cs->conn); cs->conn = NULL; }
     if (want != cs->shown || app_time() - cs->show_t > 2) { /* the OSD script may have started after us: repeat */

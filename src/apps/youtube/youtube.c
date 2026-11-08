@@ -15,7 +15,7 @@ typedef struct { char *title; char *query; Video *v; int n; bool loading, failed
 enum { PAGE_HOME, PAGE_GRID };
 /* side menu items (the index in the menu is computed when building it) */
 enum { M_HOME, M_SEARCH, M_SUBS, M_CHANNELS, M_REC, M_LATER, M_HIST, M_ACCOUNT,
-       M_CH_VIDEOS, M_CH_LIVE, M_CH_SHORTS, M_CH_SUB, M_COUNT };
+       M_CH_VIDEOS, M_CH_LIVE, M_CH_SHORTS, M_CH_SUB, M_SETTINGS, M_COUNT };
 
 typedef struct {
     YRow rows[8];
@@ -575,6 +575,7 @@ static void build_side(Yt *y) {
     char lbl[160];
     snprintf(lbl, sizeof lbl, li ? T("Account: %s") : T("Sign in"), prof);
     ADD(lbl, ICON_LOCK, true, M_ACCOUNT);
+    if (app_settings_open) ADD(T("Settings"), ICON_GEAR, false, M_SETTINGS); /* the app's settings, here where they are used */
 #undef ADD
     (void)k;
     m->active = 0;
@@ -638,13 +639,14 @@ static void side_activate(Yt *y, int idx) {
     case M_SEARCH: keyboard_open(T("Search YouTube"), "", false, query_done, y); break;
     case M_SUBS:
         y->side.active = idx;
-        if (n_subs == 0) app_toast(T("No subscriptions yet - open a channel (hold OK on a video) and choose Subscribe"));
+        if (n_subs == 0) app_toast(T("No subscriptions yet - choose Info and comments at the bottom on a video, then Subscribe"));
         show_grid(y, T("Subscriptions"), "@subs");
         break;
     case M_REC: y->side.active = idx; show_grid(y, T("Recommended for you"), ":ytrec"); break;
     case M_LATER: y->side.active = idx; show_grid(y, T("Watch later"), ":ytwatchlater"); break;
     case M_HIST: y->side.active = idx; show_grid(y, T("History"), ":ythistory"); break;
     case M_ACCOUNT: app_push(login_screen()); break;
+    case M_SETTINGS: app_settings_open("youtube"); break;
     }
 }
 

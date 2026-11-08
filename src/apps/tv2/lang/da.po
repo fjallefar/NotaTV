@@ -308,8 +308,11 @@ msgstr "Menu"
 msgid "Filter"
 msgstr "Filter"
 
-msgid "Safer sign-in"
-msgstr "Mere sikkert login"
+msgid "Settings"
+msgstr "Indstillinger"
 
-msgid "Your login is no longer visible in the box's list of running programs or in the log bundle"
-msgstr "Dit login kan ikke længere ses i boksens liste over kørende programmer eller i log-pakken"
+msgid "Easier to use without colored keys"
+msgstr "Nemmere at bruge uden farveknapper"
+
+msgid "Settings in the side menu"
+msgstr "Indstillinger i sidemenuen"

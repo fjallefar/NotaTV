@@ -226,7 +226,7 @@ static void games_update(Screen *s, float dt) {
 static void draw_rows(Games *g, const char *const *labels, const char *const *right, int n) {
     for (int i = 0; i < n; i++) {
         float y = 170 + i * 84;
-        bool f = i == g->sel;
+        bool f = i == g->sel && !keybar_focused(); /* the bar at the bottom has the focus */
         if (f) fill_rrect(96, y, UI_W - 192, 74, 14, C_FOCUS);
         text_draw_clip(F_SEMI, 28, 146, y + 20, 1200, f ? RGB(10, 10, 10) : C_TEXT, AL_LEFT, labels[i]);
         if (right && right[i]) text_draw(F_REG, 24, UI_W - 130, y + 23, f ? RGB(60, 60, 60) : C_TEXT3, AL_RIGHT, right[i]);
@@ -265,7 +265,7 @@ static void games_draw(Screen *s) {
     } else {
         draw_topbar(g->host_name[0] ? g->host_name : T("Games"));
         text_draw(F_REG, 24, 96, 118, C_TEXT3, AL_LEFT,
-                  T("OK = start · While playing, Red opens the menu (continue, stats, quit)"));
+                  T("OK = start · While playing: Red on the remote opens the menu, Select + Start + LB + RB on a controller quits"));
         if (g->busy) draw_spinner(UI_W / 2, 400, 30, C_TEXT2);
         else if (g->n == 0) draw_empty(T("No apps"), g->msg[0] ? tr_msg(g->msg) : T("The PC sent no apps."));
         else {
@@ -277,6 +277,10 @@ static void games_draw(Screen *s) {
             draw_rows(g, l, r, g->n);
         }
     }
+    /* the menu (also the Menu key): reached with ↓ below the last row */
+    const char *set = app_settings_open ? T("Settings") : NULL; /* resolution, frame rate ... from here */
+    if (g->mode == M_SERVERS && !(g->busy && !g->quiet)) draw_keybar(96, UI_H - 62, NULL, NULL, set, NULL, T("Search for PCs again"));
+    else if (g->mode == M_APPS && !g->busy) draw_keybar(96, UI_H - 62, NULL, NULL, set, NULL, "Menu");
     pthread_mutex_unlock(&g->mu);
 }
 
@@ -330,12 +334,11 @@ static bool games_input(Screen *s, const InputEvent *ev) {
     if (g->busy && !g->quiet && ev->a != A_BACK) return ev->a != A_HOME;
     switch (ev->a) {
     case A_UP: if (g->sel > 0) g->sel--; return true;
-    case A_DOWN: if (g->sel < g->n - 1) g->sel++; return true;
+    case A_DOWN: if (g->sel < g->n - 1) { g->sel++; return true; } return false; /* below the last: the bar at the bottom */
+    case A_YELLOW: if (app_settings_open && !ev->repeat) app_settings_open("games"); return true;
     case A_MENU:
-        if (g->mode == M_SERVERS) {
-            const char *items[] = {T("Search for PCs again")};
-            choice_open(T("Games"), items, 1, 0, games_menu_cb, g);
-        } else if (g->running) {
+        if (g->mode == M_SERVERS) games_menu_cb(g, 0); /* the only choice: search again right away */
+        else if (g->running) {
             const char *items[] = {T("Quit the running game on the PC"), T("Refresh the list")};
             choice_open(g->host_name[0] ? g->host_name : T("Games"), items, 2, 0, games_menu_cb, g);
         } else {

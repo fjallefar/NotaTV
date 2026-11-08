@@ -212,7 +212,7 @@ static void draw_list(Tesla *g) {
     } else if (!g->n)
         text_draw_wrap(F_REG, 24, 96, y, UI_W - 192, 3, 34, C_TEXT3,
                        T("No TeslaMate found. If it runs on another network or in Docker without an open MQTT port, enter the machine's IP address yourself."));
-    draw_hint(96, 990, "Red", T("Search again"));
+    if (!g->searching && !g->probing) draw_keybar(96, UI_H - 62, NULL, NULL, NULL, NULL, T("Search again")); /* ↓ below the last row */
 }
 
 /* ---------- screen ---------- */
@@ -248,7 +248,7 @@ static bool tesla_input(Screen *s, const InputEvent *ev) {
     }
     switch (ev->a) {
     case A_UP: if (g->sel > 0) g->sel--; return true;
-    case A_DOWN: if (g->sel < g->n) g->sel++; return true;
+    case A_DOWN: if (g->sel < g->n) { g->sel++; return true; } return false; /* below the last: the bar at the bottom */
     case A_OK: if (!g->searching || g->sel == g->n) pick(g); return true;
     case A_MENU: search(g); return true;
     case A_BACK: case A_LEFT:
@@ -332,7 +332,7 @@ static const char *server_val(void) {
 }
 
 static const Item tesla_items[] = {
-    {N_("TeslaMate server"), IT_INFO, .value = server_val, .help = N_("Choose another one with Red inside the Tesla app")},
+    {N_("TeslaMate server"), IT_INFO, .value = server_val, .help = N_("Choose another one in the Tesla app's menu (press left)")},
     {N_("Forget the TeslaMate server"), IT_ACTION, .action = act_forget, .locked = no_server,
      .help = N_("Removes the address and login, and everything the app knows about the car")},
 };

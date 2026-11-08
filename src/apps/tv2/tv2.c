@@ -39,7 +39,7 @@ enum { S_LOGIN, S_CODE, S_LOADING, S_READY, S_ERROR };
 enum { CARD_VOD, CARD_SERIES, CARD_COLLECTION, CARD_LIVE };
 enum { FMT_LANDSCAPE, FMT_POSTER };
 enum { SZ_SMALL, SZ_MEDIUM, SZ_LARGE };
-enum { M_HOME, M_LIVE, M_CATEGORIES, M_SEARCH, M_MYPAGE, M_LOGOUT };
+enum { M_HOME, M_LIVE, M_CATEGORIES, M_SEARCH, M_MYPAGE, M_LOGOUT, M_SETTINGS };
 enum { V_HOME, V_BROWSE, V_DETAIL, V_SEARCH, V_LIVE, V_CATEGORIES, V_PROFILE, V_WHO };
 
 #define MAX_PROF 8
@@ -1844,7 +1844,7 @@ static void tv2_logout(void);
 
 static void side_activate(Tv2 *v, int item) {
     int idx = item >= 0 && item < 8 ? v->side_map[item] : M_HOME;
-    if (idx != M_LOGOUT) v->side.active = item;
+    if (idx != M_LOGOUT && idx != M_SETTINGS) v->side.active = item;
     switch (idx) {
     case M_HOME:
         if (v->state == S_READY) back_home(v);
@@ -1866,6 +1866,9 @@ static void side_activate(Tv2 *v, int item) {
     case M_LOGOUT:
         tv2_logout();
         break;
+    case M_SETTINGS:
+        app_settings_open("tv2");
+        break;
     default: break;
     }
 }
@@ -1883,6 +1886,10 @@ static void build_side(Tv2 *v) {
     side_add(&v->side, T("Search"), ICON_SEARCH, false);
     v->side_map[4] = M_MYPAGE;
     side_add(&v->side, T("My page"), ICON_GEAR, false);
+    if (app_settings_open) { /* the app's settings, right here */
+        v->side_map[5] = M_SETTINGS;
+        side_add(&v->side, T("Settings"), ICON_GEAR, true);
+    }
     v->side.active = 0;
 }
 

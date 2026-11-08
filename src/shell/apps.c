@@ -84,8 +84,42 @@ static void add(const NotaApp *a, const char *pkg, const char *ver) {
     }
 }
 
+/* apps that got a new id (the id is English, see src/apps/README.md). At start, before the packages are loaded,
+   a box that has the old one is moved over: installed or not (app_<id>), the data folder, and the old package is
+   deleted. The App Store then downloads the new package (appcat.c: installed but missing). The app's own cfg keys
+   keep their names. */
+static const struct { const char *from, *to; } RENAMED_APPS[] = {
+    {"elpris", "electricity"}, /* 1.0.16: Electricity price */
+};
+#define N_RENAMED (int)(sizeof RENAMED_APPS / sizeof RENAMED_APPS[0])
+static bool renamed_from(const char *id) {
+    for (int i = 0; i < N_RENAMED; i++) if (id && !strcmp(id, RENAMED_APPS[i].from)) return true;
+    return false;
+}
+static void rename_apps(void) {
+    for (int i = 0; i < N_RENAMED; i++) {
+        const char *from = RENAMED_APPS[i].from, *to = RENAMED_APPS[i].to;
+        char ko[48], kn[48], po[400], dn[400], dold[400];
+        snprintf(ko, sizeof ko, "app_%s", from);
+        snprintf(kn, sizeof kn, "app_%s", to);
+        const char *v = cfg_get(ko, "");
+        if (*v) {
+            if (!*cfg_get(kn, "")) cfg_set(kn, v);
+            cfg_unset(ko);
+            SDL_Log("app %s is now %s (app_%s=%s)", from, to, to, cfg_get(kn, ""));
+        }
+        snprintf(po, sizeof po, "%s/%s", apps_pkg_root(), from);
+        struct stat st;
+        if (stat(po, &st) == 0) run_cmd("rm -rf '%s'", po);
+        snprintf(dold, sizeof dold, "%s/apps/%s", data_dir(), from);
+        snprintf(dn, sizeof dn, "%s/apps/%s", data_dir(), to);
+        if (stat(dold, &st) == 0 && stat(dn, &st) != 0 && rename(dold, dn) != 0) SDL_Log("app %s: could not move %s", from, dold);
+    }
+}
+
 /* one package folder: check the manifest, load app.so and register the app it exports */
 static const NotaApp *load_pkg(const char *dir, const char *name) {
+    if (renamed_from(name)) { SDL_Log("app %s: renamed - the old package is skipped (%s)", name, dir); return NULL; }
     const NotaApp *got = NULL;
     char path[512];
     snprintf(path, sizeof path, "%s/manifest.json", dir);
@@ -151,6 +185,7 @@ static void scan(const char *root) {
 void apps_init(void) {
     static const NotaApp *const builtin[] = {&app_appstore, &app_settings};
     for (size_t i = 0; i < sizeof builtin / sizeof builtin[0]; i++) add(builtin[i], NULL, NULL);
+    rename_apps();
     scan(apps_pkg_root()); /* downloaded from the App Store */
     const char *env = getenv("TVSHELL_APPS");
     if (env && *env) {

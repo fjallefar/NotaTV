@@ -797,13 +797,13 @@ void view_draw(TView *v) {
         draw_hint(hx, 990, "◀", T("Menu: car, what is shown, home screen"));
     } else {
         if (st == TM_AUTH)
-            draw_empty(T("Login refused"), T("The MQTT server did not accept the username or password. Press Red to choose the server again."));
+            draw_empty(T("Login refused"), T("The MQTT server did not accept the username or password. Press left to open the menu and choose the server again."));
         else if (st == TM_UNREACHABLE)
             draw_empty(T("Can't reach the server"), T("Check that the machine running TeslaMate is on and that its MQTT port (1883) can be reached from the network. NotaTV keeps trying."));
         else if (st == TM_LIVE && app_time() - v->opened > 5)
             draw_empty(T("No data from TeslaMate"), T("Connected, but TeslaMate has sent nothing yet. Check that MQTT is turned on in TeslaMate (it is by default)."));
         else draw_spinner(UI_W / 2, 480, 30, C_TEXT2);
-        draw_hint(LEFT, 990, "Red", T("Menu"));
+        draw_hint(LEFT, 990, "◀", T("Menu"));
     }
     if (!c) v->content_h = 0;
     side_draw(&v->side);

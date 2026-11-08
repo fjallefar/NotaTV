@@ -360,8 +360,14 @@ msgstr "Set / uset"
 msgid "Season watched / unwatched"
 msgstr "Sæson set / uset"
 
-msgid "Small fixes"
-msgstr "Små rettelser"
+msgid "Settings"
+msgstr "Indstillinger"
 
-msgid "A small memory leak when a series has nothing to play is fixed"
-msgstr "En lille hukommelseslæk, når en serie ikke har noget at afspille, er rettet"
+msgid "Easier to use without colored keys"
+msgstr "Nemmere at bruge uden farveknapper"
+
+msgid "Settings in the side menu"
+msgstr "Indstillinger i sidemenuen"
+
+msgid "The colored keys still work as shortcuts"
+msgstr "Farveknapperne virker stadig som genveje"

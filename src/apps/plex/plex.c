@@ -2019,10 +2019,11 @@ static void browse_destroy(Screen *s) {
 
 static int row_len(Browse *b, int r) { return r < b->n_rows ? b->rows[r].n : 0; }
 
-/* side menu: Home, Search, libraries..., Servers, Log out */
+/* side menu: Home, Search, libraries..., Servers, Log out, Settings */
 enum { RAIL_HOME = 0, RAIL_SEARCH = 1 };
 static int rail_servers(Browse *b) { return 2 + b->n_libs; }
 static int rail_logout(Browse *b) { return 3 + b->n_libs; }
+static int rail_settings(Browse *b) { return 4 + b->n_libs; }
 
 static void build_side(Browse *b) {
     SideMenu *m = &b->side;
@@ -2041,6 +2042,7 @@ static void build_side(Browse *b) {
     }
     side_add(m, T("Servers"), ICON_GEAR, true);
     side_add(m, T("Sign out"), ICON_POWER, false);
+    if (app_settings_open) side_add(m, T("Settings"), ICON_GEAR, false); /* the app's settings, right here */
 }
 
 static bool is_landscape(PItem *it) { return it->type && (!strcmp(it->type, "episode") || !strcmp(it->type, "clip")); }
@@ -2323,6 +2325,7 @@ static void rail_activate(Browse *b, int i) {
     if (i == RAIL_HOME) { b->side.active = 0; b->row = 0; b->col = 0; }
     else if (i == RAIL_SEARCH) keyboard_open(T("Search Plex"), "", false, search_cb, NULL);
     else if (i == rail_servers(b)) app_push(servers_screen(false));
+    else if (i == rail_settings(b)) app_settings_open("plex");
     else if (i == rail_logout(b)) confirm_open(T("Sign out of Plex?"), T("You will need to link again via plex.tv/link."), T("Sign out"), T("Cancel"), logout_cb, NULL);
     else {
         PItem *lib = &b->libs[i - 2];

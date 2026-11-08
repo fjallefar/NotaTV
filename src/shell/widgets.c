@@ -444,16 +444,24 @@ static void choice_draw(Screen *s) {
     Choice *c = s->st;
     overlay_dim(s->anim);
     int vis = c->n < 9 ? c->n : 9;
-    float pw = 760, ph = 150 + vis * 72, px = UI_W / 2 - pw / 2, py = UI_H / 2 - ph / 2;
+    /* "Title\nexplanation": the second line is a short explanation under the title */
+    char head[128];
+    snprintf(head, sizeof head, "%s", c->title);
+    char *sub = strchr(head, '\n');
+    if (sub) *sub++ = 0;
+    float top = sub ? 150 : 110;
+    float pw = 860, ph = top + 40 + vis * 72, px = UI_W / 2 - pw / 2, py = UI_H / 2 - ph / 2;
     draw_panel(px, py, pw, ph, 32, 1);
-    text_draw(F_BOLD, 34, px + 50, py + 40, C_TEXT, AL_LEFT, c->title);
+    float tw = pw - 100 - (c->n > vis ? 230 : 0);
+    text_draw_clip(F_BOLD, 34, px + 50, py + 40, tw, C_TEXT, AL_LEFT, head);
+    if (sub) text_draw_clip(F_REG, 24, px + 50, py + 92, pw - 100, C_TEXT2, AL_LEFT, sub);
     if (c->sel < c->scroll) c->scroll = c->sel;
     if (c->sel >= c->scroll + vis) c->scroll = c->sel - vis + 1;
-    float hy = slide_to(c, py + 110 + (c->sel - c->scroll) * 72); /* the pill glides to the chosen row */
+    float hy = slide_to(c, py + top + (c->sel - c->scroll) * 72); /* the pill glides to the chosen row */
     fill_rrect(px + 30, hy, pw - 60, 62, 31, C_FOCUS);
     for (int i = 0; i < vis; i++) {
         int idx = c->scroll + i;
-        float y = py + 110 + i * 72;
+        float y = py + top + i * 72;
         float ov = 1 - fabsf(y - hy) / 72;
         text_draw_clip(F_SEMI, 28, px + 60, y + 15, pw - 120, color_mix(C_TEXT, RGB(10, 10, 10), ov < 0 ? 0 : ov), AL_LEFT, c->items[idx]);
     }

@@ -42,9 +42,6 @@ msgstr "Ikke parret - OK for at parre"
 msgid "Unreachable"
 msgstr "Kan ikke nås"
 
-msgid "OK = start · While playing, Red opens the menu (continue, stats, quit)"
-msgstr "OK = start · Under spil åbner Rød menuen (fortsæt, stats, afslut)"
-
 msgid "No apps"
 msgstr "Ingen apps"
 
@@ -114,8 +111,17 @@ msgstr "Spil fra din PC via Sunshine (Moonlight)"
 msgid "HEVC (the Pi 5 has no H.264 decoder)"
 msgstr "HEVC (Pi 5 har ingen H.264-dekoder)"
 
-msgid "Small fixes"
-msgstr "Små rettelser"
+msgid "OK = start · While playing: Red on the remote opens the menu, Select + Start + LB + RB on a controller quits"
+msgstr "OK = start · Under spillet: Rød på fjernbetjeningen åbner menuen, Select + Start + LB + RB på en controller afslutter"
 
-msgid "Searching for PCs is more reliable while other things happen at the same time"
-msgstr "Søgningen efter PC'er er mere stabil, mens andet sker samtidig"
+msgid "Settings"
+msgstr "Indstillinger"
+
+msgid "Easier to use without colored keys"
+msgstr "Nemmere at bruge uden farveknapper"
+
+msgid "Settings and Search for PCs again are buttons at the bottom - press down to reach them"
+msgstr "Indstillinger og Søg efter pc'er igen er knapper nederst - tryk ned for at nå dem"
+
+msgid "The colored keys still work as shortcuts"
+msgstr "Farveknapperne virker stadig som genveje"

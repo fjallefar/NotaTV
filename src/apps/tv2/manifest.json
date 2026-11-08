@@ -1,6 +1,6 @@
 {
   "id": "tv2",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "api": 2,
   "name": "TV 2 Play",
   "desc": "Streaming from TV 2 Play (Widevine)",
@@ -13,9 +13,9 @@
   "nonfree": true,
   "helpers": ["wvserve"],
   "changes": {
-    "summary": "Safer sign-in",
+    "summary": "Easier to use without colored keys",
     "points": [
-      "Your login is no longer visible in the box's list of running programs or in the log bundle"
+      "Settings in the side menu"
     ]
   }
 }

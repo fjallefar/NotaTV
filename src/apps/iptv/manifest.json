@@ -1,6 +1,6 @@
 {
   "id": "iptv",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "api": 2,
   "name": "Live TV",
   "desc": "Watch live TV and channels from your IPTV provider",
@@ -23,10 +23,11 @@
   "order": 10,
   "default": true,
   "changes": {
-    "summary": "Reminders",
+    "summary": "Easier to use without colored keys",
     "points": [
-      "Reminders: Yellow on a coming program in the TV guide - a minute before it starts, the TV offers to switch",
-      "A program in the channel's schedule can be chosen for a reminder too"
+      "The menu is a button at the bottom on every screen, also when there are no channels",
+      "Settings in the menu",
+      "The colored keys still work as shortcuts"
     ]
   }
 }

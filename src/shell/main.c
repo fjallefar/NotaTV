@@ -597,9 +597,23 @@ void draw_hint(float x, float y, const char *keys, const char *label) {
     text_draw(F_REG, 22, x + w + 10, y + 4, C_TEXT2, AL_LEFT, label);
 }
 
-/* shared hint bar: always the same order OK · Green · Yellow · Blue · Red (NULL = not shown) */
+float draw_chips(float x, float y, const char *const *labels, int n, int sel) {
+    for (int i = 0; i < n; i++) {
+        if (!labels[i] || !*labels[i]) continue;
+        float f = focus_amt(labels[i], i == sel), fc = f < 0 ? 0 : f > 1 ? 1 : f;
+        float w = text_width(F_SEMI, 24, labels[i]) + 48, h = 50;
+        float sc = 1 + 0.05f * f, bw = w * sc, bh = h * sc, bx = x + (w - bw) / 2, by = y + (h - bh) / 2;
+        if (fc > 0.01f) draw_shadow(bx, by, bw, bh, bh / 2, 16, fc);
+        fill_rrect(bx, by, bw, bh, bh / 2, color_mix(RGBA(255, 255, 255, 30), C_FOCUS, fc));
+        text_draw(F_SEMI, 24, x + w / 2, y + 10, color_mix(C_TEXT, RGB(10, 10, 10), fc), AL_CENTER, labels[i]);
+        x += w + 16;
+    }
+    return x;
+}
+
+/* shared action bar at the bottom: always the same order OK · Green · Yellow · Blue · Red (NULL = not shown).
+   The buttons are plain (no color dots): they are reached with ↓ and OK, the color keys are only shortcuts */
 float draw_keybar(float x, float y, const char *ok, const char *green, const char *yellow, const char *blue, const char *red) {
-    static const Color dots[4] = {{64, 186, 92, 255}, {238, 196, 48, 255}, {58, 124, 226, 255}, {226, 62, 58, 255}};
     static const Action acts[4] = {A_INFO, A_YELLOW, A_SEARCH, A_MENU};
     const char *l[4] = {green, yellow, blue, red};
     if (ok) { /* OK acts on the selected item - only an explanation */
@@ -615,10 +629,9 @@ float draw_keybar(float x, float y, const char *ok, const char *green, const cha
         if (!l[i]) continue;
         if (mine && k < 4 && kbar.n <= k) { kbar.label[k] = l[i]; kbar.act[k] = acts[i]; kbar.n = k + 1; }
         bool f = mine && kbar.focus && kbar.sel == k && drawing == app_top();
-        float w = text_width(F_SEMI, 22, l[i]) + 70, h = 44, by = y - 5;
+        float w = text_width(F_SEMI, 22, l[i]) + 48, h = 44, by = y - 5;
         fill_rrect(x, by, w, h, h / 2, f ? C_FOCUS : RGBA(255, 255, 255, 28));
-        fill_circle(x + 24, by + h / 2, 9, dots[i]);
-        text_draw(F_SEMI, 22, x + 42, by + 9, f ? RGB(10, 10, 10) : C_TEXT, AL_LEFT, l[i]);
+        text_draw(F_SEMI, 22, x + w / 2, by + 9, f ? RGB(10, 10, 10) : C_TEXT, AL_CENTER, l[i]);
         x += w + 16;
         k++;
     }
