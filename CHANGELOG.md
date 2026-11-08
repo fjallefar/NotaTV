@@ -18,6 +18,21 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## Next (not released yet - rename to the version number when it is released)
+
+> **In short:** The app names under the bottom row of the home screen can be read again, and the Electricity price app can show the full price.
+> - Home screen: with many apps installed the grid slides up to the bottom row, so its names stay on screen
+> - Electricity price 1.0.1 (App Store): choose your grid company for the full price with the grid tariff
+
+<!-- tldr:da
+Kort: Navnene under den nederste række på forsiden kan ses igen, og Elpris-appen kan vise den samlede pris.
+- Forsiden: med mange apps installeret glider gitteret op til den nederste række, så navnene kan ses
+- Elpris 1.0.1 (App Store): vælg dit netselskab for at få den samlede pris med nettarif
+-->
+
+- Home screen: with all apps installed there are three rows, and the names under the third row ended below the screen. The grid now slides up a little when the focus is in a low row
+- Electricity price 1.0.1 (an app update from the App Store): *Settings → Electricity price → Grid company* (28 Danish grid companies) gives the full price - spot price, the grid company's hourly tariff, Energinet's tariffs and electricity tax, with VAT, from Energi Data Service. *Supplier's surcharge* (0-1 kr per kWh) can be added. Without a grid company the app shows the spot price as before
+
 ## 1.0.15
 
 > **In short:** New apps - DRTV, Weather and Electricity price - plus automatic sleep and power buttons on the phone page.
