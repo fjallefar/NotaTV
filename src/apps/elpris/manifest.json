@@ -1,6 +1,6 @@
 {
   "id": "elpris",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "Electricity price",
   "desc": "The electricity price hour by hour, today and tomorrow",
@@ -13,9 +13,8 @@
   "changes": {
     "summary": "Electricity price on NotaTV",
     "points": [
-      "The Danish spot price with VAT hour by hour, today and tomorrow (from about 13:00), from Energi Data Service",
-      "The price now in green, yellow or red compared with the rest of the day, and the cheapest hours",
-      "West or East Denmark - guessed from the Weather app's town, Yellow switches"
+      "The full price with the grid tariff: choose your grid company in the app's settings",
+      "Your electricity company's surcharge can be added too"
     ]
   }
 }

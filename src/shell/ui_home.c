@@ -81,6 +81,7 @@ typedef struct {
     float tint_fade;
     float sx2; /* scroll in row 2 */
     float row_anim;
+    float grid_anim; /* extra scroll so the focused app row and its names stay on screen (3+ rows) */
     HomeItem *cont;
     int n_cont;
     const NotaApp *cont_app; /* the row below the apps follows the app in focus */
@@ -94,6 +95,7 @@ typedef struct {
     float rest, hint_a; /* time on the same tile; the "Move app" hint fades in after a while there */
     float wiggle;
 } Home;
+static float home_shift(const Home *h) { return h->row_anim * 340 + h->grid_anim; }
 
 #define SHELF_H 820
 
@@ -284,6 +286,11 @@ static void home_update(Screen *s, float dt) {
     if (n_vis && vis[h->col] != h->tint_app) { h->tint_prev = h->tint_app; h->tint_app = vis[h->col]; h->tint_fade = 0; }
     h->tint_fade = anim_to(h->tint_fade, 1, dt, 9); /* short: two glow layers are drawn only while it fades */
     h->row_anim = anim_to(h->row_anim, (float)h->row, dt, 12);
+    { /* with many apps the third row (and its names) would end below the screen: scroll the grid up to it */
+        float need = 0;
+        if (h->row == 0 && n_vis) need = APPS_Y + (h->col / grid_cols()) * TILE_PITCH + TILE_PITCH - (UI_H - 30);
+        h->grid_anim = anim_to(h->grid_anim, need > 0 ? need : 0, dt, 12);
+    }
     if (h->row == 0 && h->cont_app != pick_cont_app(h)) { h->col2 = 0; h->sx2 = 0; collect_continue(h); }
     h->bg_fade = anim_to(h->bg_fade, 1, dt, 6);
     /* the rows are fetched when the home screen opens and after playback (enter/resume); while it stays open they
@@ -399,7 +406,7 @@ static void home_draw(Screen *s) {
         text_draw(F_REG, 22, hx + 36, 68, color_alpha(C_TEXT2, h->hint_a), AL_LEFT, l);
     }
 
-    float shift = h->row_anim * 340; /* scroll up when row 2 is selected */
+    float shift = home_shift(h); /* scroll up when row 2 is selected, or to a low app row */
     clip_push(0, 150, UI_W, APPS_Y - 170);
     bool shelf_vis = h->row_anim < 0.2f; /* the row below the apps scrolls up over the top */
     if (shelf_vis && shelf_it && h->bg_url[0]) { /* big image behind: the title of what you can continue */
@@ -586,13 +593,13 @@ static bool home_input(Screen *s, const InputEvent *ev) {
             /* the app grows out of its tile (and shrinks back into it on Back) */
             int cols = grid_cols(), r = h->col / cols, c = h->col % cols;
             float sc = 1.09f, w = TILE_W * sc, hh = TILE_H * sc;
-            float cx = MARGIN + c * (TILE_W + TILE_GAP) + TILE_W / 2, cy = APPS_Y + r * TILE_PITCH - h->row_anim * 340 + TILE_H / 2;
+            float cx = MARGIN + c * (TILE_W + TILE_GAP) + TILE_W / 2, cy = APPS_Y + r * TILE_PITCH - home_shift(h) + TILE_H / 2;
             app_set_origin(cx - w / 2, cy - hh / 2 - 6, w, hh, TILE_R * sc);
             Screen *sc2 = vis[h->col]->open ? vis[h->col]->open() : NULL;
             if (sc2) app_push(sc2);
         } else if (h->col2 < h->n_cont && h->cont_app && h->cont_app->row_open) {
             float iw = 420, ih = 236, sc = 1.07f;
-            float x = MARGIN + h->col2 * (iw + 32) - h->sx2, y = APPS_Y + (grid_rows() - 1) * TILE_PITCH + 244 - h->row_anim * 340;
+            float x = MARGIN + h->col2 * (iw + 32) - h->sx2, y = APPS_Y + (grid_rows() - 1) * TILE_PITCH + 244 - home_shift(h);
             app_set_origin(x - iw * (sc - 1) / 2, y - ih * (sc - 1) / 2 - 4, iw * sc, ih * sc, 18);
             h->cont_app->row_open(&h->cont[h->col2], h->col2);
         }

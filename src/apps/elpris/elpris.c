@@ -1,8 +1,10 @@
 /* NotaTV app package "elpris" - the Danish electricity spot price per hour, today and tomorrow (from about 13:00),
  * from Energi Data Service (Energinet's open data, no key or account): the price now, the cheapest hours and a
- * chart. Shown as the spot price with VAT - the grid tariff, the electricity tax and the supplier's fee are not in it
- * (they depend on the grid company and the contract). Price area West (DK1) or East (DK2): guessed from the Weather
- * app's town, Yellow switches. Built as app.so (see src/apps/README.md). */
+ * chart. With the grid company chosen in Settings the price is the full one: spot price + the grid company's hourly
+ * tariff + Energinet's tariffs + electricity tax (all from Energi Data Service's DatahubPricelist), with VAT, plus the
+ * supplier's surcharge if one is set (it cannot be fetched). Without a grid company it is the spot price with VAT.
+ * Price area West (DK1) or East (DK2): guessed from the Weather app's town, Yellow switches.
+ * Built as app.so (see src/apps/README.md). */
 #include "tv.h"
 #include "vendor/cJSON.h"
 #include <math.h>
@@ -17,7 +19,11 @@
 #define REFRESH_S (15 * 60)
 #define MAX_H 72
 
-typedef struct { time_t t; float kr; } Hour; /* the hour's start (UTC) and its average price, kr/kWh with VAT */
+typedef struct {
+    time_t t;   /* the hour's start (UTC) */
+    float spot; /* the hour's average spot price, kr/kWh without VAT */
+    float kr;   /* the price shown: kr/kWh with VAT, tariffs and surcharge (see el_recalc) */
+} Hour;
 typedef struct {
     bool ok;
     char area[4];
@@ -28,6 +34,61 @@ static Prices P;
 static double next_fetch, fetched_at;
 static bool fetching;
 static int el_gen;
+
+/* ---------- the grid company and the tariffs ---------- */
+#define ENERGINET_GLN "5790000432752" /* Energinet: transmission grid tariff, system tariff and electricity tax */
+static const char *const en_codes[] = {"40000", "41000", "EA-001", NULL};
+/* the household tariff (C customers, hourly) of each grid company: GLN, the tariff's ChargeTypeCode, a discount
+   code that is added too (Konstant). One GLN when a company has several with the same tariff (N1, Konstant) */
+typedef struct { const char *gln, *code, *code2; } Grid;
+static const char *const grid_o[] = {"", "5790001095451", "5790000705184", "5790000610099", "5790000836239",
+    "5790001100520", "5790000392551", "5790001088309", "5790000681105", "5790001090166", "5790000682102",
+    "5790000704842", "5790001090111", "5790001103460", "5790001089023", "5790000611003", "5790000395620",
+    "5790000681358", "5790000610877", "5790000681327", "5790000705689", "5790000836727", "5790001095444",
+    "5790000706419", "5790000392261", "5790000706686", "5790001088217", "5790000610976", "5790001089375", NULL};
+static const char *const grid_l[] = {N_("Not chosen"), "Aal El-Net", "Cerius", "Dinel", "Elektrus",
+    "Elnet Midt", "FLOW Elnet", "Forsyning Elnet", "Grindsted Elnet", "Hammel Elforsyning Net", "Ikast El Net",
+    "Konstant Net", "L-Net", "Læsø Elnet", "Midtfyns Elforsyning", "N1", "NOE Net",
+    "Netselskabet Elværk", "Nord Energi Net", "RAH Net", "Radius Elnet", "Ravdex", "Sunds Net",
+    "Tarm Elværk Net", "TREFOR El-net", "TREFOR El-net Øst", "Veksel", "Vores Elnet", "Zeanet", NULL};
+static const Grid grids[] = {
+    {"5790001095451", "AAL-NT-05", NULL}, {"5790000705184", "30TR_C_ET", "30RE_C_ET"}, {"5790000610099", "TCL<100_02", NULL},
+    {"5790000836239", "6000091", NULL}, {"5790001100520", "T3001", NULL}, {"5790000392551", "FE1 NT-01", NULL},
+    {"5790001088309", "STR-NT-03", NULL}, {"5790000681105", "GEV-NT-01", NULL}, {"5790001090166", "C-Tarif", NULL},
+    {"5790000682102", "IEV-NT-01", NULL}, {"5790000704842", "C_FBTNTR_B", "C_FBTNTR_R"}, {"5790001090111", "3000", NULL},
+    {"5790001103460", "43100", NULL}, {"5790001089023", "TNT15000", NULL}, {"5790000611003", "T-C-F-F-TD", NULL},
+    {"5790000395620", "30030", NULL}, {"5790000681358", "5NCFF", NULL}, {"5790000610877", "TAC", NULL},
+    {"5790000681327", "RAH-C", NULL}, {"5790000705689", "DT_C_01", NULL}, {"5790000836727", "NT-C", NULL},
+    {"5790001095444", "SEF-NT-05", NULL}, {"5790000706419", "TEV-NT-01T", NULL}, {"5790000392261", "C", NULL},
+    {"5790000706686", "46", NULL}, {"5790001088217", "NT-01", NULL}, {"5790000610976", "TNT1009", NULL},
+    {"5790001089375", "43110", NULL},
+};
+static const Grid *grid(void) {
+    const char *g = cfg_get("el_grid", "");
+    for (size_t i = 0; i < sizeof grids / sizeof grids[0]; i++)
+        if (!strcmp(grids[i].gln, g)) return &grids[i];
+    return NULL;
+}
+static const char *grid_name(void) {
+    const char *g = cfg_get("el_grid", "");
+    for (int i = 1; grid_o[i]; i++) if (!strcmp(grid_o[i], g)) return grid_l[i];
+    return "";
+}
+/* the supplier's surcharge, kr/kWh with VAT (on the bill; it cannot be fetched) */
+static const char *const fee_o[] = {"0", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.40", "0.50", "0.75", "1.00", NULL};
+static const char *const fee_l[] = {N_("None"), "5 øre", "10 øre", "15 øre", "20 øre", "25 øre", "30 øre", "40 øre",
+    "50 øre", "75 øre", "1 kr", NULL};
+
+/* one price list entry: a tariff's prices per local hour (kr/kWh without VAT) in [from, to) local time */
+typedef struct { char code[16], from[20], to[20]; float p[24]; } Tariff;
+#define MAX_TR 600
+#define TR_REFRESH_S (6 * 3600)
+static Tariff *TR;
+static int n_tr;
+static bool tr_ok, tr_fetching;
+static char tr_key[16]; /* the GLN the tariffs (or the last try) are for */
+static double tr_next;
+static int tr_gen;
 
 /* West (DK1) or East (DK2): chosen, or guessed from the Weather app's town (Jutland and Funen are West of the
    Great Belt, about 11° East) */
@@ -83,17 +144,144 @@ static void fetch_work(void *arg) {
         if (!cnt[i]) continue;
         Hour *h = &j->out.h[j->out.n++];
         h->t = first + (time_t)i * 3600;
-        h->kr = (float)(sum[i] / cnt[i] / 1000.0 * 1.25); /* DKK/MWh -> kr/kWh with 25 % VAT */
+        h->spot = (float)(sum[i] / cnt[i] / 1000.0); /* DKK/MWh -> kr/kWh */
+        h->kr = h->spot * 1.25f;
     }
     j->out.ok = j->out.n > 0;
     snprintf(j->out.area, sizeof j->out.area, "%s", j->area);
 }
+/* the tariffs valid at the local time t, summed (kr/kWh without VAT); each tariff code counts once */
+static float tariff_at(time_t t) {
+    if (!tr_ok || !TR) return 0;
+    struct tm lt;
+    localtime_r(&t, &lt);
+    char ts[20];
+    strftime(ts, sizeof ts, "%Y-%m-%dT%H:%M:%S", &lt);
+    const char *done[8];
+    int nd = 0;
+    float sum = 0;
+    for (int i = 0; i < n_tr; i++) {
+        Tariff *r = &TR[i];
+        if (strcmp(r->from, ts) > 0 || (r->to[0] && strcmp(ts, r->to) >= 0)) continue;
+        bool dup = false;
+        for (int k = 0; k < nd; k++) if (!strcmp(done[k], r->code)) dup = true;
+        if (dup || nd >= 8) continue;
+        done[nd++] = r->code;
+        sum += r->p[lt.tm_hour];
+    }
+    return sum;
+}
+static bool with_tariffs(void) { const Grid *g = grid(); return g && tr_ok && !strcmp(tr_key, g->gln); }
+static float fee(void) { return (float)atof(cfg_get("el_fee", "0")); }
+static float price_of(float spot, time_t t) {
+    return (spot + (with_tariffs() ? tariff_at(t) : 0)) * 1.25f + fee();
+}
+/* the shown prices again: after new spot prices or tariffs, or a changed setting */
+static void el_recalc(void) {
+    for (int i = 0; i < P.n; i++) P.h[i].kr = price_of(P.h[i].spot, P.h[i].t);
+}
+
+typedef struct { int gen; char gln[16], code[16], code2[16]; Tariff *out; int n; bool ok; } TrJob;
+static bool code_in(const char *c, const char *const *list) {
+    for (; *list; list++) if (!strcmp(c, *list)) return true;
+    return false;
+}
+static void tr_work(void *arg) {
+    TrJob *j = arg;
+    char filt[400];
+    snprintf(filt, sizeof filt,
+             "{\"GLN_Number\":[\"%s\",\"" ENERGINET_GLN "\"],\"ChargeType\":[\"D03\"],"
+             "\"ChargeTypeCode\":[\"%s\"%s%s%s,\"40000\",\"41000\",\"EA-001\"]}",
+             j->gln, j->code, j->code2[0] ? ",\"" : "", j->code2, j->code2[0] ? "\"" : "");
+    char *ef = url_encode(filt);
+    /* the entries that started within the last year or start in the next days (ValidFrom is the time column) */
+    char *url = str_printf("https://api.energidataservice.dk/dataset/DatahubPricelist?start=now-P1Y&end=now%%2BP3D"
+                           "&filter=%s&sort=ValidFrom%%20asc&limit=%d", ef, MAX_TR);
+    free(ef);
+    HttpBuf b;
+    memset(&b, 0, sizeof b);
+    cJSON *d = NULL;
+    if (http_request("GET", url, NULL, NULL, &b, 20) && b.status == 200 && b.data) d = cJSON_Parse(b.data);
+    http_free(&b);
+    free(url);
+    if (!d) return;
+    j->out = calloc(MAX_TR, sizeof *j->out);
+    cJSON *r;
+    cJSON_ArrayForEach(r, cJSON_GetObjectItem(d, "records")) {
+        const char *gln = cJSON_GetStringValue(cJSON_GetObjectItem(r, "GLN_Number")),
+                   *code = cJSON_GetStringValue(cJSON_GetObjectItem(r, "ChargeTypeCode")),
+                   *from = cJSON_GetStringValue(cJSON_GetObjectItem(r, "ValidFrom")),
+                   *to = cJSON_GetStringValue(cJSON_GetObjectItem(r, "ValidTo"));
+        if (!gln || !code || !from || j->n >= MAX_TR) continue;
+        bool mine = !strcmp(gln, j->gln) && (!strcmp(code, j->code) || (j->code2[0] && !strcmp(code, j->code2)));
+        bool en = !strcmp(gln, ENERGINET_GLN) && code_in(code, en_codes);
+        if (!mine && !en) continue;
+        cJSON *p1 = cJSON_GetObjectItem(r, "Price1");
+        if (!cJSON_IsNumber(p1)) continue;
+        Tariff *t = &j->out[j->n++];
+        snprintf(t->code, sizeof t->code, "%s", code);
+        snprintf(t->from, sizeof t->from, "%s", from);
+        snprintf(t->to, sizeof t->to, "%s", to ? to : "");
+        for (int h = 0; h < 24; h++) { /* one price for the whole day (P1D) when the hours are empty */
+            char k[10];
+            snprintf(k, sizeof k, "Price%d", h + 1);
+            cJSON *ph = cJSON_GetObjectItem(r, k);
+            t->p[h] = (float)(cJSON_IsNumber(ph) ? ph->valuedouble : p1->valuedouble);
+        }
+    }
+    cJSON_Delete(d);
+    /* newest first, so a code's latest entry wins where two overlap */
+    for (int a = 0, z = j->n - 1; a < z; a++, z--) { Tariff x = j->out[a]; j->out[a] = j->out[z]; j->out[z] = x; }
+    j->ok = j->n > 0;
+}
+static void tr_done(void *arg) {
+    TrJob *j = arg;
+    tr_fetching = false;
+    if (j->gen == tr_gen) {
+        snprintf(tr_key, sizeof tr_key, "%s", j->gln);
+        if (j->ok) {
+            free(TR);
+            TR = j->out;
+            j->out = NULL;
+            n_tr = j->n;
+            tr_ok = true;
+            tr_next = app_time() + TR_REFRESH_S;
+        } else {
+            tr_next = app_time() + 75; /* the service limits requests per minute */
+        }
+        el_recalc();
+    }
+    free(j->out);
+    free(j);
+}
+static void tr_tick(void) {
+    const Grid *g = grid();
+    if (!g || tr_fetching || (app_time() < tr_next && !strcmp(tr_key, g->gln))) return;
+    TrJob *j = calloc(1, sizeof *j);
+    j->gen = tr_gen;
+    snprintf(j->gln, sizeof j->gln, "%s", g->gln);
+    snprintf(j->code, sizeof j->code, "%s", g->code);
+    snprintf(j->code2, sizeof j->code2, "%s", g->code2 ? g->code2 : "");
+    tr_fetching = true;
+    job_submit(tr_work, tr_done, j);
+}
+static void grid_changed(void) {
+    tr_gen++;
+    tr_fetching = false;
+    tr_ok = false;
+    tr_key[0] = 0;
+    tr_next = 0;
+    el_recalc();
+    tr_tick();
+}
+
 static void fetch_done(void *arg) {
     Job *j = arg;
     fetching = false;
     if (j->gen == el_gen) {
         if (j->out.ok) {
             P = j->out;
+            el_recalc();
             fetched_at = app_time();
             next_fetch = app_time() + REFRESH_S;
         } else {
@@ -118,6 +306,7 @@ static void el_fetch(void) {
 }
 static void el_tick(void) {
     if (app_time() >= next_fetch && !fetching) el_fetch();
+    else if (!fetching) tr_tick(); /* not at the same moment as the spot prices (rate limit) */
 }
 static void switch_area(void) {
     cfg_set("el_area", !strcmp(area(), "DK1") ? "DK2" : "DK1");
@@ -136,6 +325,8 @@ static int now_idx(void) {
         if (P.h[i].t <= now && now < P.h[i].t + 3600) return i;
     return -1;
 }
+/* the price right now: the hour's (the average of its quarters, as the electricity companies' apps show it) */
+static float now_kr(int ni) { return P.h[ni].kr; }
 /* the hours of the day the hour i is in (local time): [*a, *b) */
 static void day_range(int i, int *a, int *b) {
     struct tm x, y;
@@ -217,7 +408,7 @@ static bool el_shelf(float x, float y) {
     int ni = now_idx();
     if (!P.ok || ni < 0) return false;
     char b[64], line[240];
-    fmt_kr(P.h[ni].kr, b, sizeof b);
+    fmt_kr(now_kr(ni), b, sizeof b);
     Color c = price_color(ni);
     fill_circle(x + 30, y + 90, 22, c);
     text_draw(F_BOLD, 110, x + 76, y + 30, C_TEXT, AL_LEFT, b);
@@ -261,9 +452,9 @@ static void el_draw(Screen *s) {
         draw_keybar(x0, UI_H - 62, NULL, NULL, T("Switch area"), NULL, NULL);
         return;
     }
-    char b[64], k[16], line[240];
+    char b[64], k[16], line[400];
     /* now */
-    fmt_kr(P.h[ni].kr, b, sizeof b);
+    fmt_kr(now_kr(ni), b, sizeof b);
     Color c = price_color(ni);
     fill_circle(x0 + 34, 352, 26, c);
     text_draw(F_BOLD, 150, x0 + 84, 270, C_TEXT, AL_LEFT, b);
@@ -299,8 +490,17 @@ static void el_draw(Screen *s) {
     draw_panel(x0 - 30, cy - 40, UI_W - 2 * x0 + 60, chh + 110, 28, 1);
     draw_chart(x0, cy, UI_W - 2 * x0, chh, a, P.n, true);
     if (e >= P.n) text_draw(F_REG, 22, UI_W - x0, cy - 30, C_TEXT3, AL_RIGHT, T("Tomorrow's prices come at about 13:00"));
-    text_draw(F_REG, 20, x0, UI_H - 108, C_TEXT3, AL_LEFT,
-              T("Spot price with VAT - without the grid tariff, electricity tax and your supplier's fee. Source: Energi Data Service"));
+    if (with_tariffs()) {
+        snprintf(line, sizeof line,
+                 fee() > 0 ? T("Full price with VAT: spot price, grid tariff from %s, Energinet's tariffs, electricity tax and your supplier's surcharge")
+                           : T("Price with VAT: spot price, grid tariff from %s, Energinet's tariffs and electricity tax - your supplier's surcharge can be added in Settings"),
+                 grid_name());
+        text_draw(F_REG, 20, x0, UI_H - 108, C_TEXT3, AL_LEFT, line);
+    } else {
+        text_draw(F_REG, 20, x0, UI_H - 108, C_TEXT3, AL_LEFT,
+                  grid() ? T("Spot price with VAT - the grid tariff is being fetched")
+                         : T("Spot price with VAT only - choose your grid company in Settings to see the full price"));
+    }
     draw_keybar(x0, UI_H - 62, NULL, NULL, T("Switch area"), NULL, NULL);
 }
 static bool el_input(Screen *s, const InputEvent *ev) {
@@ -331,11 +531,24 @@ static void elpris_forget(void) {
     memset(&P, 0, sizeof P);
     next_fetch = 0;
     cfg_set("el_area", "");
+    tr_gen++;
+    tr_fetching = tr_ok = false;
+    tr_key[0] = 0;
+    tr_next = 0;
+    free(TR);
+    TR = NULL;
+    n_tr = 0;
+    cfg_set("el_grid", "");
+    cfg_set("el_fee", "");
 }
 static const char *area_value(void) { return area_name(area()); }
 static const Item el_items[] = {
     {N_("Price area"), IT_ACTION, .action = switch_area, .value = area_value,
      .help = N_("West: Jutland and Funen. East: Zealand, the islands and Bornholm")},
+    {N_("Grid company"), IT_CYCLE, "el_grid", "", grid_o, grid_l, .changed = grid_changed,
+     .help = N_("The company that owns the cables to your home - it is on your electricity bill. Gives the full price")},
+    {N_("Supplier's surcharge"), IT_CYCLE, "el_fee", "0", fee_o, fee_l, .changed = el_recalc,
+     .help = N_("What your electricity company adds per kWh, with VAT - it is on your bill or in your contract")},
 };
 const NotaApp nota_app = {
     NOTA_API, "elpris", "Electricity price", N_("The electricity price hour by hour, today and tomorrow"), APP_VERSION, 78, 0,
