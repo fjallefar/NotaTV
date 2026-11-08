@@ -18,7 +18,7 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
-## Next (not released yet - rename to the version number when it is released)
+## 1.0.16
 
 > **In short:** The app names under the bottom row of the home screen can be read again, and the Electricity price app can show the full price.
 > - Home screen: with many apps installed the grid slides up to the bottom row, so its names stay on screen
