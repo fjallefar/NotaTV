@@ -899,11 +899,11 @@ static bool music_draw_shelf(float x, float y) {
         Image *im = cov ? img_get(cov) : NULL;
         if (!im || img_state(im) != IMG_READY) {
             MusicState s = snapshot();
-            draw_gen_cover(x, y, 300, 16, cover_artist(&s), cover_name(&s), 1, cover_loading(&s));
-        } else img_draw_cover(im, x, y, 300, 300, 16, 1);
-        text_draw(F_SEMI, 24, x + 340, y + 70, C_ACCENT, AL_LEFT, playing ? T("NOW PLAYING") : T("PAUSED"));
-        text_draw_clip(F_BOLD, 52, x + 340, y + 110, 1200, C_TEXT, AL_LEFT, t);
-        text_draw_clip(F_REG, 32, x + 340, y + 180, 1200, C_TEXT2, AL_LEFT, ar ? ar : "");
+            draw_gen_cover(x, y, 230, 16, cover_artist(&s), cover_name(&s), 1, cover_loading(&s));
+        } else img_draw_cover(im, x, y, 230, 230, 16, 1);
+        text_draw(F_SEMI, 24, x + 270, y + 40, C_ACCENT, AL_LEFT, playing ? T("NOW PLAYING") : T("PAUSED"));
+        text_draw_clip(F_BOLD, 52, x + 270, y + 80, 1200, C_TEXT, AL_LEFT, t);
+        text_draw_clip(F_REG, 32, x + 270, y + 150, 1200, C_TEXT2, AL_LEFT, ar ? ar : "");
         shown = true;
     }
     free(t); free(ar); free(cov);

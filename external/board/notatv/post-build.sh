@@ -69,6 +69,15 @@ done
 ln -sfn /data/notatv/localtime $TARGET/etc/localtime
 rm -f $TARGET/etc/timezone
 
+# Let's Encrypt's new chain (YR2/YE2 -> Root YR/YE) is not in Mozilla's list yet, and some servers (shared Plex servers
+# on plex.direct) do not send the certificate linking it to ISRG Root X1/X2. These two are that link: signed by roots
+# already in the list, so they add no new trust. Remove them when Root YR/YE are in ca-certificates.
+CA_BUNDLE=$TARGET/etc/ssl/certs/ca-certificates.crt
+if [ -f "$CA_BUNDLE" ] && ! grep -q 'NotaTV: Root YR by X1' "$CA_BUNDLE"; then
+	{ echo; echo '# NotaTV: Root YR by X1'; cat "$BR2_EXTERNAL_NOTATV_PATH/board/notatv/ca-extra/root-yr-by-x1.pem"
+	  echo '# NotaTV: Root YE by X2'; cat "$BR2_EXTERNAL_NOTATV_PATH/board/notatv/ca-extra/root-ye-by-x2.pem"; } >> "$CA_BUNDLE"
+fi
+
 # file list for the updater: a file that disappears in a later version is only removed from a box if it is
 # listed here (same exclusions as the update package in board/rpi4/post-image.sh). Must be the last step.
 mkdir -p $TARGET/usr/share/notatv

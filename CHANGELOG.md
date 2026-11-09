@@ -18,6 +18,26 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.20
+
+> **In short:** A calmer home screen with a banner on top, and a new control center.
+> - Smaller app tiles, and a banner that shows what you were watching
+> - Control center: the button by the clock, or Red or Power on the remote
+> - Shared Plex servers with the newest Let's Encrypt certificates can be chosen again
+
+<!-- tldr:da
+Kort: En roligere forside med et banner i toppen og et nyt kontrolcenter.
+- Mindre app-fliser og et banner, der viser, hvad du var i gang med
+- Kontrolcenter: knappen ved uret, eller Rød eller Power på fjernbetjeningen
+- Delte Plex-servere med Let's Encrypts nyeste certifikater kan vælges igen
+-->
+
+- **Home screen (grid):** 7 smaller tiles per row. The banner stays at the top and fades into the background; the rows slide in under it. It shows what you can continue in Plex, Jellyfin, YouTube and DRTV.
+- **Control center:** square buttons at the top right for sleep timer, Bluetooth, picture and sound, network and power. "Edit home screen" is now in here, and the tile in focus shakes a little while you edit.
+- **Top bar:** weather, price and cars keep their place when music or radio starts. The date gives way when room is short, and the network icon only shows when there is no network.
+- **App Store:** apps that need closed software stay under their check box after installing.
+- **Plex:** servers whose certificate uses Let's Encrypt's new chain could not be chosen. The linking certificates (signed by roots already trusted) are now included.
+
 ## 1.0.19
 
 > **In short:** The home screen can be a carousel: one row where the app in focus is the biggest.

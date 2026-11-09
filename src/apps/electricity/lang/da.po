@@ -54,8 +54,6 @@ msgstr "Vest: Jylland og Fyn. Øst: Sjælland, øerne og Bornholm"
 msgid "The electricity price hour by hour, today and tomorrow"
 msgstr "Elprisen time for time, i dag og i morgen"
 
-msgid "Electricity price on NotaTV"
-msgstr "Elpris på NotaTV"
 
 
 msgid "Full price with VAT: spot price, grid tariff from %s, Energinet's tariffs, electricity tax and your supplier's surcharge"
@@ -117,11 +115,43 @@ msgstr "Pris med moms: spotpris, nettarif fra %s, Energinets tariffer og elafgif
 msgid "Spot price with VAT only - choose your grid company at the top to see the full price"
 msgstr "Kun spotpris med moms - vælg dit netselskab øverst for at se den samlede pris"
 
-msgid "The full price with the grid tariff: choose your grid company at the top of the app - the first time, the app asks"
-msgstr "Den samlede pris med nettarif: vælg dit netselskab øverst i appen - første gang spørger appen selv"
 
-msgid "Price area and your electricity company's surcharge are chosen at the top too"
-msgstr "Prisområde og dit elselskabs tillæg vælges også øverst"
 
 msgid "Price area\nWest: Jutland and Funen. East: Zealand, the islands and Bornholm"
 msgstr "Prisområde\nVest: Jylland og Fyn. Øst: Sjælland, øerne og Bornholm"
+
+msgid "Price on the home screen"
+msgstr "Elpris på forsiden"
+
+msgid "The price right now at the top of the home screen"
+msgstr "Prisen lige nu øverst på forsiden"
+
+msgid "%s kr"
+msgstr "%s kr"
+
+msgid "Off"
+msgstr "Fra"
+
+msgid "On"
+msgstr "Til"
+
+msgid "Move app"
+msgstr "Flyt app"
+
+msgid "The price on the home screen and hour by hour"
+msgstr "Prisen på forsiden og time for time"
+
+msgid "The price right now at the top of the home screen - turn it off at the top of the app"
+msgstr "Prisen lige nu øverst på forsiden - slå den fra øverst i appen"
+
+msgid "A line for every krone in the chart, and the arrows show the exact price hour by hour"
+msgstr "En streg for hver krone i grafen, og pilene viser den præcise pris time for time"
+
+msgid "kr/kWh  ·  %s %s-%s"
+msgstr "kr/kWh  ·  %s %s-%s"
+
+msgid "Use the arrows to see the price hour by hour"
+msgstr "Brug pilene for at se prisen time for time"
+
+msgid "The prices are remembered and only fetched every 6 hours, at start and at 13:15"
+msgstr "Priserne huskes og hentes kun hver 6. time, ved start og kl. 13.15"

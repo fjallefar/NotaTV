@@ -1,6 +1,6 @@
 {
   "id": "radio",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "Radio",
   "desc": "Radio stations from your country and the whole world",
@@ -11,10 +11,9 @@
   "order": 75,
   "default": false,
   "changes": {
-    "summary": "OK on a station opens its choices",
+    "summary": "The artwork fits the new home screen",
     "points": [
-      "OK on a station: Listen (or Stop) and Favourite - OK, OK listens",
-      "The buttons at the bottom no longer cover the stations"
+      "The logo or cover on the home screen no longer reaches the app icons"
     ]
   }
 }

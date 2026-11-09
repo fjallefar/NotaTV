@@ -279,8 +279,8 @@ msgstr "IPTV programguide (XMLTV)"
 msgid "RECENTLY WATCHED"
 msgstr "SENEST SET"
 
-msgid "Live TV  ·  press down for your recent channels"
-msgstr "Live TV  ·  tryk ned for dine seneste kanaler"
+msgid "Live TV  ·  your latest channel"
+msgstr "Live TV  ·  din seneste kanal"
 
 msgid "Live TV"
 msgstr "Live TV"
@@ -366,17 +366,8 @@ msgstr "Åbn"
 msgid "Menu"
 msgstr "Menu"
 
-msgid "OK on a channel opens its choices"
-msgstr "OK på en kanal åbner dens valg"
+msgid "Correct text on the home screen"
+msgstr "Rigtig tekst på forsiden"
 
-msgid "OK on a channel: Watch, favorite, program schedule, move favorite - OK, OK watches"
-msgstr "OK på en kanal: Se, favorit, programoversigt, flyt favorit - OK, OK ser kanalen"
-
-msgid "TV guide: OK on a coming program offers Remind me"
-msgstr "TV-guiden: OK på et kommende program giver Påmind mig"
-
-msgid "While watching: Right opens the menu with the favorite at the top"
-msgstr "Mens du ser: højre åbner menuen med favorit øverst"
-
-msgid "Left from the groups opens the Live TV menu"
-msgstr "Venstre fra grupperne åbner Live TV-menuen"
+msgid "The home screen no longer tells you to press down for a row that is gone"
+msgstr "Forsiden beder dig ikke længere trykke ned til en række, der er væk"

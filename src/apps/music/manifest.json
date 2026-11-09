@@ -1,6 +1,6 @@
 {
   "id": "music",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "api": 2,
   "name": "Music",
   "desc": "Play music from your phone via AirPlay",
@@ -23,9 +23,9 @@
   "order": 70,
   "default": true,
   "changes": {
-    "summary": "AirPlay pause is shown correctly",
+    "summary": "The artwork fits the new home screen",
     "points": [
-      "When you pause AirPlay on your phone, Music shows it as paused"
+      "The logo or cover on the home screen no longer reaches the app icons"
     ]
   }
 }

@@ -17,7 +17,8 @@
 #define EL_GREEN RGB(52, 199, 89)
 #define EL_YELLOW RGB(255, 196, 54)
 #define EL_RED RGB(255, 84, 72)
-#define REFRESH_S (15 * 60)
+#define REFRESH_S (6 * 3600) /* and at 13:15, see next_refresh */
+#define RETRY_S (5 * 60)     /* after a failed fetch (the service limits how often it may be asked) */
 #define MAX_H 72
 
 typedef struct {
@@ -32,7 +33,7 @@ typedef struct {
     int n;
 } Prices;
 static Prices P;
-static double next_fetch, fetched_at;
+static time_t next_fetch; /* wall clock, so it also holds across sleep; 0 = as soon as possible */
 static bool fetching;
 static int el_gen;
 
@@ -276,6 +277,58 @@ static void grid_changed(void) {
     tr_tick();
 }
 
+/* the prices are remembered, so a restart or a refused fetch still shows them: first line the area, then "time spot" */
+static void cache_path(char *p, size_t n) { snprintf(p, n, "%s/electricity-prices.txt", data_dir()); }
+static void prices_save(void) {
+    char p[512], tmp[520];
+    cache_path(p, sizeof p);
+    snprintf(tmp, sizeof tmp, "%s.tmp", p);
+    FILE *f = fopen(tmp, "w");
+    if (!f) return;
+    fprintf(f, "%s\n", P.area);
+    for (int i = 0; i < P.n; i++) fprintf(f, "%lld %.5f\n", (long long)P.h[i].t, P.h[i].spot);
+    if (fclose(f) == 0) rename(tmp, p);
+    else remove(tmp);
+}
+static void prices_load(void) {
+    if (P.ok) return;
+    char p[512], a[8] = "";
+    cache_path(p, sizeof p);
+    FILE *f = fopen(p, "r");
+    if (!f) return;
+    long long t;
+    float spot;
+    if (fscanf(f, "%7s", a) == 1 && !strcmp(a, area())) {
+        Prices c;
+        memset(&c, 0, sizeof c);
+        while (c.n < MAX_H && fscanf(f, "%lld %f", &t, &spot) == 2) {
+            c.h[c.n].t = (time_t)t;
+            c.h[c.n].spot = spot;
+            c.h[c.n].kr = spot * 1.25f;
+            c.n++;
+        }
+        if (c.n) {
+            c.ok = true;
+            snprintf(c.area, sizeof c.area, "%s", a);
+            P = c;
+            el_recalc();
+        }
+    }
+    fclose(f);
+}
+/* every 6 hours, and at 13:15 when tomorrow's prices are out */
+static time_t next_refresh(time_t now) {
+    struct tm t;
+    localtime_r(&now, &t);
+    t.tm_hour = 13;
+    t.tm_min = 15;
+    t.tm_sec = 0;
+    t.tm_isdst = -1;
+    time_t day = mktime(&t), six = now + REFRESH_S;
+    if (day <= now) day += 86400;
+    return day < six ? day : six;
+}
+
 static void fetch_done(void *arg) {
     Job *j = arg;
     fetching = false;
@@ -283,10 +336,10 @@ static void fetch_done(void *arg) {
         if (j->out.ok) {
             P = j->out;
             el_recalc();
-            fetched_at = app_time();
-            next_fetch = app_time() + REFRESH_S;
+            prices_save();
+            next_fetch = next_refresh(time(NULL));
         } else {
-            next_fetch = app_time() + 120;
+            next_fetch = time(NULL) + RETRY_S;
         }
     }
     free(j);
@@ -306,7 +359,9 @@ static void el_fetch(void) {
     job_submit(fetch_work, fetch_done, j);
 }
 static void el_tick(void) {
-    if (app_time() >= next_fetch && !fetching) el_fetch();
+    time_t now = time(NULL);
+    if (now < 1600000000) return; /* the clock is not set yet */
+    if (now >= next_fetch && !fetching) el_fetch();
     else if (!fetching) tr_tick(); /* not at the same moment as the spot prices (rate limit) */
 }
 static void switch_area(void) {
@@ -378,18 +433,34 @@ static const char *day_word(time_t t) {
 }
 
 /* ---------- drawing ---------- */
-static void draw_chart(float x, float y, float w, float h, int from, int to, bool labels) {
+/* mark = the hour with the frame; labels = the big chart: hours, a line per krone and the marked hour's price */
+static void draw_chart(float x, float y, float w, float h, int from, int to, bool labels, int mark) {
     if (to <= from) return;
     float lo = 0, hi = 0.1f;
     for (int i = from; i < to; i++) { if (P.h[i].kr > hi) hi = P.h[i].kr; if (P.h[i].kr < lo) lo = P.h[i].kr; }
     float span = hi - lo, bw = w / (float)(to - from), zero = y + h * (hi / span);
     int ni = now_idx();
+    if (labels) /* behind the bars */
+        for (int k = (int)ceilf(lo); k <= (int)floorf(hi); k++) {
+            float ky = y + h * ((hi - k) / span);
+            char kb[16];
+            snprintf(kb, sizeof kb, "%d kr", k);
+            if (k) fill_rect(x, ky, w, 1, RGBA(255, 255, 255, 30));
+            text_draw(F_REG, 20, x - 12, ky - 12, C_TEXT3, AL_RIGHT, kb);
+        }
     for (int i = from; i < to; i++) {
         float v = P.h[i].kr, bx = x + (i - from) * bw, top = y + h * ((hi - fmaxf(v, 0)) / span), bot = y + h * ((hi - fminf(v, 0)) / span);
         Color c = price_color(i);
-        if (i != ni) c = color_alpha(c, i < ni ? 0.35f : 0.8f);
+        if (i != ni && i != mark) c = color_alpha(c, i < ni ? 0.35f : 0.8f);
         fill_rrect(bx + bw * 0.12f, top, bw * 0.76f, fmaxf(bot - top, 2), fminf(bw * 0.2f, 5), c);
-        if (i == ni) stroke_rrect(bx + bw * 0.04f, top - 6, bw * 0.92f, fmaxf(bot - top, 2) + 12, 6, 2, C_TEXT);
+        if (i == mark) {
+            stroke_rrect(bx + bw * 0.04f, top - 6, bw * 0.92f, fmaxf(bot - top, 2) + 12, 6, 2, C_TEXT);
+            if (labels) {
+                char pb[16];
+                fmt_kr(v, pb, sizeof pb);
+                text_draw(F_BOLD, 24, bx + bw / 2, top - 38, C_TEXT, AL_CENTER, pb);
+            }
+        }
         if (labels) {
             struct tm t;
             localtime_r(&P.h[i].t, &t);
@@ -428,13 +499,35 @@ static bool el_shelf(float x, float y) {
     int a, e;
     day_range(ni, &a, &e);
     if (e < P.n) e = P.n; /* tomorrow too, when it is there */
-    draw_chart(UI_W - x - 760, y + 20, 760, 180, a, e, false);
+    draw_chart(UI_W - x - 760, y + 20, 760, 180, a, e, false, ni);
     return true;
 }
 
+/* the top bar of the home screen: the price right now, with the hour's color */
+static void el_overlay(void) {
+    int ni = now_idx();
+    if (!P.ok || ni < 0 || !cfg_int("el_topbar", 1)) return;
+    Screen *t = app_top();
+    if (!t || !t->name || strcmp(t->name, "home")) return;
+    char n[32], b[48];
+    fmt_kr(now_kr(ni), n, sizeof n);
+    snprintf(b, sizeof b, T("%s kr"), n);
+    float tw = text_width(F_SEMI, 24, b), w = 20 + 16 + 12 + tw + 22, h = 58, y = 50;
+    float right = UI_W - 310 - 36 - text_width(F_REG, 22, T("Move app")) - 28;
+    float x = app_overlay_place ? app_overlay_place(right, w) : right - w;
+    fill_rrect(x, y, w, h, h / 2, RGBA(18, 20, 28, 205));
+    stroke_rrect(x, y, w, h, h / 2, 1, RGBA(255, 255, 255, 22));
+    fill_circle(x + 20 + 8, y + h / 2, 8, price_color(ni));
+    text_draw(F_SEMI, 24, x + 20 + 16 + 12, y + 14, C_TEXT, AL_LEFT, b);
+}
+
 /* ---------- the choices at the top (chips): area, grid company, surcharge - chosen right here, not in Settings ---------- */
-typedef struct { int sel; } ElView;
-enum { CH_AREA, CH_GRID, CH_FEE, N_CH };
+typedef struct {
+    int sel;       /* the chip in focus */
+    bool on_chips; /* the focus: the chips at the top (↑), otherwise the chart */
+    time_t sel_t;  /* the hour chosen in the chart; 0 = now (follows the clock) */
+} ElView;
+enum { CH_AREA, CH_GRID, CH_FEE, CH_TOP, N_CH };
 static int opt_at(const char *const *o, const char *key, const char *def) {
     const char *v = cfg_get(key, def);
     for (int i = 0; o[i]; i++) if (!strcmp(o[i], v)) return i;
@@ -470,7 +563,9 @@ static void pick_grid(const char *title) {
     choice_open(title, it, n, opt_at(grid_o, "el_grid", ""), grid_picked, NULL);
 }
 static void chip_open(int c) {
-    if (c == CH_AREA) {
+    if (c == CH_TOP) {
+        cfg_set_int("el_topbar", !cfg_int("el_topbar", 1));
+    } else if (c == CH_AREA) {
         const char *it[] = {T("West Denmark (DK1)"), T("East Denmark (DK2)")};
         choice_open(T("Price area\nWest: Jutland and Funen. East: Zealand, the islands and Bornholm"), it, 2, !strcmp(area(), "DK1") ? 0 : 1, area_picked, NULL);
     } else if (c == CH_GRID) {
@@ -483,7 +578,7 @@ static void chip_open(int c) {
 }
 static void el_enter(Screen *s) {
     (void)s;
-    if (!P.ok || app_time() - fetched_at > 5 * 60 || strcmp(P.area, area())) { next_fetch = 0; el_tick(); }
+    if (P.ok && strcmp(P.area, area())) { next_fetch = 0; el_tick(); } /* opening the app does not fetch: see next_refresh */
     /* the first time: ask the one thing that cannot be guessed (the area is guessed from the Weather town) */
     if (draw_chips && !cfg_int("el_asked", 0)) {
         cfg_set_int("el_asked", 1);
@@ -492,6 +587,13 @@ static void el_enter(Screen *s) {
 }
 static void el_update(Screen *s, float dt) { (void)s; (void)dt; el_tick(); }
 
+/* the hour shown in the chart and the big number: the chosen one while it still exists, otherwise now */
+static int sel_idx(const ElView *v, int ni) {
+    int a, e;
+    day_range(ni, &a, &e);
+    if (v->sel_t) for (int i = a; i < P.n; i++) if (P.h[i].t == v->sel_t) return i;
+    return ni;
+}
 static void el_draw(Screen *s) {
     draw_background();
     draw_topbar(NULL);
@@ -499,13 +601,14 @@ static void el_draw(Screen *s) {
     text_draw(F_BOLD, 52, x0, 130, C_TEXT, AL_LEFT, T("Electricity price"));
     ElView *v = s->st;
     if (draw_chips) {
-        char g[96], f[64];
+        char g[96], f[64], tb[96];
         const char *gn = grid_name();
         if (*gn) snprintf(g, sizeof g, T("Grid company: %s"), gn);
         else snprintf(g, sizeof g, "%s", T("Choose grid company"));
         snprintf(f, sizeof f, T("Surcharge: %s"), T(fee_l[opt_at(fee_o, "el_fee", "0")]));
-        const char *chips[N_CH] = {area_name(area()), g, f};
-        draw_chips(x0, 196, chips, N_CH, v->sel);
+        snprintf(tb, sizeof tb, "%s: %s", T("Price on the home screen"), cfg_int("el_topbar", 1) ? T("On") : T("Off"));
+        const char *chips[N_CH] = {area_name(area()), g, f, tb};
+        draw_chips(x0, 196, chips, N_CH, v->on_chips ? v->sel : -1);
     } else {
         text_draw(F_REG, 26, x0, 196, C_TEXT3, AL_LEFT, area_name(area()));
     }
@@ -517,12 +620,20 @@ static void el_draw(Screen *s) {
         return;
     }
     char b[64], k[16], line[400];
-    /* now */
-    fmt_kr(now_kr(ni), b, sizeof b);
-    Color c = price_color(ni);
+    /* now, or the hour chosen in the chart */
+    int si = sel_idx(v, ni);
+    fmt_kr(now_kr(si), b, sizeof b);
+    Color c = price_color(si);
     fill_circle(x0 + 34, 352, 26, c);
     text_draw(F_BOLD, 150, x0 + 84, 270, C_TEXT, AL_LEFT, b);
-    text_draw(F_SEMI, 36, x0 + 94 + text_width(F_BOLD, 150, b), 318, C_TEXT2, AL_LEFT, T("kr/kWh now"));
+    if (si == ni) snprintf(line, sizeof line, "%s", T("kr/kWh now"));
+    else {
+        char h1[8], h2[8];
+        fmt_hour(P.h[si].t, h1, sizeof h1);
+        fmt_hour(P.h[si].t + 3600, h2, sizeof h2);
+        snprintf(line, sizeof line, T("kr/kWh  ·  %s %s-%s"), day_word(P.h[si].t), h1, h2);
+    }
+    text_draw(F_SEMI, 36, x0 + 94 + text_width(F_BOLD, 150, b), 318, C_TEXT2, AL_LEFT, line);
     /* the cheapest hours and the day's numbers, on the right */
     float rx = 1080, ry = 250;
     float avg;
@@ -550,10 +661,11 @@ static void el_draw(Screen *s) {
     text_draw(F_REG, 26, rx, ry + 10, C_TEXT2, AL_LEFT, line);
 
     /* the chart: today and tomorrow when it is there */
-    float cy = 540, chh = 330;
-    draw_panel(x0 - 30, cy - 40, UI_W - 2 * x0 + 60, chh + 110, 28, 1);
-    draw_chart(x0, cy, UI_W - 2 * x0, chh, a, P.n, true);
-    if (e >= P.n) text_draw(F_REG, 22, UI_W - x0, cy - 30, C_TEXT3, AL_RIGHT, T("Tomorrow's prices come at about 13:00"));
+    float cy = 560, chh = 310, cleft = 56;
+    draw_panel(x0 - 30, cy - 60, UI_W - 2 * x0 + 60, chh + 130, 28, 1);
+    draw_chart(x0 + cleft, cy, UI_W - 2 * x0 - cleft, chh, a, P.n, true, si);
+    text_draw(F_REG, 22, x0, cy - 54, C_TEXT3, AL_LEFT, T("Use the arrows to see the price hour by hour"));
+    if (e >= P.n) text_draw(F_REG, 22, UI_W - x0, cy - 54, C_TEXT3, AL_RIGHT, T("Tomorrow's prices come at about 13:00"));
     if (with_tariffs()) {
         snprintf(line, sizeof line,
                  fee() > 0 ? T("Full price with VAT: spot price, grid tariff from %s, Energinet's tariffs, electricity tax and your supplier's surcharge")
@@ -572,8 +684,22 @@ static void el_draw(Screen *s) {
 static bool el_input(Screen *s, const InputEvent *ev) {
     ElView *v = s->st;
     if (ev->a == A_YELLOW && !ev->repeat) { switch_area(); return true; } /* shortcut */
+    int ni = now_idx();
+    if (!v->on_chips && (ev->a == A_LEFT || ev->a == A_RIGHT)) { /* the chart: one hour at a time */
+        if (!P.ok || ni < 0) return true;
+        int a, e, si = sel_idx(v, ni) + (ev->a == A_LEFT ? -1 : 1);
+        day_range(ni, &a, &e);
+        if (si >= a && si < P.n) v->sel_t = si == ni ? 0 : P.h[si].t;
+        return true;
+    }
     if (!draw_chips) {
         if (ev->a == A_OK && !ev->repeat) { switch_area(); return true; }
+        return false;
+    }
+    if (ev->a == A_UP) { v->on_chips = true; return true; }
+    if (ev->a == A_DOWN) { v->on_chips = false; return true; }
+    if (!v->on_chips) {
+        if (ev->a == A_OK && !ev->repeat) { v->sel_t = 0; return true; } /* back to now */
         return false;
     }
     if (ev->a == A_OK && !ev->repeat) { chip_open(v->sel); return true; }
@@ -602,6 +728,7 @@ static void electricity_forget(void) {
     fetching = false;
     memset(&P, 0, sizeof P);
     next_fetch = 0;
+    { char p[512]; cache_path(p, sizeof p); remove(p); }
     cfg_set("el_area", "");
     tr_gen++;
     tr_fetching = tr_ok = false;
@@ -615,6 +742,11 @@ static void electricity_forget(void) {
     cfg_set("el_asked", "");
 }
 static const char *area_value(void) { return area_name(area()); }
+static const char *const el_onoff_v[] = {"0", "1", NULL}, *const el_onoff_l[] = {N_("Off"), N_("On"), NULL};
+static void el_init(void) {
+    prices_load();
+    if (app_set_overlay) app_set_overlay("electricity", el_overlay);
+}
 static const Item el_items[] = {
     {N_("Price area"), IT_ACTION, .action = switch_area, .value = area_value,
      .help = N_("West: Jutland and Funen. East: Zealand, the islands and Bornholm")},
@@ -622,11 +754,13 @@ static const Item el_items[] = {
      .help = N_("The company that owns the cables to your home - it is on your electricity bill. Gives the full price")},
     {N_("Supplier's surcharge"), IT_CYCLE, "el_fee", "0", fee_o, fee_l, .changed = el_recalc,
      .help = N_("What your electricity company adds per kWh, with VAT - it is on your bill or in your contract")},
+    {N_("Price on the home screen"), IT_CYCLE, "el_topbar", "1", el_onoff_v, el_onoff_l,
+     .help = N_("The price right now at the top of the home screen")},
 };
 const NotaApp nota_app = {
     NOTA_API, "electricity", "Electricity price", N_("The electricity price hour by hour, today and tomorrow"), APP_VERSION, 78, 0,
     ICON_STAR, {34, 197, 94, 255}, {15, 95, 51, 255}, {255, 255, 255, 255},
-    .open = electricity_screen, .tick = el_tick, .forget = electricity_forget,
+    .open = electricity_screen, .init = el_init, .tick = el_tick, .forget = electricity_forget,
     .settings = el_items, .n_settings = sizeof el_items / sizeof el_items[0],
     .draw_shelf = el_shelf,
 };

@@ -1079,10 +1079,10 @@ static void radio_row_open(const HomeItem *it, int idx) {
 
 static bool radio_draw_shelf(float x, float y) {
     if (!rd_playing()) return false;
-    draw_logo(&pl.st, x, y, 300, 300, 16, 1);
-    text_draw(F_SEMI, 24, x + 340, y + 70, RD_ACCENT, AL_LEFT, pl.buffering ? T("CONNECTING") : T("ON THE RADIO NOW"));
-    text_draw_clip(F_BOLD, 52, x + 340, y + 110, 1200, C_TEXT, AL_LEFT, pl.st.name);
-    text_draw_clip(F_REG, 32, x + 340, y + 180, 1200, C_TEXT2, AL_LEFT, pl.title[0] ? pl.title : pl.st.tags);
+    draw_logo(&pl.st, x, y, 230, 230, 16, 1);
+    text_draw(F_SEMI, 24, x + 270, y + 40, RD_ACCENT, AL_LEFT, pl.buffering ? T("CONNECTING") : T("ON THE RADIO NOW"));
+    text_draw_clip(F_BOLD, 52, x + 270, y + 80, 1200, C_TEXT, AL_LEFT, pl.st.name);
+    text_draw_clip(F_REG, 32, x + 270, y + 150, 1200, C_TEXT2, AL_LEFT, pl.title[0] ? pl.title : pl.st.tags);
     return true;
 }
 

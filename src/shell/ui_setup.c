@@ -451,7 +451,7 @@ static void setup_draw(Screen *s) {
     case ST_HOME:
         icon = ICON_TV;
         title = N_("Choose the home screen");
-        body = N_("Grid: the apps in rows of six. Carousel: one row where the app in focus is the biggest. You can change it later under Settings → Home screen.");
+        body = N_("Grid: the apps in rows of seven. Carousel: one row where the app in focus is the biggest. You can change it later under Settings → Home screen.");
         break;
     case ST_APPS:
         icon = ICON_CHECK;

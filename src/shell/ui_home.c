@@ -62,14 +62,19 @@ static void move_tile(int from, int to) {
     vis[to] = a;
 }
 
-/* app grid: up to 6 per row, left-aligned on the screen margin (the same edge as the header and the rows) */
+/* app grid: up to 7 per row, left-aligned on the screen margin (the same edge as the header and the rows) */
 #define MARGIN 96.0f
-#define TILE_W 248.0f
-#define TILE_H 140.0f
-#define TILE_GAP 40.0f
-#define TILE_PITCH 214.0f /* tile + room for the name of the focused one */
+#define TILE_W 216.0f
+#define TILE_H 122.0f
+#define TILE_GAP 36.0f
+#define TILE_PITCH 180.0f /* tile + room for the name of the focused one */
 #define TILE_R 26.0f
-#define APPS_Y 500.0f
+#define APPS_Y 470.0f
+#define BANNER_H 440.0f /* grid: the banner stays put at the top and the rows slide in under it */
+#define FADE_T 400.0f   /* grid: the banner has faded into the background here; rows dissolve between this and APPS_Y */
+#define BG_DARK RGB(11, 13, 19)
+/* grid: from the second row on, the row above the focused one is cut in half by the banner's lower edge */
+#define GRID_TUCK (APPS_Y + TILE_H / 2 - BANNER_H)
 /* the layout (Settings → Home screen, the setup guide): "grid" (the default) or "carousel" - one row like Apple TV,
    where the app in focus is the biggest and the others slide past */
 static bool carousel(void) { return !strcmp(cfg_get("home_layout", "grid"), "carousel"); }
@@ -80,7 +85,7 @@ static bool carousel(void) { return !strcmp(cfg_get("home_layout", "grid"), "car
 #define CAR_Y 590.0f     /* the middle of the row */
 static int grid_cols(void) {
     if (carousel()) return n_vis ? n_vis : 1; /* one row */
-    return n_vis < 6 ? (n_vis ? n_vis : 1) : 6;
+    return n_vis < 7 ? (n_vis ? n_vis : 1) : 7;
 }
 static int grid_rows(void) { return (n_vis + grid_cols() - 1) / grid_cols(); }
 
@@ -99,20 +104,25 @@ typedef struct {
     bool keep_row;           /* moved down onto an app without a row: the row of the app above stays (see pick_cont_app) */
     double refreshed, fetched;
     /* "top shelf": a big image from the focused app behind the top (drawn in a layer) */
-    char bg_url[512], prev_url[512], bgl_key[600];
+    char bg_url[512], prev_url[512], pend_url[512], bgl_key[600];
+    double pend_t; /* when the focus reached the image in pend_url */
     float bg_fade, bgl_fade;
     Layer *bgl;
     bool moving;       /* move mode: the arrows move the focused tile, OK/Back ends it */
-    /* "Edit home screen" (top right, ↑ from the first row of apps): OK on an app picks it up to move it, OK on the
+    /* on_edit: ↑ from the first row: the control center's button, or "Done" while editing.
+       Edit mode ("Edit home screen" in the control center): OK on an app picks it up to move it, OK on the
        row below asks to remove the item, Back ends it. Green is a shortcut (LG CEC has no real "held OK") */
     bool on_edit, editing;
     float wiggle;
+    float date_a; /* the date in the top bar: fades when the pills need the room */
     float cscroll; /* carousel: how far the row has slid to the left */
 } Home;
 
 /* where tile i is: its center, size (with the focus lift), corner radius and the y of its name */
 typedef struct { float cx, cy, w, h, r, name_y, sc; } TileGeo;
 static float home_shift(const Home *h);
+void home_overlay_limit(float x); /* main.c */
+float home_overlay_left(void);
 static TileGeo tile_geo(const Home *h, int i) {
     TileGeo g;
     float f = h->foc[i].x, fc = f < 0 ? 0 : f > 1 ? 1 : f;
@@ -172,6 +182,8 @@ static void copy_item(HomeItem *d, const HomeItem *s) {
  * no longer useful on the home screen). The code stays so it can come back - STATUS Debat. 0 = no row is shown and
  * the apps' rows are not fetched. */
 #define HOME_APP_ROWS 0
+/* The grid's banner still shows what you can continue, so it needs the apps' data (without showing a row) */
+static bool home_fetch(void) { return HOME_APP_ROWS || !carousel(); }
 
 /* row 2 per app: title (NULL = no row) */
 static const char *cont_title(const NotaApp *a) {
@@ -281,7 +293,7 @@ void home_hidden_forget(const char *app) {
 static void collect_continue(Home *h) {
     const NotaApp *app = pick_cont_app(h);
     HomeItem *all = NULL;
-    int nall = HOME_APP_ROWS && app && app->row ? app->row(&all) : 0;
+    int nall = home_fetch() && app && app->row ? app->row(&all) : 0;
     if (!all) nall = 0;
     /* leave out what was removed from the row - unless it has been watched again since */
     hid_load();
@@ -335,7 +347,7 @@ static void home_enter(Screen *s) {
     h->moving = h->on_edit = h->editing = false;
     build_vis();
     if (h->col >= n_vis) h->col = 0;
-    for (int i = 0; i < n_vis; i++) if (HOME_APP_ROWS && vis[i]->row_refresh) vis[i]->row_refresh();
+    for (int i = 0; i < n_vis; i++) if (home_fetch() && vis[i]->row_refresh) vis[i]->row_refresh();
     collect_continue(h);
     h->refreshed = h->fetched = app_time();
     home_since = app_time();
@@ -354,7 +366,7 @@ static void home_update(Screen *s, float dt) {
         collect_continue(h);
     }
     layout_offer(s, app_time() - home_since);
-    if (h->moving) h->wiggle += dt;
+    if (h->moving || h->editing) h->wiggle += dt;
     for (int i = 0; i < n_vis; i++)
         spring_to(&h->foc[i], (h->row == 0 && h->col == i && !h->moving && !h->on_edit) || (h->moving && h->col == i) ? 1 : 0, dt, SPRING_SNAPPY);
     for (int i = 0; i < 64; i++)
@@ -362,10 +374,10 @@ static void home_update(Screen *s, float dt) {
     if (n_vis && vis[h->col] != h->tint_app) { h->tint_prev = h->tint_app; h->tint_app = vis[h->col]; h->tint_fade = 0; }
     h->tint_fade = anim_to(h->tint_fade, 1, dt, 9); /* short: two glow layers are drawn only while it fades */
     h->row_anim = anim_to(h->row_anim, (float)h->row, dt, 12);
-    { /* with many apps the third row (and its names) would end below the screen: scroll the grid up to it */
-        float need = 0;
-        if (h->row == 0 && n_vis) need = APPS_Y + (h->col / grid_cols()) * TILE_PITCH + TILE_PITCH - (UI_H - 30);
-        h->grid_anim = anim_to(h->grid_anim, need > 0 ? need : 0, dt, 12);
+    { /* grid: the row you leave slides half under the banner; the focused row then stays at the same height */
+        int r = n_vis ? h->col / grid_cols() : 0;
+        float need = !carousel() && h->row == 0 && r > 0 ? GRID_TUCK + (r - 1) * TILE_PITCH : 0;
+        h->grid_anim = anim_to(h->grid_anim, need, dt, 12);
     }
     if (carousel() && n_vis) { /* slide so the app in focus stays on screen, near the middle once the row is long */
         float pitch = CAR_W + CAR_GAP, big = CAR_W * (1 + CAR_GROW);
@@ -380,7 +392,7 @@ static void home_update(Screen *s, float dt) {
        are fetched again every 5 minutes - not while nobody uses the box (screensaver, the box left on) */
     if (app_time() - h->refreshed > 2) {
         if (app_time() - h->fetched > 300 && app_time() - input_last_activity() < 600) {
-            for (int i = 0; i < n_vis; i++) if (HOME_APP_ROWS && vis[i]->row_refresh) vis[i]->row_refresh();
+            for (int i = 0; i < n_vis; i++) if (home_fetch() && vis[i]->row_refresh) vis[i]->row_refresh();
             h->fetched = app_time();
         }
         collect_continue(h);
@@ -409,11 +421,12 @@ static void greeting(char *buf, size_t n) {
 }
 
 static void draw_shelf(Home *h, const NotaApp *a) {
-    float x = MARGIN, y = 210;
+    bool car = carousel();
+    float x = MARGIN, y = car ? 210 : 150;
     if (a->draw_shelf && a->draw_shelf(MARGIN, y)) return; /* the app's own (e.g. what is playing in Music) */
     /* default: the app's name and what it does - the tile below already shows its icon */
-    text_draw(F_BOLD, 84, x - 4, y + 50, C_TEXT, AL_LEFT, T(a->name));
-    text_draw_wrap(F_REG, 32, x, y + 160, 1100, 2, 42, C_TEXT2, T(a->desc));
+    text_draw(F_BOLD, car ? 84 : 60, x - (car ? 4 : 3), y + (car ? 50 : 40), C_TEXT, AL_LEFT, T(a->name));
+    text_draw_wrap(F_REG, car ? 32 : 28, x, y + (car ? 160 : 120), 1100, 2, car ? 42 : 38, C_TEXT2, T(a->desc));
     x -= 292; /* the lines below are placed relative to the old text column */
     if (!strcmp(a->id, "settings")) {
         char info[160];
@@ -439,9 +452,11 @@ static void home_draw(Screen *s) {
         shelf_it = &h->cont[h->row == 1 && h->col2 < h->n_cont ? h->col2 : 0];
         if (shelf_it->image) snprintf(want, sizeof want, "%s", shelf_it->image);
     }
-    if (strcmp(want, h->bg_url)) {
+    /* the image follows only once the focus has rested a moment: passing over tiles loads and fades nothing */
+    if (strcmp(want, h->pend_url)) { snprintf(h->pend_url, sizeof h->pend_url, "%s", want); h->pend_t = app_time(); }
+    if (strcmp(h->pend_url, h->bg_url) && app_time() - h->pend_t >= 0.15) {
         snprintf(h->prev_url, sizeof h->prev_url, "%s", h->bg_url);
-        snprintf(h->bg_url, sizeof h->bg_url, "%s", want);
+        snprintf(h->bg_url, sizeof h->bg_url, "%s", h->pend_url);
         h->bg_fade = 0;
     }
     Image *ni = h->bg_url[0] ? img_get(h->bg_url) : NULL, *pi = h->prev_url[0] ? img_get(h->prev_url) : NULL;
@@ -450,15 +465,22 @@ static void home_draw(Screen *s) {
     float fa_ = h->bg_fade;
     if (!h->bgl) { h->bgl = layer_new(UI_W, UI_H); layer_set_opaque(h->bgl, true); }
     char key[600];
-    snprintf(key, sizeof key, "%s|%d|%s", h->bg_url, ready, focus_app->id);
+    bool car = carousel();
+    float top_h = car ? SHELF_H : 640, text_h = car ? SHELF_H : FADE_T, img_a = car ? 0.75f : 0.92f;
+    snprintf(key, sizeof key, "%s|%d|%s|%d", h->bg_url, ready, focus_app->id, car);
     bool settled = fa_ > 0.995f && h->bgl_fade > 0.995f;
     if ((!layer_valid(h->bgl) || strcmp(key, h->bgl_key) || !settled) && layer_begin(h->bgl)) {
         draw_background();
-        if (pi && fa_ < 1) img_draw_cover(pi, 0, 0, UI_W, SHELF_H, 0, 0.75f * (1 - fa_));
-        if (ni) img_draw_cover(ni, 0, 0, UI_W, SHELF_H, 0, 0.75f * fa_);
+        if (pi && fa_ < 1) img_draw_cover(pi, 0, 0, UI_W, top_h, 0, img_a * (1 - fa_));
+        if (ni) img_draw_cover(ni, 0, 0, UI_W, top_h, 0, img_a * fa_);
         if (ni || pi) {
-            fill_hgrad(0, 0, UI_W * 0.8f, SHELF_H, RGBA(10, 12, 17, 240), RGBA(10, 12, 17, 0));
-            fill_vgrad(0, SHELF_H - 420, UI_W, 420, RGBA(11, 13, 19, 0), RGBA(11, 13, 19, 255));
+            fill_hgrad(0, 0, UI_W * 0.8f, text_h, RGBA(10, 12, 17, 240), RGBA(10, 12, 17, 0));
+            if (car) fill_vgrad(0, SHELF_H - 420, UI_W, 420, RGBA(11, 13, 19, 0), RGBA(11, 13, 19, 255));
+            else fill_vgrad(0, 0, UI_W, 170, RGBA(10, 12, 17, 170), RGBA(10, 12, 17, 0)); /* the clock stays readable */
+        }
+        if (!car) { /* no edge: the banner fades into the dark background */
+            fill_vgrad(0, 200, UI_W, FADE_T - 200, RGBA(11, 13, 19, 0), BG_DARK);
+            fill_vgrad(0, FADE_T, UI_W, UI_H - FADE_T, BG_DARK, BG_DARK);
         }
         layer_end(h->bgl);
         snprintf(h->bgl_key, sizeof h->bgl_key, "%s", key);
@@ -468,23 +490,38 @@ static void home_draw(Screen *s) {
     else draw_background();
     /* a soft glow in the focused app's color from the top, cross-faded when the focus moves */
     if (h->tint_prev && h->tint_fade < 1)
-        fill_vgrad(0, 0, UI_W, 760, color_alpha(h->tint_prev->c1, 0.28f * (1 - h->tint_fade)), RGBA(0, 0, 0, 0));
-    if (h->tint_app) fill_vgrad(0, 0, UI_W, 760, color_alpha(h->tint_app->c1, 0.28f * h->tint_fade), RGBA(0, 0, 0, 0));
+        fill_vgrad(0, 0, UI_W, car ? 760 : FADE_T, color_alpha(h->tint_prev->c1, 0.28f * (1 - h->tint_fade)), RGBA(0, 0, 0, 0));
+    if (h->tint_app) fill_vgrad(0, 0, UI_W, car ? 760 : FADE_T, color_alpha(h->tint_app->c1, 0.28f * h->tint_fade), RGBA(0, 0, 0, 0));
 
     char g[128];
     greeting(g, sizeof g);
     char *bar = strchr(g, '|');
     *bar = 0;
     text_draw(F_BOLD, 40, MARGIN, 58, C_TEXT, AL_LEFT, g);
-    text_draw(F_REG, 26, MARGIN + text_width(F_BOLD, 40, g) + 24, 70, C_TEXT2, AL_LEFT, bar + 1);
+    float date_x = MARGIN + text_width(F_BOLD, 40, g) + 24;
+    home_overlay_limit(date_x); /* the top bar's pills stop at the greeting */
+    /* the date gives way when the pills need its place */
+    h->date_a = anim_to(h->date_a, date_x + text_width(F_REG, 26, bar + 1) + 24 <= home_overlay_left() ? 1 : 0, 1.0f / 60, 12);
+    if (h->date_a > 0.01f) text_draw(F_REG, 26, date_x, 70, color_alpha(C_TEXT2, h->date_a), AL_LEFT, bar + 1);
     draw_topbar(NULL);
     const char *ip = app_ip();
-    draw_icon(ip[0] ? ICON_WIFI : ICON_WIFI, UI_W - 250, 82, 34, ip[0] ? C_TEXT2 : C_DANGER);
-    if (n_vis > 1 && (h->on_edit || h->editing || (h->row == 0 && h->col < grid_cols()))) {
-        /* "Edit home screen" / "Done": a button reached with ↑ from the first row of apps */
-        const char *l = h->editing ? T("Done") : T("Edit home screen");
+    if (!ip[0]) draw_icon(ICON_WIFI, UI_W - 330, 82, 34, C_DANGER); /* only when there is no network */
+    { /* the button for the control center by the clock: ↑ from the first row of apps */
+        float f = focus_amt("home_cc", h->on_edit && !h->editing), fc = f < 0 ? 0 : f > 1 ? 1 : f;
+        float cx = UI_W - 250, cy = 79, r = 29 * (1 + 0.06f * f);
+        if (fc > 0.01f) draw_shadow(cx - r, cy - r, 2 * r, 2 * r, r, 16, fc);
+        fill_circle(cx, cy, r, color_mix(RGBA(18, 20, 28, 205), C_FOCUS, fc));
+        Color g = color_mix(C_TEXT, RGB(10, 10, 10), fc); /* two sliders */
+        fill_rrect(cx - 14, cy - 8.5f, 28, 3, 1.5f, g);
+        fill_rrect(cx - 14, cy + 5.5f, 28, 3, 1.5f, g);
+        fill_circle(cx + 6, cy - 7, 5.5f, g);
+        fill_circle(cx - 6, cy + 7, 5.5f, g);
+    }
+    if (h->editing) { /* "Done", reached with ↑ from the first row of apps */
+        const char *l = T("Done");
         float right = carousel() ? UI_W - MARGIN : MARGIN + grid_cols() * (TILE_W + TILE_GAP) - TILE_GAP; /* over the apps' right edge */
-        float w = text_width(F_SEMI, 24, l) + 48, bx = right - w, by = apps_top() - 78 - home_shift(h);
+        float w = text_width(F_SEMI, 24, l) + 48, bx = right - w, by = car ? apps_top() - 78 - home_shift(h) : APPS_Y - 66; /* grid: in the banner's corner */
+        if (!car) fill_rrect(bx, by, w, 50, 25, RGBA(10, 12, 17, 210)); /* readable on top of the banner's image */
         draw_chips(bx, by, &l, 1, h->on_edit ? 0 : -1);
         if (h->editing && !h->moving)
             text_draw(F_REG, 22, bx - 24, by + 12, C_TEXT2, AL_RIGHT,
@@ -493,11 +530,11 @@ static void home_draw(Screen *s) {
 
     float shift = home_shift(h); /* scroll up when row 2 is selected, or to a low app row */
     /* the top text stops above the grid where it is now (it scrolls up to a third row of apps) */
-    float shelf_bottom = apps_top() - 20 - shift;
+    float shelf_bottom = car ? apps_top() - 20 - shift : FADE_T; /* nothing from the banner reaches the rows */
     clip_push(0, 150, UI_W, shelf_bottom > 150 ? shelf_bottom - 150 : 0);
     bool shelf_vis = h->row_anim < 0.2f; /* the row below the apps scrolls up over the top */
-    if (shelf_vis && shelf_it && h->bg_url[0]) { /* big image behind: the title of what you can continue */
-        float x = MARGIN, y = 230;
+    if (shelf_vis && shelf_it && want[0]) { /* big image behind: the title of what you can continue */
+        float x = MARGIN, y = car ? 230 : 160;
         text_draw(F_BOLD, 24, x, y, color_mix(fa->c1, C_TEXT, 0.45f), AL_LEFT,
                   T(fa->shelf_label ? fa->shelf_label : fa->name));
         int tl = text_draw_wrap(F_BOLD, 60, x, y + 40, 1100, 2, 70, C_TEXT, shelf_it->title ? shelf_it->title : "");
@@ -510,6 +547,7 @@ static void home_draw(Screen *s) {
     } else if (shelf_vis) draw_shelf(h, focus_app);
     clip_pop();
 
+    if (!car) clip_push(0, FADE_T, UI_W, UI_H - FADE_T); /* the rows slide in under the banner */
     int focus_i = -1; /* the focused tile is drawn last, on top of its neighbours */
     for (int pass = 0; pass < 2; pass++)
     for (int i = 0; i < n_vis; i++) {
@@ -519,11 +557,13 @@ static void home_draw(Screen *s) {
         if (pass == 0 && top) { focus_i = i; continue; }
         if (pass == 1 && i != focus_i) continue;
         TileGeo tg = tile_geo(h, i);
-        if (tg.cy - tg.h > UI_H || tg.cy + tg.h + 60 < 0 || tg.cx + tg.w / 2 < 0 || tg.cx - tg.w / 2 > UI_W) continue;
+        if (tg.cy - tg.h > UI_H || tg.cy + tg.h + 60 < (car ? 0 : FADE_T) || tg.cx + tg.w / 2 < 0 || tg.cx - tg.w / 2 > UI_W) continue;
         float sc = tg.sc, w = tg.w, hh = tg.h, cx = tg.cx, cy = tg.cy;
         float x = cx - w / 2, y = cy - hh / 2 - 6 * f;
         bool mv = h->moving && i == h->col;
         if (mv) y -= 10 + 4 * sinf(h->wiggle * 6); /* picked up: lifted and bobbing */
+        bool ready = h->editing && !h->moving && !h->on_edit && h->row == 0 && i == h->col; /* edit mode: this one can be picked up */
+        if (ready) x += 2.5f * sinf(h->wiggle * 11); /* a small shake */
         if (fc > 0.01f) {
             draw_glow(x, y, w, hh, TILE_R, 46, color_mix(a->c1, RGB(255, 255, 255), 0.15f), 0.55f * fc);
             draw_shadow(x, y, w, hh, TILE_R, 28, 0.9f * fc);
@@ -541,6 +581,7 @@ static void home_draw(Screen *s) {
         fill_rrect_vgrad(x, y, w, hh * 0.55f, TILE_R * sc, RGBA(255, 255, 255, (uint8_t)(6 + 26 * fc)), RGBA(255, 255, 255, 0)); /* light from above */
         stroke_rrect(x, y, w, hh, TILE_R * sc, 1.5f, RGBA(255, 255, 255, (uint8_t)(22 + 40 * fc)));
         if (mv) stroke_rrect(x - 5, y - 5, w + 10, hh + 10, TILE_R * sc + 5, 3, C_ACCENT);
+        else if (ready) stroke_rrect(x - 5, y - 5, w + 10, hh + 10, TILE_R * sc + 5, 3, color_alpha(C_ACCENT, 0.55f + 0.4f * sinf(h->wiggle * 4)));
         if (!strcmp(a->id, "appstore") && appcat_updates() > 0) { /* updates waiting: a small badge with the count */
             char nb[8];
             snprintf(nb, sizeof nb, "%d", appcat_updates());
@@ -550,14 +591,20 @@ static void home_draw(Screen *s) {
             text_draw(F_BOLD, 24 * sc, bx + bs / 2, by + (bs - 24 * sc) / 2 - sc, C_TEXT, AL_CENTER, nb);
         }
         /* every tile has its name (not every app is well known); the focused one is bright and moves down with the lift */
-        text_draw(F_SEMI, 26, cx, tg.name_y, color_mix(C_TEXT3, C_TEXT, fc), AL_CENTER, T(a->name));
+        text_draw(F_SEMI, car ? 26 : 24, cx, tg.name_y, color_mix(C_TEXT3, C_TEXT, fc), AL_CENTER, T(a->name));
+    }
+    if (!car) {
+        clip_pop();
+        /* the row you left dissolves into the banner (only once there is a row there) */
+        float k = h->grid_anim / GRID_TUCK;
+        if (k > 0.01f) fill_vgrad(0, FADE_T, UI_W, APPS_Y - FADE_T, color_alpha(BG_DARK, k > 1 ? 1 : k), RGBA(11, 13, 19, 0));
     }
 
     if (h->moving) {
         text_draw(F_REG, 26, UI_W / 2, UI_H - 70, C_TEXT, AL_CENTER, T("Move with the arrows · OK when you are done"));
         return;
     }
-    if (h->n_cont > 0) {
+    if (HOME_APP_ROWS && h->n_cont > 0) {
         float ry = APPS_Y + (grid_rows() - 1) * TILE_PITCH + 244 - shift;
         text_draw(F_SEMI, 30, MARGIN, ry - 48, h->row == 1 ? C_TEXT : C_TEXT2, AL_LEFT, cont_title(h->cont_app));
         clip_push(0, ry - 20, UI_W, 420);
@@ -631,7 +678,12 @@ static bool home_input(Screen *s, const InputEvent *ev) {
     Home *h = s->st;
     if (h->on_edit) { /* the "Edit home screen" button has focus */
         switch (ev->a) {
-        case A_OK: if (!ev->repeat) { h->editing = !h->editing; h->on_edit = false; } return true;
+        case A_OK:
+            if (ev->repeat) return true;
+            h->on_edit = false;
+            if (h->editing) h->editing = false;
+            else quick_open();
+            return true;
         case A_DOWN: case A_BACK: h->on_edit = false; return true;
         case A_HOME: h->on_edit = h->editing = false; return true;
         case A_LEFT: case A_RIGHT: case A_UP: return true;
@@ -672,13 +724,13 @@ static bool home_input(Screen *s, const InputEvent *ev) {
         if (h->row == 0) {
             int cols = grid_cols();
             if (h->col / cols + 1 < grid_rows()) { h->col = h->col + cols < n_vis ? h->col + cols : n_vis - 1; h->keep_row = true; }
-            else if (h->n_cont > 0) h->row = 1;
+            else if (HOME_APP_ROWS && h->n_cont > 0) h->row = 1;
         }
         return true;
     case A_UP:
         if (h->row == 1) h->row = 0;
         else if (h->col >= grid_cols()) { h->col -= grid_cols(); h->keep_row = false; }
-        else if (n_vis > 1) h->on_edit = true;
+        else h->on_edit = true;
         return true;
     case A_OK:
         if (h->editing) { /* edit mode: pick up the app / remove the item instead of opening it */
@@ -718,10 +770,13 @@ static bool home_input(Screen *s, const InputEvent *ev) {
     }
 }
 
+static Home *home_st;
+void home_begin_edit(void) { if (home_st) { home_st->editing = true; home_st->on_edit = false; } }
+
 Screen *home_screen(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "home";
-    s->st = calloc(1, sizeof(Home));
+    s->st = home_st = calloc(1, sizeof(Home));
     s->enter = home_enter;
     s->resume = home_resume;
     s->update = home_update;

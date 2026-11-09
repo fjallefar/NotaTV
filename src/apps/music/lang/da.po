@@ -112,12 +112,8 @@ msgstr "Afbryd forbindelse"
 msgid "AirPlay disconnected"
 msgstr "AirPlay afbrudt"
 
+msgid "The artwork fits the new home screen"
+msgstr "Billedet passer til den nye forside"
 
-
-
-
-msgid "AirPlay pause is shown correctly"
-msgstr "Pause i AirPlay vises rigtigt"
-
-msgid "When you pause AirPlay on your phone, Music shows it as paused"
-msgstr "Når du sætter AirPlay på pause på telefonen, viser Musik det som sat på pause"
+msgid "The logo or cover on the home screen no longer reaches the app icons"
+msgstr "Logo eller cover på forsiden når ikke længere ned til app-ikonerne"

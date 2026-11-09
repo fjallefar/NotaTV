@@ -1,4 +1,4 @@
-/* NotaTV shell - the quick panel: slides in from the right (Red on the home screen, or the Power key).
+/* NotaTV shell - the control center: slides down at the top right (the button by the clock on the home screen, Red, or the Power key).
    Sleep timer, shortcuts into Settings, and sleep / restart / power off. */
 #include "tv.h"
 #include <glob.h>
@@ -9,6 +9,7 @@
 #include <time.h>
 
 Screen *settings_screen_at(int sec);
+void home_begin_edit(void); /* ui_home.c */
 
 /* the sleep timer: the box goes to sleep at this time (0 = off). Checked by quick_tick every frame */
 static double sleep_at;
@@ -69,21 +70,36 @@ void idle_sleep_tick(bool playing) {
     }
 }
 
-typedef enum { Q_TIMER, Q_BT, Q_AV, Q_NET, Q_ALL, Q_SLEEP, Q_RESTART, Q_OFF, Q_N } QItem;
-typedef struct { int sel; bool closing; float out; } Quick;
+typedef enum { Q_TIMER, Q_BT, Q_AV, Q_NET, Q_EDIT, Q_ALL, Q_SLEEP, Q_RESTART, Q_OFF, Q_N } QItem;
+typedef struct { int sel; bool closing, from_home; float out; } Quick;
 
 static const char *q_label(QItem i) {
-    static const char *l[Q_N] = {N_("Sleep timer"), "Bluetooth", N_("Picture and sound"), N_("Network"), N_("All settings"),
-                                 N_("Sleep (fast start)"), N_("Restart"), N_("Power off")};
+    static const char *l[Q_N] = {N_("Sleep timer"), "Bluetooth", N_("Picture and sound"), N_("Network"), N_("Edit home screen"),
+                                 N_("All settings"), N_("Sleep"), N_("Restart"), N_("Power off")};
     return T(l[i]);
 }
 static IconId q_icon(QItem i) {
-    static const IconId ic[Q_N] = {ICON_CLOCK, ICON_MUSIC, ICON_FILM, ICON_WIFI, ICON_GEAR, ICON_MOON, ICON_RESTART, ICON_POWER};
+    static const IconId ic[Q_N] = {ICON_CLOCK, ICON_MUSIC, ICON_FILM, ICON_WIFI, ICON_TV, ICON_GEAR, ICON_MOON, ICON_RESTART, ICON_POWER};
     return ic[i];
 }
-#define PW 620.0f
-#define ROW_H 76.0f
-static float q_row_y(int i) { return 250 + i * ROW_H + (i >= Q_SLEEP ? 60 : 0); }
+#define PW 640.0f
+#define PAD 28.0f
+#define GAP 16.0f
+#define TILE_TOP 136.0f
+#define BIG_W ((PW - 2 * PAD - GAP) / 2)
+#define BIG_H 112.0f
+#define SMALL_W ((PW - 2 * PAD - 2 * GAP) / 3)
+#define SMALL_H 96.0f
+#define POWER_Y (TILE_TOP + 3 * (BIG_H + GAP) + 44)
+#define PH (POWER_Y + SMALL_H + PAD)
+typedef struct { float x, y, w, h; } QRect;
+/* where tile i is, relative to the panel. "Edit home screen" exists only when the panel was opened from the home screen */
+static bool q_visible(const Quick *q, int i) { return i != Q_EDIT || q->from_home; }
+static QRect q_rect(const Quick *q, int i) {
+    if (i >= Q_SLEEP) return (QRect){PAD + (i - Q_SLEEP) * (SMALL_W + GAP), POWER_Y, SMALL_W, SMALL_H};
+    if (i == Q_ALL && !q->from_home) return (QRect){PAD, TILE_TOP + 2 * (BIG_H + GAP), PW - 2 * PAD, BIG_H};
+    return (QRect){PAD + (i % 2) * (BIG_W + GAP), TILE_TOP + (i / 2) * (BIG_H + GAP), BIG_W, BIG_H};
+}
 
 static void quick_update(Screen *s, float dt) {
     Quick *q = s->st;
@@ -98,52 +114,46 @@ static void quick_draw(Screen *s) {
     float e = s->anim * (1 - q->out);
     float k = 1 - (1 - e) * (1 - e); /* ease out */
     fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(130 * e)));
-    float x = UI_W - PW * k - 24 * k, y = 24, h = UI_H - 48;
-    draw_panel(x, y, PW, h, 36, 1);
-    float ix = x + 44;
+    float x = UI_W - PW - 24, y = 24 - (1 - k) * (PH + 40);
+    draw_panel(x, y, PW, PH, 36, 1);
     /* the time, big, and what the box is called */
     time_t now = time(NULL);
     struct tm tm;
     localtime_r(&now, &tm);
     char clk[16];
     strftime(clk, sizeof clk, "%H:%M", &tm);
-    text_draw(F_BOLD, 64, ix, y + 44, C_TEXT, AL_LEFT, clk);
+    text_draw(F_BOLD, 48, x + PAD + 8, y + 24, C_TEXT, AL_LEFT, clk);
     const char *ip = app_ip();
     char info[160];
     snprintf(info, sizeof info, "%s  ·  %s", cfg_get("device_name", "NotaTV"), ip[0] ? ip : T("No network connection"));
-    text_draw_clip(F_REG, 24, ix, y + 136, PW - 88, C_TEXT2, AL_LEFT, info);
+    text_draw_clip(F_REG, 24, x + PAD + 8, y + 90, PW - 2 * PAD - 16, C_TEXT2, AL_LEFT, info);
+    text_draw(F_SEMI, 22, x + PAD + 8, y + POWER_Y - 36, C_TEXT3, AL_LEFT, T("Power"));
 
-    float rw = PW - 48, rx = x + 24;
-    float hy = slide_to(q, q_row_y(q->sel));
-    draw_shadow(rx, hy, rw, ROW_H - 10, 33, 18, 0.6f);
-    fill_rrect(rx, hy, rw, ROW_H - 10, 33, C_FOCUS);
     for (int i = 0; i < Q_N; i++) {
-        float ry = q_row_y(i);
-        float ov = 1 - fabsf(ry - hy) / ROW_H;
-        if (ov < 0) ov = 0;
-        Color c = color_mix(C_TEXT, RGB(10, 10, 10), ov), c2 = color_mix(C_TEXT2, RGB(60, 60, 66), ov);
-        if (i == Q_SLEEP) { /* the moon: cut out with the color behind it (the pill or the panel) */
-            fill_circle(rx + 46, ry + 33, 12, c);
-            fill_circle(rx + 52, ry + 28, 10, color_mix(RGB(26, 30, 40), C_FOCUS, ov));
-        } else draw_icon(q_icon(i), rx + 46, ry + 33, 30, c);
-        text_draw(F_SEMI, 28, rx + 90, ry + 16, c, AL_LEFT, q_label(i));
-        char v[48] = "";
+        if (!q_visible(q, i)) continue;
+        QRect r = q_rect(q, i);
+        float f = focus_amt(q_label(i), i == q->sel), fc = f < 0 ? 0 : f > 1 ? 1 : f;
+        float sc = 1 + 0.04f * f, w = r.w * sc, h = r.h * sc, tx = x + r.x - (w - r.w) / 2, ty = y + r.y - (h - r.h) / 2;
+        if (fc > 0.01f) draw_shadow(tx, ty, w, h, 24, 18, 0.7f * fc);
+        fill_rrect(tx, ty, w, h, 24, color_mix(RGBA(255, 255, 255, 20), C_FOCUS, fc));
+        Color c = color_mix(C_TEXT, RGB(10, 10, 10), fc), c2 = color_mix(C_TEXT2, RGB(60, 60, 66), fc);
+        bool small = i >= Q_SLEEP;
+        float ix = small ? tx + w / 2 : tx + 40, iy = small ? ty + 34 : ty + 36;
+        if (i == Q_SLEEP) { /* the moon: cut out with the color behind it */
+            fill_circle(ix, iy, 12, c);
+            fill_circle(ix + 6, iy - 5, 10, color_mix(RGB(42, 46, 56), C_FOCUS, fc));
+        } else draw_icon(q_icon(i), ix, iy, 32, c);
+        if (small) text_draw(F_SEMI, 22, tx + w / 2, ty + 62, c, AL_CENTER, q_label(i));
+        else text_draw_clip(F_SEMI, 26, tx + 22, ty + 66, w - 44, c, AL_LEFT, q_label(i));
         if (i == Q_TIMER) {
+            char v[48];
             if (sleep_at > 0) {
                 int m = (int)ceil((sleep_at - app_time()) / 60);
                 snprintf(v, sizeof v, T("%d min left"), m < 1 ? 1 : m);
             } else snprintf(v, sizeof v, "%s", T("Off"));
-            float vw = text_width(F_REG, 26, v);
-            text_draw(F_REG, 26, rx + rw - 40, ry + 18, c2, AL_RIGHT, v);
-            if (ov > 0.5f) {
-                fill_tri(rx + rw - vw - 64, ry + 33, rx + rw - vw - 54, ry + 25, rx + rw - vw - 54, ry + 41, c2);
-                fill_tri(rx + rw - 20, ry + 33, rx + rw - 30, ry + 25, rx + rw - 30, ry + 41, c2);
-            }
-        } else if (i <= Q_ALL) {
-            fill_tri(rx + rw - 40, ry + 23, rx + rw - 28, ry + 33, rx + rw - 40, ry + 43, c2);
+            text_draw(F_REG, 24, tx + w - 22, ty + 22, c2, AL_RIGHT, v);
         }
     }
-    text_draw(F_SEMI, 22, ix, q_row_y(Q_SLEEP) - 44, C_TEXT3, AL_LEFT, T("Power"));
 }
 
 /* the timer steps through Off, 15, 30, 60, 90, 120 minutes */
@@ -161,23 +171,43 @@ static void timer_step(int dir) {
 
 static void quick_close(Screen *s) { ((Quick *)s->st)->closing = true; }
 
+/* the nearest tile in the direction of the arrow; -1 = none */
+static int q_step(const Quick *q, Action a) {
+    QRect c = q_rect(q, q->sel);
+    float cx = c.x + c.w / 2, cy = c.y + c.h / 2, best = 1e9f;
+    int found = -1;
+    for (int i = 0; i < Q_N; i++) {
+        if (i == q->sel || !q_visible(q, i)) continue;
+        QRect r = q_rect(q, i);
+        float dx = r.x + r.w / 2 - cx, dy = r.y + r.h / 2 - cy, score;
+        if (a == A_UP || a == A_DOWN) {
+            if (a == A_UP ? dy >= -1 : dy <= 1) continue;
+            score = fabsf(dy) * 1000 + fabsf(dx);
+        } else {
+            if (fabsf(dy) > 1 || (a == A_LEFT ? dx >= 0 : dx <= 0)) continue;
+            score = fabsf(dx);
+        }
+        if (score < best) { best = score; found = i; }
+    }
+    return found;
+}
+
 static bool quick_input(Screen *s, const InputEvent *ev) {
     Quick *q = s->st;
     if (q->closing) return true;
     switch (ev->a) {
-    case A_UP: if (q->sel > 0) q->sel--; return true;
-    case A_DOWN: if (q->sel < Q_N - 1) q->sel++; return true;
-    case A_LEFT: case A_RIGHT:
-        if (q->sel == Q_TIMER) timer_step(ev->a == A_RIGHT ? 1 : -1);
-        else if (ev->a == A_RIGHT) return true;
-        else quick_close(s);
+    case A_UP: case A_DOWN: case A_LEFT: case A_RIGHT: {
+        int n = q_step(q, ev->a);
+        if (n >= 0) q->sel = n;
         return true;
+    }
     case A_BACK: case A_MENU: case A_HOME: case A_POWER: quick_close(s); return true;
     case A_OK: {
         if (ev->repeat) return true;
         int sec = -1;
         switch ((QItem)q->sel) {
         case Q_TIMER: timer_step(1); return true;
+        case Q_EDIT: app_close(s); home_begin_edit(); return true; /* after the close: going back to home resets it */
         case Q_BT: sec = 4; break; /* the section numbers in ui_settings.c sections[] (0 = Home screen) */
         case Q_AV: sec = 2; break;
         case Q_NET: sec = 1; break;
@@ -207,7 +237,10 @@ void quick_open(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "quick";
     s->overlay = true;
-    s->st = calloc(1, sizeof(Quick));
+    Quick *q = calloc(1, sizeof(Quick));
+    Screen *under = app_top();
+    q->from_home = under && under->name && !strcmp(under->name, "home");
+    s->st = q;
     s->update = quick_update;
     s->draw = quick_draw;
     s->input = quick_input;

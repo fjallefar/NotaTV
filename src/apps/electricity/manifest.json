@@ -1,6 +1,6 @@
 {
   "id": "electricity",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "api": 2,
   "name": "Electricity price",
   "desc": "The electricity price hour by hour, today and tomorrow",
@@ -11,10 +11,11 @@
   "order": 78,
   "default": false,
   "changes": {
-    "summary": "Electricity price on NotaTV",
+    "summary": "The price on the home screen and hour by hour",
     "points": [
-      "The full price with the grid tariff: choose your grid company at the top of the app - the first time, the app asks",
-      "Price area and your electricity company's surcharge are chosen at the top too"
+      "The price right now at the top of the home screen - turn it off at the top of the app",
+      "A line for every krone in the chart, and the arrows show the exact price hour by hour",
+      "The prices are remembered and only fetched every 6 hours, at start and at 13:15"
     ]
   }
 }

@@ -2553,7 +2553,7 @@ static const Item live_items[] = {
 };
 
 static void iptv_row_open(const HomeItem *it, int idx) { (void)idx; if (it->key && !strncmp(it->key, "iptv:", 5)) iptv_play_recent(atoi(it->key + 5)); }
-/* the big top on the home screen: the latest channel with its logo (press down for the others) */
+/* the big top on the home screen: the latest channel with its logo */
 static bool iptv_draw_shelf(float x, float y) {
     HomeItem *items = NULL;
     if (iptv_recent(&items) <= 0 || !items) return false;
@@ -2568,7 +2568,7 @@ static bool iptv_draw_shelf(float x, float y) {
         text_draw_clip(F_BOLD, 34, x + 180, y + 78, 320, logo_card() ? RGB(60, 60, 70) : C_TEXT, AL_CENTER, it->title ? it->title : "");
     text_draw(F_BOLD, 24, x + 410, y + 34, accent, AL_LEFT, T("RECENTLY WATCHED"));
     text_draw_clip(F_BOLD, 60, x + 410, y + 70, 1100, C_TEXT, AL_LEFT, it->title ? it->title : "");
-    text_draw(F_REG, 28, x + 410, y + 150, C_TEXT2, AL_LEFT, T("Live TV  ·  press down for your recent channels"));
+    text_draw(F_REG, 28, x + 410, y + 150, C_TEXT2, AL_LEFT, T("Live TV  ·  your latest channel"));
     return true;
 }
 const NotaApp nota_app = {

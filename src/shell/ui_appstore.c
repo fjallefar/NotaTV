@@ -9,6 +9,7 @@
  * listed below it, apart from the other apps. Installed ones are in Installed like any other. */
 #define _GNU_SOURCE /* nftw */
 #include "tv.h"
+#include "vendor/cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +33,7 @@ typedef struct {
     const NotaApp *app;
     const CatApp *cat;
     bool installed;
+    bool nonfree; /* needs closed software: listed under the check box */
 } StoreItem;
 
 typedef struct { char sel[40]; float sy; bool asked_restart; } Store;
@@ -77,6 +79,20 @@ static long app_disk_size(const NotaApp *a) {
     return cache[i].size;
 }
 
+/* from the package itself, so the app is in the right place before the catalog has arrived */
+static bool pkg_nonfree(const NotaApp *a) {
+    if (!*app_pkg_dir(a)) return false;
+    char path[600];
+    snprintf(path, sizeof path, "%s/manifest.json", app_pkg_dir(a));
+    char *txt = file_read_all(path, 65536);
+    if (!txt) return false;
+    cJSON *m = cJSON_Parse(txt);
+    free(txt);
+    bool nf = m && cJSON_IsTrue(cJSON_GetObjectItem(m, "nonfree"));
+    cJSON_Delete(m);
+    return nf;
+}
+
 static int store_items(StoreItem *out) {
     int n = 0;
     for (int i = 0; i < app_count() && n < STORE_MAX; i++) {
@@ -87,6 +103,7 @@ static int store_items(StoreItem *out) {
         s->app = a;
         s->cat = appcat_find(a->id);
         s->installed = app_installed(a);
+        s->nonfree = (s->cat && s->cat->nonfree) || pkg_nonfree(a);
     }
     for (int i = 0; i < appcat_count() && n < STORE_MAX; i++) {
         const CatApp *c = appcat_at(i);
@@ -96,6 +113,7 @@ static int store_items(StoreItem *out) {
         s->app = NULL;
         s->cat = c;
         s->installed = false;
+        s->nonfree = c->nonfree;
     }
     for (int i = 1; i < n; i++) /* by order (insertion sort, stable) */
         for (int j = i; j > 0 && item_order(&out[j - 1]) > item_order(&out[j]); j--) { StoreItem t = out[j]; out[j] = out[j - 1]; out[j - 1] = t; }
@@ -135,7 +153,7 @@ static void store_layout_build(StoreLayout *L) {
         int k = 0;
         for (int i = 0; i < n; i++) {
             if (items[i].installed != (sec == 0)) continue;
-            if (sec == 1 && items[i].cat && items[i].cat->nonfree) continue; /* listed under the check box */
+            if (items[i].nonfree) continue; /* listed under the check box, installed or not */
             L->c[L->n++] = (StoreCell){items[i], row + k / STORE_COLS, k % STORE_COLS, y + (k / STORE_COLS) * STORE_PITCH};
             k++;
         }
@@ -150,9 +168,9 @@ static void store_layout_build(StoreLayout *L) {
     nf->row = row++;
     nf->y = y;
     y += NF_H + 30;
-    int k = 0; /* ticked: the apps with closed software that are not installed, below the check box */
+    int k = 0; /* the apps with closed software, below the check box: installed ones always, the others when ticked */
     for (int i = 0; i < n; i++) {
-        if (items[i].installed || !items[i].cat || !items[i].cat->nonfree) continue;
+        if (!items[i].nonfree) continue;
         L->c[L->n++] = (StoreCell){items[i], row + k / STORE_COLS, k % STORE_COLS, y + (k / STORE_COLS) * STORE_PITCH};
         k++;
     }

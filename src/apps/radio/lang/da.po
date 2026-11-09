@@ -174,11 +174,8 @@ msgstr "Lyt, favorit"
 msgid "Menu and search"
 msgstr "Menu og søg"
 
-msgid "OK on a station opens its choices"
-msgstr "OK på en station åbner dens valg"
+msgid "The artwork fits the new home screen"
+msgstr "Billedet passer til den nye forside"
 
-msgid "OK on a station: Listen (or Stop) and Favourite - OK, OK listens"
-msgstr "OK på en station: Lyt (eller Stop) og Favorit - OK, OK lytter"
-
-msgid "The buttons at the bottom no longer cover the stations"
-msgstr "Knapperne nederst dækker ikke stationerne længere"
+msgid "The logo or cover on the home screen no longer reaches the app icons"
+msgstr "Logo eller cover på forsiden når ikke længere ned til app-ikonerne"

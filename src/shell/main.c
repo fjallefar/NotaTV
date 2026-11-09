@@ -869,37 +869,56 @@ static const char *script_shot(void) {
 }
 
 /* ---------- app overlays (app_set_overlay) ---------- */
-static struct { char id[32]; void (*draw)(void); } overlays[4];
+#define MAX_OVERLAYS 8 /* one per app that shows something in the top bar */
+static struct { char id[32]; void (*draw)(void); } overlays[MAX_OVERLAYS];
 void app_set_overlay(const char *app_id, void (*draw)(void)) {
     int free_i = -1;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < MAX_OVERLAYS; i++) {
         if (overlays[i].draw && !strcmp(overlays[i].id, app_id)) { overlays[i].draw = draw; return; }
         if (!overlays[i].draw && free_i < 0) free_i = i;
     }
     if (draw && free_i >= 0) { snprintf(overlays[free_i].id, sizeof overlays[0].id, "%s", app_id); overlays[free_i].draw = draw; }
 }
-/* overlays in the top bar (Music's "Now playing", Tesla's cars) are placed right to left, so they never lie on top of
-   each other: each asks for its width at its own right edge and gets the x where it fits (reset every frame) */
-static float overlay_left = UI_W;
+/* The top bar on the home screen. Pills are stacked from the right, in this order: the ones that are always there
+   (weather, price, cars), then what comes and goes (Music, Radio), so a song never moves the others. They stop at
+   the greeting: one that does not fit is left out. The date gives way first (ui_home.c, home_overlay_left). */
+#define BAR_RIGHT (UI_W - 360.0f) /* left of the control center's button and the no-network icon */
+static float overlay_left = UI_W, overlay_left_prev = UI_W, overlay_limit;
+static bool overlay_hidden;
+void home_overlay_limit(float x) { overlay_limit = x; }
+float home_overlay_left(void) { return overlay_left_prev; }
 float app_overlay_place(float right, float w) {
-    if (right > overlay_left) right = overlay_left;
+    if (overlay_limit > 0) right = overlay_left; /* home: plain stacking, whatever the app asked for */
+    else if (right > overlay_left) right = overlay_left;
     float x = right - w;
-    if (w > 0) overlay_left = x - 14;
+    /* w = 0 asks how far left there is room. Music and Radio compare the answer with their own fixed limit (700):
+       on the home screen the real limit is the greeting, so the answer is moved by the difference */
+    if (w <= 0) return overlay_limit > 0 ? x + (700 - overlay_limit) : x;
+    if (overlay_limit > 0 && x < overlay_limit) { /* no room: this one is not drawn, the bar stays as it is */
+        if (!overlay_hidden) { clip_push(0, 0, 0, 0); overlay_hidden = true; }
+        return x;
+    }
+    overlay_left = x - 14;
     return x;
 }
+static bool overlay_transient(const char *id) { return !strcmp(id, "music") || !strcmp(id, "radio"); }
 static void draw_overlays(void) {
     double pos, dur;
     bool paused;
-    overlay_left = UI_W;
-    if (player_state(&pos, &dur, &paused)) return; /* video: the player's own OSD */
-    /* Music's "Now playing" comes and goes: it is placed last, so the overlays that are always there (Tesla's cars)
-       keep their place and it goes beside them */
-    for (int pass = 0; pass < 2; pass++)
-        for (int i = 0; i < 4; i++) {
-            if (!overlays[i].draw || (strcmp(overlays[i].id, "music") == 0) != pass) continue; /* pass 1: Music */
-            const NotaApp *a = app_find(overlays[i].id);
-            if (a && app_installed(a)) overlays[i].draw();
-        }
+    Screen *top = app_top();
+    bool home = top && top->name && !strcmp(top->name, "home");
+    if (!home) overlay_limit = 0;
+    overlay_left = home ? BAR_RIGHT : UI_W;
+    if (!player_state(&pos, &dur, &paused)) /* video: the player's own OSD */
+        for (int pass = 0; pass < 2; pass++)
+            for (int i = 0; i < MAX_OVERLAYS; i++) {
+                if (!overlays[i].draw || overlay_transient(overlays[i].id) != pass) continue;
+                const NotaApp *a = app_find(overlays[i].id);
+                if (!a || !app_installed(a)) continue;
+                overlays[i].draw();
+                if (overlay_hidden) { clip_pop(); overlay_hidden = false; }
+            }
+    overlay_left_prev = overlay_left;
 }
 
 /* ---------- toast + pause screen ---------- */

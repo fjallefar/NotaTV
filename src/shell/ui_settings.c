@@ -489,7 +489,7 @@ static const char *const layout_o[] = {"grid", "carousel", NULL}, *const layout_
 static void layout_changed(void) { cfg_set_int("home_layout_offered", 1); } /* chosen: the home screen no longer asks */
 static const Item home_items[] = {
     {N_("Layout"), IT_CYCLE, "home_layout", "grid", layout_o, layout_l, .changed = layout_changed,
-     .help = N_("Grid: the apps in rows of six. Carousel: one row where the app in focus is the biggest. Move apps with Edit home screen above the apps")},
+     .help = N_("Grid: the apps in rows of seven. Carousel: one row where the app in focus is the biggest. Move apps with Edit home screen above the apps")},
 };
 static const char *const hdrm_o[] = {"apple", "film", NULL}, *const hdrm_l[] = {N_("Like Apple TV"), N_("From the movie"), NULL};
 static const Item av_items[] = {
