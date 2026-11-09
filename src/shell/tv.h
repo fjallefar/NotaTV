@@ -194,6 +194,9 @@ char *run_capture(const char *cmd); /* malloc'ed output */
 char *run_capture_argv(const char *const *argv); /* without a shell (NULL-terminated argv) */
 char *log_url(const char *url);  /* URL without tokens/passwords for log files (malloc'ed) */
 int run_cmd(const char *fmt, ...);
+/* SIGTERM, wait up to ms, then SIGKILL and reap: a hung child (mpv, UxPlay) can never block the UI for good.
+   status may be NULL. */
+void proc_stop(int pid, int *status, int ms);
 const char *helper_path(void);
 
 /* ---------- Player ---------- */
@@ -417,6 +420,9 @@ void app_uninstall(const NotaApp *a);    /* forget() + the data folder is wiped;
 void apps_init(void);
 const char *apps_pkg_root(void);          /* <data>/apps-pkg: the packages downloaded from the App Store */
 const NotaApp *apps_load_pkg(const char *id); /* load <apps-pkg>/<id> right after it was downloaded */
+/* the app crashed tvshell at start and is skipped (apps.c crash guard); version NULL = any, else true only when
+   the catalog has the same version that crashed */
+bool apps_crash_skipped(const char *id, const char *version);
 
 /* App Store catalog (appcat.c): the apps that can be downloaded from GitHub, and installing them */
 typedef struct {

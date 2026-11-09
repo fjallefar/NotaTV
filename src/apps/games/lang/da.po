@@ -117,11 +117,11 @@ msgstr "OK = start · Under spillet: Rød på fjernbetjeningen åbner menuen, Se
 msgid "Settings"
 msgstr "Indstillinger"
 
-msgid "Easier to use without colored keys"
-msgstr "Nemmere at bruge uden farveknapper"
+msgid "Uninstalling deletes the pairing"
+msgstr "Afinstallation sletter parringen"
 
-msgid "Settings and Search for PCs again are buttons at the bottom - press down to reach them"
-msgstr "Indstillinger og Søg efter pc'er igen er knapper nederst - tryk ned for at nå dem"
+msgid "Uninstalling Games now deletes the pairing with your PC (certificate and key)"
+msgstr "Når Spil afinstalleres, slettes parringen med din pc nu også (certifikat og nøgle)"
 
-msgid "The colored keys still work as shortcuts"
-msgstr "Farveknapperne virker stadig som genveje"
+msgid "Pair the PC again after installing it again"
+msgstr "Par pc'en igen, når du har installeret appen igen"

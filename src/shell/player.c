@@ -6,7 +6,6 @@
 #include <fcntl.h>
 #include <math.h>
 #include <poll.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -987,7 +986,7 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
                 CMD("quit");
                 /* give mpv time, otherwise kill it */
                 for (int i = 0; i < 40 && waitpid(pid, &status, WNOHANG) == 0; i++) usleep(50000);
-                if (waitpid(pid, &status, WNOHANG) == 0) { kill(pid, SIGTERM); waitpid(pid, &status, 0); }
+                if (waitpid(pid, &status, WNOHANG) == 0) proc_stop(pid, &status, 2000);
                 pid = -1;
                 break;
             }

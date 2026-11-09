@@ -39,7 +39,7 @@ static struct {
 
 /* ---------- AirPlay: UxPlay as a child process ---------- */
 static void ux_stop(void) {
-    if (ux_pid > 0) { kill(ux_pid, SIGTERM); waitpid(ux_pid, NULL, 0); }
+    proc_stop(ux_pid, NULL, 2000);
     ux_pid = -1;
 }
 

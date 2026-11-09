@@ -416,9 +416,20 @@ static const Item game_items[] = {
     {"HDR", IT_TOGGLE, "moon_hdr", "0", set_onoff, .help = N_("HEVC 10-bit HDR, if the PC's display is in HDR"), .locked = set_hdr_locked},
 };
 
+/* uninstall / delete everything: the pairing with the PC (tvmoon's certificate, private key and client id in
+   <data>/moonlight) and the last PC. The PC must be paired again afterwards */
+static void games_forget(void) {
+    char dir[320];
+    snprintf(dir, sizeof dir, "%s/moonlight", data_dir());
+    wipe_dir(dir);
+    rmdir(dir);
+    cfg_unset("moon_host");
+    wipe_file("/tmp/tvmoon.log");
+}
+
 const NotaApp nota_app = {
     NOTA_API, "games", N_("Games"), N_("Play games from your PC via Sunshine (Moonlight)"), APP_VERSION, 80, 0,
     ICON_PLAY, {30, 160, 90, 255}, {12, 90, 50, 255}, {255, 255, 255, 255},
-    .open = games_screen,
+    .open = games_screen, .forget = games_forget,
     .settings = game_items, .n_settings = sizeof game_items / sizeof game_items[0],
 };

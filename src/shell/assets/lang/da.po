@@ -751,8 +751,8 @@ msgstr "Telefon-siden"
 msgid "Phone page code"
 msgstr "Kode til telefon-siden"
 
-msgid "Phone page code (4-8 digits)"
-msgstr "Kode til telefon-siden (4-8 cifre)"
+msgid "Phone page code (6-8 digits)"
+msgstr "Kode til telefon-siden (6-8 cifre)"
 
 msgid "Phones can only find and connect to the TV while Music or \"Pair a phone\" is open (and for 2 min. after). Paired controllers and keyboards can always connect. Turn off if phones should be able to connect on their own"
 msgstr "Telefoner kan kun finde og forbinde til TV'et, når Musik eller \"Par en telefon\" er åben (og 2 min. efter). Parrede controllere og tastaturer kan altid forbinde. Slå fra, hvis telefonen selv skal kunne forbinde"
@@ -1010,8 +1010,8 @@ msgstr "Tekst…"
 msgid "the app list failed"
 msgstr "app-listen fejlede"
 
-msgid "The code must be 4-8 digits"
-msgstr "Koden skal være 4-8 cifre"
+msgid "The code must be 6-8 digits"
+msgstr "Koden skal være 6-8 cifre"
 
 msgid "the connection was lost (%d)"
 msgstr "forbindelsen blev afbrudt (%d)"
@@ -1469,6 +1469,9 @@ msgstr "Fortsæt uden apps"
 
 msgid "%s could not be started on this version of NotaTV"
 msgstr "%s kan ikke starte på denne version af NotaTV"
+
+msgid "%s stopped working and was turned off. Install it again in the App Store to try again"
+msgstr "%s holdt op med at virke og er slået fra. Installér den igen i App Store for at prøve igen"
 
 msgid "Could not install the app"
 msgstr "Appen kunne ikke installeres"

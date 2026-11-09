@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.21
+
+> **In short:** A safer and sturdier NotaTV, with a newer Linux kernel.
+> - A broken app can no longer make the box restart over and over
+> - A wrong Wi-Fi password keeps the network you had
+> - Video, YouTube and AirPlay run without system rights
+
+<!-- tldr:da
+Kort: Et sikrere og mere robust NotaTV med en nyere Linux-kerne.
+- En app i stykker kan ikke længere få boksen til at genstarte igen og igen
+- En forkert Wi-Fi-kode beholder det netværk, du havde
+- Video, YouTube og AirPlay kører uden systemrettigheder
+-->
+
+- **Apps that crash:** if the same app makes NotaTV stop twice in a row right after start, it is turned off and the box says so. A new version from the App Store is loaded again, and installing it again tries once more.
+- **Wi-Fi:** joining a network with a wrong password no longer removes the network that works. The old one is only replaced when the new one has connected.
+- **Without root:** mpv, ffprobe, yt-dlp and UxPlay now run as their own user `media` by default, so a bad video or web page cannot reach your sign-ins or the system. `media_user=0` in `notatv.conf` turns it off for troubleshooting.
+- **Linux kernel 6.12.116** (from 6.12.61), with almost a year of fixes for Wi-Fi, Bluetooth, USB drives and security. It is installed with the normal update, no new image needed.
+- **Keyboard:** two quick presses of OK no longer drop the second letter (also in password fields).
+- **Playback:** if mpv or AirPlay mirroring hangs when you go back, it is stopped after 2 seconds instead of leaving a black screen.
+- **Phone page:** a code you choose yourself must now be 6-8 digits. Existing codes keep working until you change them.
+- **System:** the box turns on the kernel's protection against symlink tricks in `/tmp`, and the SD card is mounted without access times (fewer writes).
+- **Releases** are published only when all files are uploaded, so a box that checks at that moment no longer gets "Download failed".
+- PRIVACY.md now lists OpenSubtitles and iTunes (subtitle search and Bluetooth cover art).
+
 ## 1.0.20
 
 > **In short:** A calmer home screen with a banner on top, and a new control center.

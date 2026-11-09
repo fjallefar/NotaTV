@@ -8,7 +8,7 @@ rm -f $TARGET/etc/init.d/S40network $TARGET/etc/init.d/S50dropbear $TARGET/etc/i
 rm -f $TARGET/etc/init.d/S99shairport-sync $TARGET/etc/init.d/S90nqptp
 # the firewall is set up by /usr/libexec/notatv/firewall (with the box's own networks), not from /etc/nftables.conf
 rm -f $TARGET/etc/init.d/S35nftables
-# mpv, ffprobe, yt-dlp and UxPlay are started through mediarun (as the user "media" when media_user=1): the real
+# mpv, ffprobe, yt-dlp and UxPlay are started through mediarun (as the user "media" unless media_user=0): the real
 # programs move to /usr/libexec/notatv/media, /usr/bin/<name> becomes a symlink to mediarun (yt-dlp stays in
 # /usr/lib/yt-dlp). Only a real file is moved, so running post-build again changes nothing.
 mkdir -p $TARGET/usr/libexec/notatv/media
@@ -18,6 +18,12 @@ for p in mpv ffprobe uxplay; do
 done
 [ -e $TARGET/usr/lib/yt-dlp ] && ln -sfn ../libexec/notatv/mediarun $TARGET/usr/bin/yt-dlp
 [ -x $TARGET/usr/libexec/notatv/mediarun ] || { echo "post-build: mediarun mangler" >&2; exit 1; }
+# only the modules of the kernel that is built: Buildroot keeps old files in the target folder, so after a kernel
+# lift the old /lib/modules/<version> would stay in the image and the update (28 MB for nothing)
+KREL=$(cat $BUILD_DIR/linux-custom/include/config/kernel.release 2>/dev/null || true)
+if [ -n "$KREL" ] && [ -d $TARGET/lib/modules/$KREL ]; then
+	for d in $TARGET/lib/modules/*; do [ "${d##*/}" = "$KREL" ] || rm -rf "$d"; done
+fi
 # the alsa configuration is generated at boot
 ln -sf /run/notatv/asound.conf $TARGET/etc/asound.conf
 mkdir -p $TARGET/media $TARGET/data $TARGET/root

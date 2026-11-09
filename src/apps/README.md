@@ -163,6 +163,9 @@ ui_focus_over(x2, y2, w2, h2, 14, f);
 - A new function can be added to `tv.h` without bumping `NOTA_API`: mark it `NOTA_NEW` (a weak symbol). An app
   that calls it must check it first (`if (app_close) app_close(s); else ...`), because a box with an older NotaTV
   (same `NOTA_API`) gives NULL. Otherwise the package cannot be loaded there at all.
+- An app that crashes `tvshell` twice in a row (the second time within a minute of start) is skipped from the
+  next start until a newer version is installed or the user installs it again (`apps.c`, crash guard). The crash is
+  traced to the app whose code is on the crashing stack, also from its own threads.
 - A package is never unloaded while `tvshell` runs. An uninstalled app stays in memory until the next start, so
   jobs and threads still running cannot call code that is gone.
 - A package is checked before it is used: its SHA256 must match the catalog, and it may only hold plain files and

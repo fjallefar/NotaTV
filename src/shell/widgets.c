@@ -178,7 +178,9 @@ static bool kb_input(Screen *s, const InputEvent *ev) {
     case A_LEFT: k->col = (k->col + kb_row_len(k, k->row) - 1) % kb_row_len(k, k->row); break;
     case A_RIGHT: k->col = (k->col + 1) % kb_row_len(k, k->row); break;
     case A_OK:
-        if (ev->repeat) return true; /* OK held down: no repeated letters */
+        /* "repeat" also covers two quick OK presses (CEC sends no key release, see HOLD_GAP), so it must never drop a
+           letter: letters, space and backspace repeat like a real keyboard. Only Shift, Clear and Done ignore it. */
+        if (ev->repeat && k->row == KB_ROWS && k->col != 1 && k->col != 2) return true;
         /* Enter after typing on a physical keyboard = Done - but not when the arrows chose an on-screen key since
            (e.g. @ picked with the arrows and Enter: that key is pressed) */
         if (ev->ch == '\n' && k->typed && !k->nav) { kb_finish(s, true); return true; }

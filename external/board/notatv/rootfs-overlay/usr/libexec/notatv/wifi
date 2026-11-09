@@ -72,26 +72,33 @@ scan)
 connect)
 	ensure
 	ssid=$2; psk=$3
-	wpa_cli -i $W remove_network all >/dev/null
+	# the networks that work today stay until the new one has connected: a typo in the password must not leave
+	# the box without network. select_network only disables them in memory; nothing is saved before success
+	old=$(wpa_cli -i $W list_networks | tail -n +2 | cut -f1)
 	id=$(wpa_cli -i $W add_network | tail -1)
+	undo() { wpa_cli -i $W remove_network $id >/dev/null; for o in $old; do wpa_cli -i $W enable_network $o >/dev/null; done; }
 	# the name is in wpa_cli's escaped form from "scan" (æ/ø/å, emoji, " and \ as \xNN, \" and \\): P"..." makes
 	# wpa_supplicant decode it - a plain "..." would look for a network literally named S\xc3\xb8ren
 	wpa_cli -i $W set_network $id ssid "P\"$ssid\"" >/dev/null
 	if [ -n "$psk" ]; then
-		wpa_cli -i $W set_network $id psk "\"$psk\"" >/dev/null || { echo "Invalid password"; exit 1; }
+		wpa_cli -i $W set_network $id psk "\"$psk\"" >/dev/null || { undo; echo "Invalid password"; exit 1; }
 		wpa_cli -i $W set_network $id key_mgmt "WPA-PSK SAE" >/dev/null
 		wpa_cli -i $W set_network $id ieee80211w 1 >/dev/null
 	else
 		wpa_cli -i $W set_network $id key_mgmt NONE >/dev/null
 	fi
-	wpa_cli -i $W enable_network $id >/dev/null
-	wpa_cli -i $W save_config >/dev/null
+	wpa_cli -i $W select_network $id >/dev/null
 	for i in $(seq 1 20); do
 		st=$(wpa_cli -i $W status | grep '^wpa_state=' | cut -d= -f2)
 		[ "$st" = COMPLETED ] && break
 		sleep 1
 	done
-	[ "$st" = COMPLETED ] || { msg "Could not connect to %s (wrong password?)" "$ssid"; exit 1; }
+	if [ "$st" != COMPLETED ]; then
+		undo # back to the network that worked
+		msg "Could not connect to %s (wrong password?)" "$ssid"; exit 1
+	fi
+	for o in $old; do wpa_cli -i $W remove_network $o >/dev/null; done
+	wpa_cli -i $W save_config >/dev/null
 	nopower
 	kill -USR1 $(cat /run/udhcpc.$W.pid 2>/dev/null) 2>/dev/null || \
 		udhcpc -b -A 3 -i $W -x hostname:$(hostname) -s $H/dhcp-script -p /run/udhcpc.$W.pid >/dev/null 2>&1

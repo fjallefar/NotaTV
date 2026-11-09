@@ -17,10 +17,16 @@
  * Installed or not is the setting app_<id> (the same key the old "show on home screen" used, so nothing changes
  * for existing boxes). A package is never unloaded while tvshell runs: an uninstalled app's code stays mapped until
  * the next start, so nothing in flight (jobs, threads) can call into freed code. */
+#define _GNU_SOURCE /* dl_iterate_phdr */
 #include "tv.h"
 #include "vendor/cJSON.h"
 #include <dirent.h>
 #include <dlfcn.h>
+#include <execinfo.h>
+#include <fcntl.h>
+#include <link.h>
+#include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -117,6 +123,178 @@ static void rename_apps(void) {
     }
 }
 
+/* ---------- crash guard: an app that crashes at every start must not lock the box ----------
+ * tvshell is restarted by init when it crashes, so an app that crashes while loading, in init, in tick or in its
+ * home row would crash it again and again (apps update on their own, so on every box at once).
+ * A crash signal is traced to the app whose code is on the crashing stack (or that is being loaded / initialised)
+ * and its id is appended to <data>/app-crashes, which is deleted once tvshell has run for a minute. When the same
+ * app is behind CRASH_LIMIT crashes in a row (so the last one within a minute of start), it is skipped from the next
+ * start (<data>/app-skip: "<id> <version>" per app) and a message says so. That is before the update rollback in
+ * `session` (4 starts).
+ * It stays installed: a newer version from the App Store is loaded again, and installing it again in the App Store
+ * tries the same version once more. */
+#define CRASH_LIMIT 2
+static struct { uintptr_t lo, hi; char id[33]; } code_rng[MAX_APPS];
+static volatile int n_rng;
+static const char *volatile loading_id; /* the app being dlopen'ed or initialised (main thread) */
+static char crash_path[320], skip_path[320];
+#define MAX_SKIP 8
+/* skipped apps; ver "" = found in app-crashes at this start (the version is filled in when its package is seen) */
+static struct { char id[33], ver[24]; } skips[MAX_SKIP];
+static int n_skip;
+static char skipped_name[64]; /* shown as a message shortly after start */
+
+/* the executable segments of the loaded object that contains the address probe */
+struct rng_find { uintptr_t probe, lo, hi; };
+static int rng_cb(struct dl_phdr_info *info, size_t sz, void *ud) {
+    (void)sz;
+    struct rng_find *f = ud;
+    bool mine = false;
+    for (int i = 0; i < info->dlpi_phnum; i++) {
+        const ElfW(Phdr) *p = &info->dlpi_phdr[i];
+        uintptr_t a = info->dlpi_addr + p->p_vaddr;
+        if (p->p_type == PT_LOAD && f->probe >= a && f->probe < a + p->p_memsz) mine = true;
+    }
+    if (!mine) return 0;
+    for (int i = 0; i < info->dlpi_phnum; i++) {
+        const ElfW(Phdr) *p = &info->dlpi_phdr[i];
+        if (p->p_type != PT_LOAD || !(p->p_flags & PF_X)) continue;
+        uintptr_t a = info->dlpi_addr + p->p_vaddr;
+        if (!f->lo || a < f->lo) f->lo = a;
+        if (a + p->p_memsz > f->hi) f->hi = a + p->p_memsz;
+    }
+    return 1;
+}
+static void note_code(const NotaApp *a) {
+    struct rng_find f = {(uintptr_t)a, 0, 0};
+    dl_iterate_phdr(rng_cb, &f);
+    int i = n_rng;
+    if (!f.hi || i >= MAX_APPS) return;
+    code_rng[i].lo = f.lo;
+    code_rng[i].hi = f.hi;
+    snprintf(code_rng[i].id, sizeof code_rng[i].id, "%s", a->id);
+    n_rng = i + 1; /* only now visible to the signal handler */
+}
+
+static const char *crash_owner(void) {
+    void *bt[64];
+    int n = backtrace(bt, 64);
+    for (int i = 0; i < n; i++) {
+        uintptr_t pc = (uintptr_t)bt[i];
+        for (int j = 0; j < n_rng; j++)
+            if (pc >= code_rng[j].lo && pc < code_rng[j].hi) return code_rng[j].id;
+    }
+    return loading_id;
+}
+static void crash_handler(int sig) {
+    const char *id = crash_owner();
+    if (id && crash_path[0]) {
+        int fd = open(crash_path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+        if (fd >= 0) {
+            if (write(fd, id, strlen(id)) < 0 || write(fd, "\n", 1) < 0) {}
+            close(fd);
+        }
+    }
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+static int skip_find(const char *id) {
+    for (int i = 0; i < n_skip; i++) if (!strcmp(skips[i].id, id)) return i;
+    return -1;
+}
+static void skip_save(void) {
+    if (!n_skip) { unlink(skip_path); return; }
+    FILE *f = fopen(skip_path, "w");
+    if (!f) return;
+    for (int i = 0; i < n_skip; i++) fprintf(f, "%s %s\n", skips[i].id, skips[i].ver[0] ? skips[i].ver : "?");
+    fclose(f);
+}
+static void skip_clear(const char *id) {
+    int i = skip_find(id);
+    if (i < 0) return;
+    skips[i] = skips[--n_skip];
+    skip_save();
+}
+
+static void crash_guard_init(void) {
+    snprintf(crash_path, sizeof crash_path, "%s/app-crashes", data_dir());
+    snprintf(skip_path, sizeof skip_path, "%s/app-skip", data_dir());
+    void *warm[2];
+    backtrace(warm, 2); /* loads the unwinder now, not inside the signal handler */
+    static char alt[64 * 1024]; /* the handler also runs after a stack overflow */
+    stack_t ss = {.ss_sp = alt, .ss_size = sizeof alt};
+    sigaltstack(&ss, NULL);
+    static const int sigs[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
+    for (size_t i = 0; i < sizeof sigs / sizeof sigs[0]; i++) {
+        struct sigaction old, sa;
+        if (sigaction(sigs[i], NULL, &old) == 0 && old.sa_handler != SIG_DFL) continue; /* e.g. AddressSanitizer */
+        memset(&sa, 0, sizeof sa);
+        sa.sa_handler = crash_handler;
+        sa.sa_flags = SA_ONSTACK;
+        sigemptyset(&sa.sa_mask);
+        sigaction(sigs[i], &sa, NULL);
+    }
+    /* the apps skipped earlier ("<id> <version>" per line) */
+    char *s = file_read_all(skip_path, 4096), *save = NULL;
+    for (char *l = s ? strtok_r(s, "\n", &save) : NULL; l && n_skip < MAX_SKIP; l = strtok_r(NULL, "\n", &save)) {
+        char id[33] = "", ver[24] = "";
+        if (sscanf(l, "%32s %23s", id, ver) >= 1 && id_ok(id) && skip_find(id) < 0) {
+            snprintf(skips[n_skip].id, sizeof skips[n_skip].id, "%s", id);
+            snprintf(skips[n_skip].ver, sizeof skips[n_skip].ver, "%s", strcmp(ver, "?") ? ver : "");
+            n_skip++;
+        }
+    }
+    free(s);
+    /* the last crashes: CRASH_LIMIT by the same app in a row -> skip it */
+    char *t = file_read_all(crash_path, 1 << 14);
+    if (t) {
+        char last[33] = "";
+        int run = 0;
+        save = NULL;
+        for (char *l = strtok_r(t, "\n", &save); l; l = strtok_r(NULL, "\n", &save)) {
+            run = strncmp(l, last, sizeof last) ? 1 : run + 1;
+            snprintf(last, sizeof last, "%s", l);
+        }
+        free(t);
+        if (run >= CRASH_LIMIT && id_ok(last)) {
+            int i = skip_find(last);
+            if (i < 0 && n_skip < MAX_SKIP) i = n_skip++;
+            if (i >= 0) {
+                snprintf(skips[i].id, sizeof skips[i].id, "%s", last);
+                skips[i].ver[0] = 0;
+            }
+            unlink(crash_path);
+            SDL_Log("app %s: crashed tvshell %d times in a row - it is skipped", last, run);
+        }
+    }
+}
+
+/* true = do not load this package (the same version as the one that crashed) */
+static bool crash_skip(const char *id, const char *ver, cJSON *m) {
+    int i = skip_find(id);
+    if (i < 0) return false;
+    ver = ver && *ver ? ver : "?";
+    if (!skips[i].ver[0]) { /* just found: remember which version crashed, and say so */
+        snprintf(skips[i].ver, sizeof skips[i].ver, "%s", ver);
+        skip_save();
+        const char *name = cJSON_GetStringValue(cJSON_GetObjectItem(m, "name"));
+        snprintf(skipped_name, sizeof skipped_name, "%s", name && *name ? name : id);
+    } else if (strcmp(ver, skips[i].ver)) {
+        SDL_Log("app %s: version %s replaces %s, which crashed - loading it again", id, ver, skips[i].ver);
+        skip_clear(id);
+        return false;
+    }
+    SDL_Log("app %s %s: skipped (it crashed tvshell, see app-skip)", id, ver);
+    return true;
+}
+
+bool apps_crash_skipped(const char *id, const char *version) {
+    int i = id ? skip_find(id) : -1;
+    if (i < 0) return false;
+    return !version || !skips[i].ver[0] || !strcmp(version, skips[i].ver);
+}
+
 /* one package folder: check the manifest, load app.so and register the app it exports */
 static const NotaApp *load_pkg(const char *dir, const char *name) {
     if (renamed_from(name)) { SDL_Log("app %s: renamed - the old package is skipped (%s)", name, dir); return NULL; }
@@ -133,10 +311,14 @@ static const NotaApp *load_pkg(const char *dir, const char *name) {
     if (!id_ok(id) || strcmp(id, name)) SDL_Log("app %s: the id in manifest.json must be the folder name", dir);
     else if (api != NOTA_API) SDL_Log("app %s: built for app API %d, this NotaTV has %d - skipped", id, api, NOTA_API);
     else if (app_find(id)) SDL_Log("app %s: already loaded (%s skipped)", id, dir);
+    else if (crash_skip(id, ver, m)) {}
     else {
         snprintf(path, sizeof path, "%s/app.so", dir);
+        loading_id = id; /* a crash in its constructors counts as this app's */
         void *h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
         const NotaApp *a = h ? dlsym(h, "nota_app") : NULL;
+        loading_id = NULL;
+        if (h && a) note_code(a);
         if (!h) SDL_Log("app %s: %s", id, dlerror());
         else if (!a || a->api != NOTA_API || !a->id || strcmp(a->id, id)) {
             SDL_Log("app %s: app.so has no matching nota_app - skipped", id);
@@ -163,6 +345,7 @@ const char *apps_pkg_root(void) {
 /* a package that was just downloaded (<apps-pkg>/<id>); NULL if it cannot be loaded */
 const NotaApp *apps_load_pkg(const char *id) {
     if (!id_ok(id)) return NULL;
+    skip_clear(id); /* installed again in the App Store after it crashed: try it once more */
     char dir[400];
     snprintf(dir, sizeof dir, "%s/%s", apps_pkg_root(), id);
     return load_pkg(dir, id);
@@ -185,6 +368,7 @@ static void scan(const char *root) {
 void apps_init(void) {
     static const NotaApp *const builtin[] = {&app_appstore, &app_settings};
     for (size_t i = 0; i < sizeof builtin / sizeof builtin[0]; i++) add(builtin[i], NULL, NULL);
+    crash_guard_init();
     rename_apps();
     scan(apps_pkg_root()); /* downloaded from the App Store */
     const char *env = getenv("TVSHELL_APPS");
@@ -194,7 +378,12 @@ void apps_init(void) {
         free(list);
     }
     for (int i = 0; i < n_reg; i++)
-        if (app_installed(reg[i].a) && reg[i].a->init && !reg[i].inited) { reg[i].inited = true; reg[i].a->init(); }
+        if (app_installed(reg[i].a) && reg[i].a->init && !reg[i].inited) {
+            reg[i].inited = true;
+            loading_id = reg[i].a->id;
+            reg[i].a->init();
+            loading_id = NULL;
+        }
 }
 
 int app_count(void) { return n_reg; }
@@ -241,6 +430,13 @@ bool apps_inbox(const char *name, const char *val) {
 }
 
 void apps_tick(void) {
+    static bool settled;
+    double now = app_time();
+    if (!settled && now > 60) { settled = true; unlink(crash_path); } /* ran a minute: earlier crashes do not count */
+    if (skipped_name[0] && now > 3) {
+        app_toast(T("%s stopped working and was turned off. Install it again in the App Store to try again"), skipped_name);
+        skipped_name[0] = 0;
+    }
     for (int i = 0; i < n_reg; i++)
         if (reg[i].a->tick && app_installed(reg[i].a)) reg[i].a->tick();
 }
@@ -252,7 +448,7 @@ void app_install(const NotaApp *a) {
     key_of(a, k, sizeof k);
     cfg_set_int(k, 1);
     gen++;
-    if (a->init && !e->inited) { e->inited = true; a->init(); }
+    if (a->init && !e->inited) { e->inited = true; loading_id = a->id; a->init(); loading_id = NULL; }
     if (a->apply) a->apply();
 }
 

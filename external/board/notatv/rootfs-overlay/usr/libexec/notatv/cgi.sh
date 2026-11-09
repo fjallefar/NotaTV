@@ -1,8 +1,9 @@
 # NotaTV: shared code for the phone page's CGI scripts (www/cgi-bin/set, logs). Sourced, not run; kept outside the
 # web root so httpd never serves or runs it.
 CONF=/data/notatv/notatv.conf
-FAIL=/tmp/notatv-phone-fail   # one line (time) per wrong code
-LOCK=/tmp/notatv-phone.lock
+# in /run/notatv (root only), not /tmp: no other user can put a file or symlink there first
+FAIL=/run/notatv/phone-fail   # one line (time) per wrong code
+LOCK=/run/notatv/phone.lock
 
 reply() { printf 'Status: %s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\n' "$1" "$2"; exit 0; }
 cfg() { sed -n "s/^$1=//p" "$CONF" 2>/dev/null | head -1; }

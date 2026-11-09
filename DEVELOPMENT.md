@@ -27,7 +27,7 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) on a self
 3. The runner publishes `notatv-rpi4.img.xz`, `notatv-rpi4-update.tar.gz` and its `.sha256`, and packs the apps (`scripts/apps-catalog.py`) into the pre-release `apps`, the App Store. Raise an app's `version` in its `manifest.json` when it changes, and write what is new in its `changes` (see [src/apps/README.md](src/apps/README.md)).
 4. Only apps changed? Push a tag `apps-YYYY-MM-DD` instead (`.github/workflows/apps.yml`): no new system version is needed.
 
-The build folder is kept between releases, so normally only NotaTV's own packages are rebuilt (minutes). Changes to the Makefile, defconfig, packages, kernel fragments, patches, `config.txt`/`cmdline.txt` or the rpi-ffmpeg commit trigger a full build. The Twitch Client ID comes from the repository secret `TWITCH_CLIENT_ID`.
+The build folder is kept between releases, so normally only NotaTV's own packages are rebuilt (minutes). Changes to the Makefile, defconfig, packages, kernel fragments, patches, `config.txt`/`cmdline.txt` or the rpi-ffmpeg commit trigger a full build. After a kernel lift, `post-build.sh` removes the old `/lib/modules/<version>` (Buildroot keeps old files in the target folder). The tvshell package is copied from `src/shell` only once, so run `make clean-shell` before a local build that must include shell changes. The Twitch Client ID comes from the repository secret `TWITCH_CLIENT_ID`.
 
 ## Working on the code
 

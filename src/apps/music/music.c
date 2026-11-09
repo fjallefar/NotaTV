@@ -475,7 +475,8 @@ static void mu_draw_fg(MuView *v, MusicState s, Image *im, float fa, bool oled) 
             snprintf(n, sizeof n, "%d", i + 1);
             text_draw(F_BOLD, 30, x + 56, y + 42, C_TEXT, AL_CENTER, n);
             text_draw_clip(F_BOLD, 30, x + 32, y + 108, cw - 64, C_TEXT, AL_LEFT, steps[i][0]);
-            text_draw_clip(F_REG, 24, x + 32, y + 150, cw - 64, C_TEXT2, AL_LEFT, steps[i][1]);
+            /* two lines: the guidance was cut ("Bluetooth on the pho...") exactly where it explains */
+            text_draw_wrap(F_REG, 24, x + 32, y + 138, cw - 64, 2, 28, C_TEXT2, steps[i][1]);
         }
         text_draw(F_REG, 24, UI_W / 2, 740, C_TEXT3, AL_CENTER,
                   T("AirPlay: iPhone, iPad and Mac on the same network  ·  Bluetooth: all phones"));

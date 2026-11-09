@@ -57,7 +57,7 @@ Open `http://<box IP>` on your phone. From there you can:
 
 Keys and text work right away. **Playlists, logins, network drives, names and YouTube accounts are only saved after you approve them on the TV.**
 
-The page is locked with a code. You set it in the setup guide and can change it under *Settings → Network → Phone page code*. 10 wrong codes in 10 minutes lock the page, and it only accepts POST requests of at most 512 KB. The page uses plain HTTP inside your home network, so the code is sent unencrypted: it keeps others on the network out, but do not reuse a password you use elsewhere.
+The page is locked with a code. You set it in the setup guide and can change it under *Settings → Network → Phone page code* (6-8 digits). 10 wrong codes in 10 minutes lock the page, and it only accepts POST requests of at most 512 KB. The page uses plain HTTP inside your home network, so the code is sent unencrypted: it keeps others on the network out, but do not reuse a password you use elsewhere.
 
 ---
 
@@ -180,6 +180,7 @@ The user interface is in **English** (the default) and **Danish**. Change it und
 
 - **Safe against power cuts:** nothing is changed until the whole package is downloaded and checked, and each file is written with a single rename, so the box has either the old or the new version. An interrupted update is finished at the next boot. The kernel is kept as two complete sets on the boot partition, and an update switches between them with one small write.
 - **Undo last update** (same menu) puts the previous version back. This also happens by itself if the user interface keeps crashing right after an update.
+- **An app that crashes** NotaTV twice in a row right after start is turned off, and the box says which one. It stays installed: a new version from the App Store is loaded again, and *Install* in the App Store tries it once more.
 - **Update reminders:** the box looks for a new release twice a day and shows a reminder on the home screen at most every other day. Turn it off under *Settings → System → Update reminders*; then the box never contacts GitHub by itself.
 - The update card shows a short summary of what is new (from [CHANGELOG.md](CHANGELOG.md)).
 
@@ -196,6 +197,8 @@ curl -fsSL https://raw.githubusercontent.com/fjallefar/NotaTV/main/external/boar
 Then update under *Settings → System → Update NotaTV*. If it says "Restart the box to finish the update", restart once more.
 
 **Torn frames?** Set `kms_finish=1` in `/data/notatv/notatv.conf` and restart.
+
+**Playback, YouTube or AirPlay stopped working after 1.0.21?** Since 1.0.21 they run as the user `media` instead of root. Set `media_user=0` in `/data/notatv/notatv.conf` and restart to check whether that is the cause (and tell us).
 
 **Logs on the box** (with *Developer mode (SSH)*; readable by root only, tokens and passwords masked):
 

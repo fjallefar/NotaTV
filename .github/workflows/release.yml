@@ -160,8 +160,13 @@ jobs:
                   call(f"{api}/{rel['id']}", json.dumps({"body": body}).encode(), method="PATCH")
           except urllib.error.HTTPError as e:
               if e.code != 404: raise
-              rel = call(api, json.dumps({"tag_name": tag, "name": "NotaTV " + ver, "body": body,
-                                          "generate_release_notes": True, "make_latest": "true"}).encode())
+              # a new release is made as a draft and published only when all files are uploaded: boxes that check
+              # meanwhile must not find a release without its .sha256 ("Download failed"). /tags/ does not see
+              # drafts, so a draft left by a failed run is reused
+              rel = next((r for r in call(f"{api}?per_page=30") if r.get("draft") and r.get("tag_name") == tag), None)
+              if rel is None:
+                  rel = call(api, json.dumps({"tag_name": tag, "name": "NotaTV " + ver, "body": body, "draft": True,
+                                              "generate_release_notes": True}).encode())
           names = ["notatv-rpi4.img.xz", "notatv-rpi4-update.tar.gz", "notatv-rpi4-update.tar.gz.sha256"]
           for a in rel.get("assets", []):  # running again for the same tag replaces the files
               if a["name"] in names:
@@ -171,6 +176,8 @@ jobs:
                   call(f"https://uploads.github.com/repos/{repo}/releases/{rel['id']}/assets?name={n}",
                        data=f.read(), ctype="application/octet-stream")
               print("uploaded", n)
+          if rel.get("draft"):
+              rel = call(f"{api}/{rel['id']}", json.dumps({"draft": False, "make_latest": "true"}).encode(), method="PATCH")
           print(rel["html_url"])
 
           # the App Store: the release "apps" (a pre-release, so it never counts as the latest NotaTV) holds every

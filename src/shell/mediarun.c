@@ -4,7 +4,7 @@
  * so every caller - tvshell, the apps, mpv's own yt-dlp hook - goes through it. The real programs live in
  * /usr/libexec/notatv/media/ (yt-dlp in /usr/lib/yt-dlp, or a newer one from the App Store in <data>/tools/yt-dlp).
  *
- * With the setting media_user=1 (no menu yet; for testing) a program started by root runs as the user "media" with
+ * By default (media_user=1; media_user=0 turns it off for troubleshooting) a program started by root runs as the user "media" with
  * only the groups video and audio: a bug in a decoder (ffmpeg), in yt-dlp or in YouTube's JavaScript that yt-dlp runs
  * then no longer gives root on the box. Before it switches user, it gives the program what it needs and could not
  * reach as "media":
@@ -14,7 +14,7 @@
  *   -reg <path>                             UxPlay's list of trusted phones is kept in media's home
  *   yt-dlp                                  gets its cache in media's home
  *   /tmp/notatv-*.json/.bgra/.m3u/-sub-*.srt  readable for the group media (now playing, channels, posters, subtitles)
- * Without media_user=1, or when "media" is missing, the program just runs as before (as root). */
+ * With media_user=0, or when "media" is missing, the program just runs as before (as root). */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
@@ -43,12 +43,12 @@ static void warn(const char *fmt, const char *a) {
 }
 
 /* "key=1" in notatv.conf (as in tvshell: the first line with the key counts) */
-static int cfg_on(const char *key) {
+static int cfg_on(const char *key, int def) {
     FILE *f = fopen(CONF, "r");
-    if (!f) return 0;
+    if (!f) return def;
     char *line = NULL;
     size_t cap = 0, kl = strlen(key);
-    int on = 0;
+    int on = def;
     while (getline(&line, &cap, f) >= 0)
         if (!strncmp(line, key, kl) && line[kl] == '=') { on = atoi(line + kl + 1) != 0; break; }
     free(line);
@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
     int as_root = getuid() == 0;
     struct passwd *pw = getpwnam("media");
     /* only root switches (and only root can read the setting) */
-    int drop = as_root && cfg_on("media_user");
+    int drop = as_root && cfg_on("media_user", 1); /* on by default since audit 9/11; media_user=0 = as root */
     if (drop && !pw) { warn("media_user=1, but there is no user \"media\" - running %s as root", name); drop = 0; }
     uid_t uid = pw ? pw->pw_uid : 0;
     gid_t gid = pw ? pw->pw_gid : 0;

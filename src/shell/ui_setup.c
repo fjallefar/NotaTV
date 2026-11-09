@@ -32,14 +32,14 @@ static void pin_typed(void *ud, const char *t) {
     size_t n = 0;
     for (const char *c = t; *c && n < 8; c++) if (*c >= '0' && *c <= '9') pin[n++] = *c;
     pin[n] = 0;
-    if (n < 4) { app_toast(T("The code must be 4-8 digits")); return; }
+    if (n < 6) { app_toast(T("The code must be 6-8 digits")); return; } /* 4 digits: all codes guessed in ~7 days at 10 per 10 min */
     cfg_set("phone_pin", pin);
     app_toast_secret(T("New code: %s"), pin);
     if (done) done();
 }
 static void pin_choice(void *ud, int idx) {
     if (idx == 0) { phone_pin_new(); app_toast_secret(T("New code: %s"), phone_pin()); if (ud) ((void (*)(void))ud)(); }
-    else if (idx == 1) keyboard_open(T("Phone page code (4-8 digits)"), "", false, pin_typed, ud);
+    else if (idx == 1) keyboard_open(T("Phone page code (6-8 digits)"), "", false, pin_typed, ud);
 }
 void phone_pin_change(void (*done)(void)) {
     static const char *const items[] = {N_("New random code"), N_("Choose my own")};

@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <glob.h>
 #include <grp.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -760,6 +761,21 @@ char *run_capture_argv(const char *const *argv) {
     return buf;
 }
 
+void proc_stop(int pid, int *status, int ms) {
+    if (pid <= 0) return;
+    int st = 0;
+    kill(pid, SIGTERM);
+    for (int t = 0; t < ms; t += 50) {
+        pid_t r = waitpid(pid, &st, WNOHANG);
+        if (r == pid || (r < 0 && errno != EINTR)) { if (status) *status = st; return; }
+        usleep(50000);
+    }
+    SDL_Log("proc_stop: %d did not stop on SIGTERM, SIGKILL", pid);
+    kill(pid, SIGKILL);
+    while (waitpid(pid, &st, 0) < 0 && errno == EINTR) {}
+    if (status) *status = st;
+}
+
 int run_cmd(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -902,7 +918,7 @@ void media_share_tmp(void) {
     static gid_t gid;
     if (gen != cfg_gen()) {
         gen = cfg_gen();
-        struct group *g = cfg_int("media_user", 0) ? getgrnam("media") : NULL;
+        struct group *g = cfg_int("media_user", 1) ? getgrnam("media") : NULL;
         on = g != NULL;
         gid = g ? g->gr_gid : 0;
     }

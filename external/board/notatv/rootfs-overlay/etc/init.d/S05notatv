@@ -4,6 +4,13 @@
 
 case "$1" in
 start)
+	# root never follows a symlink or opens a file that another user put in /tmp (systemd turns these on; NotaTV
+	# has no systemd). Matters as soon as mpv/yt-dlp/UxPlay run as the user "media" (media_user)
+	for k in protected_symlinks protected_hardlinks protected_fifos protected_regular; do
+		echo 1 > /proc/sys/fs/$k 2>/dev/null || log "sysctl: fs.$k could not be set"
+	done
+	# no access times on the SD card (fewer writes); in S05 because the updater keeps cmdline.txt as it is
+	mount -o remount,noatime / 2>/dev/null
 	mkdir -p $RUN /tmp/notatv-inbox /media /data
 	chmod 700 /tmp/notatv-inbox
 	: > $RUN/mpv-local.conf

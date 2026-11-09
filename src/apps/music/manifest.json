@@ -1,6 +1,6 @@
 {
   "id": "music",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": 2,
   "name": "Music",
   "desc": "Play music from your phone via AirPlay",
@@ -23,9 +23,9 @@
   "order": 70,
   "default": true,
   "changes": {
-    "summary": "The artwork fits the new home screen",
+    "summary": "The guide is no longer cut off",
     "points": [
-      "The logo or cover on the home screen no longer reaches the app icons"
+      "The steps on the start screen wrap onto two lines"
     ]
   }
 }

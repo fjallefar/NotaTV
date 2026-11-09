@@ -28,6 +28,7 @@ The box only contacts outside services when you use a feature. Apps only do so w
 | api.energidataservice.dk | Electricity price (prices at startup, every 6 hours and at 13:15; grid tariffs every 6 hours) |
 | Your TeslaMate's MQTT server (local network) | Tesla |
 | tile.openstreetmap.org | Tesla → Map (off until you turn it on) |
-| musicbrainz.org, coverartarchive.org | Cover art for Bluetooth music (can be turned off) |
+| api.opensubtitles.com | Subtitle search in the player (the title or TMDB id and your languages; your login when you download) |
+| itunes.apple.com, musicbrainz.org, coverartarchive.org | Cover art for Bluetooth music (artist and album or track; can be turned off) |
 | api.github.com, github.com | Updates and the App Store |
 | pool.ntp.org | Setting the clock at startup |

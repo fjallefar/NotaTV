@@ -1,6 +1,6 @@
 {
   "id": "games",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "api": 2,
   "name": "Games",
   "desc": "Play games from your PC via Sunshine (Moonlight)",
@@ -11,10 +11,10 @@
   "order": 80,
   "default": true,
   "changes": {
-    "summary": "Easier to use without colored keys",
+    "summary": "Uninstalling deletes the pairing",
     "points": [
-      "Settings and Search for PCs again are buttons at the bottom - press down to reach them",
-      "The colored keys still work as shortcuts"
+      "Uninstalling Games now deletes the pairing with your PC (certificate and key)",
+      "Pair the PC again after installing it again"
     ]
   }
 }

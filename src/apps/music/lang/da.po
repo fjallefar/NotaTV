@@ -112,8 +112,8 @@ msgstr "Afbryd forbindelse"
 msgid "AirPlay disconnected"
 msgstr "AirPlay afbrudt"
 
-msgid "The artwork fits the new home screen"
-msgstr "Billedet passer til den nye forside"
+msgid "The guide is no longer cut off"
+msgstr "Vejledningen bliver ikke længere skåret af"
 
-msgid "The logo or cover on the home screen no longer reaches the app icons"
-msgstr "Logo eller cover på forsiden når ikke længere ned til app-ikonerne"
+msgid "The steps on the start screen wrap onto two lines"
+msgstr "Trinene på startskærmen bryder nu over to linjer"

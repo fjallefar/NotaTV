@@ -446,7 +446,10 @@ static void migrate_tick(void) {
             char k[48];
             snprintf(k, sizeof k, "app_%s", c->id);
             const char *v = cfg_get(k, NULL);
-            if ((v && *v ? atoi(v) != 0 : c->def) && !app_installed(app_find(c->id))) { appcat_install(c->id); n++; }
+            if ((v && *v ? atoi(v) != 0 : c->def) && !app_installed(app_find(c->id)) && !apps_crash_skipped(c->id, c->version)) {
+                appcat_install(c->id);
+                n++;
+            }
         }
         if (n) app_toast(T("Installing your apps from the App Store…"));
         phase = 2;
@@ -487,7 +490,8 @@ static void missing_tick(void) {
         const CatApp *c = appcat_at(i);
         char k[48];
         snprintf(k, sizeof k, "app_%s", c->id);
-        if (atoi(cfg_get(k, "0")) != 0 && !app_find(c->id)) { appcat_install(c->id); n++; }
+        /* a skipped app (it crashed tvshell) only when the catalog has a newer version than the one that crashed */
+        if (atoi(cfg_get(k, "0")) != 0 && !app_find(c->id) && !apps_crash_skipped(c->id, c->version)) { appcat_install(c->id); n++; }
     }
     if (n) SDL_Log("appcat: %d installed apps had no package - downloading them", n);
 }
