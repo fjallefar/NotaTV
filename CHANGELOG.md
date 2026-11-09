@@ -18,6 +18,23 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.19
+
+> **In short:** The home screen can be a carousel: one row where the app in focus is the biggest.
+> - Choose it the first time the home screen opens after the update, or any time under Settings → Home screen
+> - New boxes choose it in the setup guide; the grid stays the default
+
+- Home screen: a new layout, *Carousel*: the apps in one row that slides, with the app in focus clearly the biggest. *Edit home screen* moves the apps in it too. The grid is still the default.
+- After the update the home screen asks once: *Try the carousel*, *Keep the grid* or *Later* (Later asks again the next time the box starts).
+- Setup guide: a new last step, *Home screen*, with a small sketch of each layout.
+- Settings: a new section *Home screen* at the top with *Layout*. The quick panel's shortcuts to Network, Picture and sound and Bluetooth still open the right section.
+
+<!-- tldr:da
+Kort: Forsiden kan nu være en karrusel: én række, hvor den valgte app er størst.
+- Vælg den første gang forsiden åbner efter opdateringen, eller når som helst under Indstillinger → Forside
+- Nye bokse vælger i setup-guiden; gitteret er stadig standard
+-->
+
 ## 1.0.18
 
 > **In short:** Typing an e-mail address works again: @ can be typed on the on-screen and the physical keyboard.

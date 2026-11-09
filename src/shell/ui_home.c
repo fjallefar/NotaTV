@@ -70,7 +70,18 @@ static void move_tile(int from, int to) {
 #define TILE_PITCH 214.0f /* tile + room for the name of the focused one */
 #define TILE_R 26.0f
 #define APPS_Y 500.0f
-static int grid_cols(void) { return n_vis < 6 ? (n_vis ? n_vis : 1) : 6; }
+/* the layout (Settings → Home screen, the setup guide): "grid" (the default) or "carousel" - one row like Apple TV,
+   where the app in focus is the biggest and the others slide past */
+static bool carousel(void) { return !strcmp(cfg_get("home_layout", "grid"), "carousel"); }
+#define CAR_W 300.0f
+#define CAR_H 169.0f
+#define CAR_GAP 44.0f
+#define CAR_GROW 0.28f   /* the app in focus is this much bigger */
+#define CAR_Y 590.0f     /* the middle of the row */
+static int grid_cols(void) {
+    if (carousel()) return n_vis ? n_vis : 1; /* one row */
+    return n_vis < 6 ? (n_vis ? n_vis : 1) : 6;
+}
 static int grid_rows(void) { return (n_vis + grid_cols() - 1) / grid_cols(); }
 
 typedef struct {
@@ -96,7 +107,44 @@ typedef struct {
        row below asks to remove the item, Back ends it. Green is a shortcut (LG CEC has no real "held OK") */
     bool on_edit, editing;
     float wiggle;
+    float cscroll; /* carousel: how far the row has slid to the left */
 } Home;
+
+/* where tile i is: its center, size (with the focus lift), corner radius and the y of its name */
+typedef struct { float cx, cy, w, h, r, name_y, sc; } TileGeo;
+static float home_shift(const Home *h);
+static TileGeo tile_geo(const Home *h, int i) {
+    TileGeo g;
+    float f = h->foc[i].x, fc = f < 0 ? 0 : f > 1 ? 1 : f;
+    if (carousel()) {
+        /* the tiles before i that are (partly) in focus push it to the right, so the big one never overlaps */
+        float x = MARGIN - h->cscroll;
+        for (int j = 0; j < i; j++) {
+            float fj = h->foc[j].x;
+            x += CAR_W + CAR_GAP + CAR_W * CAR_GROW * (fj < 0 ? 0 : fj > 1 ? 1 : fj);
+        }
+        g.sc = 1 + CAR_GROW * f;
+        g.w = CAR_W * g.sc;
+        g.h = CAR_H * g.sc;
+        g.cx = x + g.w / 2;
+        g.cy = CAR_Y - home_shift(h);
+        g.r = TILE_R * g.sc;
+        g.name_y = g.cy + CAR_H * (1 + CAR_GROW * fc) / 2 + 16;
+        return g;
+    }
+    int cols = grid_cols(), r = i / cols, c = i % cols;
+    float x0 = MARGIN + c * (TILE_W + TILE_GAP), y0 = APPS_Y + r * TILE_PITCH - home_shift(h);
+    g.sc = 1 + 0.09f * f; /* lifts toward you, with the spring's small overshoot */
+    g.w = TILE_W * g.sc;
+    g.h = TILE_H * g.sc;
+    g.cx = x0 + TILE_W / 2;
+    g.cy = y0 + TILE_H / 2;
+    g.r = TILE_R * g.sc;
+    g.name_y = y0 + TILE_H + 18 + 5 * fc;
+    return g;
+}
+/* the top of the apps (the shelf text stops above it, "Edit home screen" sits on it) */
+static float apps_top(void) { return carousel() ? CAR_Y - CAR_H * (1 + CAR_GROW) / 2 - 10 : APPS_Y; }
 static float home_shift(const Home *h) { return h->row_anim * 340 + h->grid_anim; }
 
 #define SHELF_H 820
@@ -262,6 +310,25 @@ static void collect_continue(Home *h) {
     if (h->n_cont == 0 && h->row == 1) h->row = 0;
 }
 
+/* After the update with the carousel (STATUS 105): boxes set up before it are asked once on the home screen.
+   Try / Keep the grid answer for good; Later (or Back) asks again the next time the box starts. */
+static bool layout_asked; /* this run */
+static double home_since; /* when the home screen was last opened or came back */
+static void layout_offer_done(void *ud, int idx) {
+    (void)ud;
+    if (idx == 0) { cfg_set("home_layout", "carousel"); cfg_set_int("home_layout_offered", 1); }
+    else if (idx == 1) { cfg_set("home_layout", "grid"); cfg_set_int("home_layout_offered", 1); }
+}
+static void layout_offer(Screen *s, double since) {
+    if (layout_asked || app_top() != s || since < 1.5) return;
+    if (!cfg_int("setup_done", 0) || cfg_int("home_layout_offered", 0)) return;
+    if (getenv("TVSHELL_SCRIPT") && !getenv("TVSHELL_LAYOUT_TEST")) return; /* headless UI tests: not in the way */
+    layout_asked = true;
+    const char *items[] = {T("Try the carousel"), T("Keep the grid"), T("Later")};
+    choice_open(T("New: the apps as a carousel\nOne row where the app in focus is the biggest."),
+                items, 3, 0, layout_offer_done, NULL);
+}
+
 static void home_enter(Screen *s) {
     Home *h = s->st;
     if (h->moving) save_order();
@@ -271,6 +338,7 @@ static void home_enter(Screen *s) {
     for (int i = 0; i < n_vis; i++) if (HOME_APP_ROWS && vis[i]->row_refresh) vis[i]->row_refresh();
     collect_continue(h);
     h->refreshed = h->fetched = app_time();
+    home_since = app_time();
 }
 
 static void home_resume(Screen *s) { home_enter(s); }
@@ -285,6 +353,7 @@ static void home_update(Screen *s, float dt) {
         if (h->col >= n_vis) h->col = 0;
         collect_continue(h);
     }
+    layout_offer(s, app_time() - home_since);
     if (h->moving) h->wiggle += dt;
     for (int i = 0; i < n_vis; i++)
         spring_to(&h->foc[i], (h->row == 0 && h->col == i && !h->moving && !h->on_edit) || (h->moving && h->col == i) ? 1 : 0, dt, SPRING_SNAPPY);
@@ -298,6 +367,13 @@ static void home_update(Screen *s, float dt) {
         if (h->row == 0 && n_vis) need = APPS_Y + (h->col / grid_cols()) * TILE_PITCH + TILE_PITCH - (UI_H - 30);
         h->grid_anim = anim_to(h->grid_anim, need > 0 ? need : 0, dt, 12);
     }
+    if (carousel() && n_vis) { /* slide so the app in focus stays on screen, near the middle once the row is long */
+        float pitch = CAR_W + CAR_GAP, big = CAR_W * (1 + CAR_GROW);
+        float total = n_vis * pitch - CAR_GAP + CAR_W * CAR_GROW, view = UI_W - 2 * MARGIN;
+        float t = h->col * pitch - (view - big) / 2, maxs = total - view;
+        if (maxs < 0) maxs = 0;
+        h->cscroll = anim_to(h->cscroll, t < 0 ? 0 : t > maxs ? maxs : t, dt, 12);
+    } else h->cscroll = 0;
     if (h->row == 0 && h->cont_app != pick_cont_app(h)) { h->col2 = 0; h->sx2 = 0; collect_continue(h); }
     h->bg_fade = anim_to(h->bg_fade, 1, dt, 6);
     /* the rows are fetched when the home screen opens and after playback (enter/resume); while it stays open they
@@ -407,8 +483,8 @@ static void home_draw(Screen *s) {
     if (n_vis > 1 && (h->on_edit || h->editing || (h->row == 0 && h->col < grid_cols()))) {
         /* "Edit home screen" / "Done": a button reached with ↑ from the first row of apps */
         const char *l = h->editing ? T("Done") : T("Edit home screen");
-        float right = MARGIN + grid_cols() * (TILE_W + TILE_GAP) - TILE_GAP; /* over the grid's right edge */
-        float w = text_width(F_SEMI, 24, l) + 48, bx = right - w, by = APPS_Y - 78 - home_shift(h);
+        float right = carousel() ? UI_W - MARGIN : MARGIN + grid_cols() * (TILE_W + TILE_GAP) - TILE_GAP; /* over the apps' right edge */
+        float w = text_width(F_SEMI, 24, l) + 48, bx = right - w, by = apps_top() - 78 - home_shift(h);
         draw_chips(bx, by, &l, 1, h->on_edit ? 0 : -1);
         if (h->editing && !h->moving)
             text_draw(F_REG, 22, bx - 24, by + 12, C_TEXT2, AL_RIGHT,
@@ -417,7 +493,7 @@ static void home_draw(Screen *s) {
 
     float shift = home_shift(h); /* scroll up when row 2 is selected, or to a low app row */
     /* the top text stops above the grid where it is now (it scrolls up to a third row of apps) */
-    float shelf_bottom = APPS_Y - 20 - shift;
+    float shelf_bottom = apps_top() - 20 - shift;
     clip_push(0, 150, UI_W, shelf_bottom > 150 ? shelf_bottom - 150 : 0);
     bool shelf_vis = h->row_anim < 0.2f; /* the row below the apps scrolls up over the top */
     if (shelf_vis && shelf_it && h->bg_url[0]) { /* big image behind: the title of what you can continue */
@@ -434,7 +510,6 @@ static void home_draw(Screen *s) {
     } else if (shelf_vis) draw_shelf(h, focus_app);
     clip_pop();
 
-    int cols = grid_cols();
     int focus_i = -1; /* the focused tile is drawn last, on top of its neighbours */
     for (int pass = 0; pass < 2; pass++)
     for (int i = 0; i < n_vis; i++) {
@@ -443,12 +518,9 @@ static void home_draw(Screen *s) {
         bool top = fc > 0.02f && (focus_i < 0 || focus_i == i);
         if (pass == 0 && top) { focus_i = i; continue; }
         if (pass == 1 && i != focus_i) continue;
-        int r = i / cols, c = i % cols;
-        float x0 = MARGIN + c * (TILE_W + TILE_GAP), y0 = APPS_Y + r * TILE_PITCH - shift;
-        if (y0 > UI_H || y0 + TILE_PITCH < 0) continue;
-        float sc = 1 + 0.09f * f; /* lifts toward you, with the spring's small overshoot */
-        float w = TILE_W * sc, hh = TILE_H * sc;
-        float cx = x0 + TILE_W / 2, cy = y0 + TILE_H / 2;
+        TileGeo tg = tile_geo(h, i);
+        if (tg.cy - tg.h > UI_H || tg.cy + tg.h + 60 < 0 || tg.cx + tg.w / 2 < 0 || tg.cx - tg.w / 2 > UI_W) continue;
+        float sc = tg.sc, w = tg.w, hh = tg.h, cx = tg.cx, cy = tg.cy;
         float x = cx - w / 2, y = cy - hh / 2 - 6 * f;
         bool mv = h->moving && i == h->col;
         if (mv) y -= 10 + 4 * sinf(h->wiggle * 6); /* picked up: lifted and bobbing */
@@ -478,7 +550,7 @@ static void home_draw(Screen *s) {
             text_draw(F_BOLD, 24 * sc, bx + bs / 2, by + (bs - 24 * sc) / 2 - sc, C_TEXT, AL_CENTER, nb);
         }
         /* every tile has its name (not every app is well known); the focused one is bright and moves down with the lift */
-        text_draw(F_SEMI, 26, cx, y0 + TILE_H + 18 + 5 * fc, color_mix(C_TEXT3, C_TEXT, fc), AL_CENTER, T(a->name));
+        text_draw(F_SEMI, 26, cx, tg.name_y, color_mix(C_TEXT3, C_TEXT, fc), AL_CENTER, T(a->name));
     }
 
     if (h->moving) {
@@ -617,10 +689,8 @@ static bool home_input(Screen *s, const InputEvent *ev) {
         }
         if (h->row == 0) {
             /* the app grows out of its tile (and shrinks back into it on Back) */
-            int cols = grid_cols(), r = h->col / cols, c = h->col % cols;
-            float sc = 1.09f, w = TILE_W * sc, hh = TILE_H * sc;
-            float cx = MARGIN + c * (TILE_W + TILE_GAP) + TILE_W / 2, cy = APPS_Y + r * TILE_PITCH - home_shift(h) + TILE_H / 2;
-            app_set_origin(cx - w / 2, cy - hh / 2 - 6, w, hh, TILE_R * sc);
+            TileGeo tg = tile_geo(h, h->col);
+            app_set_origin(tg.cx - tg.w / 2, tg.cy - tg.h / 2 - 6, tg.w, tg.h, tg.r);
             Screen *sc2 = vis[h->col]->open ? vis[h->col]->open() : NULL;
             if (sc2) app_push(sc2);
         } else if (h->col2 < h->n_cont && h->cont_app && h->cont_app->row_open) {

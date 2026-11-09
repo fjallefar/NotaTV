@@ -1835,3 +1835,33 @@ msgstr "Højre: menu"
 
 msgid "Chat"
 msgstr "Chat"
+
+msgid "Grid"
+msgstr "Gitter"
+
+msgid "Carousel"
+msgstr "Karrusel"
+
+msgid "Home screen"
+msgstr "Forside"
+
+msgid "Choose the home screen"
+msgstr "Vælg forsiden"
+
+msgid "Grid: the apps in rows of six. Carousel: one row where the app in focus is the biggest. You can change it later under Settings → Home screen."
+msgstr "Gitter: apps i rækker med seks. Karrusel: én række, hvor den valgte app er størst. Du kan skifte senere under Indstillinger → Forside."
+
+msgid "Try the carousel"
+msgstr "Prøv karrusellen"
+
+msgid "Keep the grid"
+msgstr "Behold gitteret"
+
+msgid "New: the apps as a carousel\nOne row where the app in focus is the biggest."
+msgstr "Nyt: apps som karrusel\nÉn række, hvor den valgte app er størst."
+
+msgid "Layout"
+msgstr "Layout"
+
+msgid "Grid: the apps in rows of six. Carousel: one row where the app in focus is the biggest. Move apps with Edit home screen above the apps"
+msgstr "Gitter: apps i rækker med seks. Karrusel: én række, hvor den valgte app er størst. Flyt apps med Redigér forside over apps"

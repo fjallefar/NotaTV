@@ -9,7 +9,7 @@
 #include <string.h>
 #include <time.h>
 
-enum { ST_LANG, ST_NET, ST_REGION, ST_NAME, ST_APPS, ST_DONE, ST_N };
+enum { ST_LANG, ST_NET, ST_REGION, ST_NAME, ST_APPS, ST_HOME, ST_DONE, ST_N };
 
 /* ---------- code for the phone page (cgi-bin/set checks it) ---------- */
 void phone_pin_new(void) {
@@ -112,6 +112,12 @@ static int step_rows(const Setup *v, Row *r) {
         r[n++] = (Row){T("Other name…"), R_ACTION, false, 100};
         break;
     }
+    case ST_HOME: { /* the home screen's layout (STATUS 105) */
+        bool car = !strcmp(cfg_get("home_layout", "grid"), "carousel");
+        r[n++] = (Row){T("Grid"), R_PICK, !car, 0};
+        r[n++] = (Row){T("Carousel"), R_PICK, car, 1};
+        break;
+    }
     default: break;
     }
     return n;
@@ -177,7 +183,7 @@ static void go(Setup *v, int step) {
     v->on_continue = false;
     v->fade = 0;
     if (step == ST_APPS && appcat_state() != CAT_OK && appcat_state() != CAT_LOADING) appcat_refresh();
-    if (step == ST_LANG || step == ST_NAME) { /* start on the current choice */
+    if (step == ST_LANG || step == ST_NAME || step == ST_HOME) { /* start on the current choice */
         Row r[MAX_ROWS];
         int n = step_rows(v, r);
         for (int i = 0; i < n; i++) if (r[i].current) v->sel = i;
@@ -268,6 +274,12 @@ static void press(Setup *v) {
         else if (v->sel < na) toggle_app(&g[v->sel]);
         break;
     }
+    case ST_HOME:
+        if (!row) return;
+        cfg_set("home_layout", row->id ? "carousel" : "grid");
+        cfg_set_int("home_layout_offered", 1); /* chosen here: the home screen does not ask after an update */
+        next_step(v);
+        break;
     default:
         cfg_set_int("setup_done", 1);
         cfg_set_int("apps_migrated", 1); /* the apps come from the App Store (nothing to move from NotaTV 1.0) */
@@ -294,8 +306,8 @@ static void setup_update(Screen *s, float dt) {
 
 /* ---------- drawing ---------- */
 static void draw_progress(const Setup *v) {
-    static const char *const names[] = {N_("Language"), N_("Network"), N_("Region"), N_("Name"), N_("Apps")};
-    int n = 5;
+    static const char *const names[] = {N_("Language"), N_("Network"), N_("Region"), N_("Name"), N_("Apps"), N_("Home screen")};
+    int n = 6;
     float x0 = LEFT_X, w = (UI_W - 2 * LEFT_X - (n - 1) * 16) / n;
     for (int i = 0; i < n; i++) {
         float x = x0 + i * (w + 16);
@@ -320,6 +332,29 @@ static void draw_row(float x, float y, float w, const Row *r, bool f, float a) {
 static void draw_card(float x, float y, float w, float h, float a) {
     fill_rrect(x, y, w, h, 22, color_alpha(RGB(24, 28, 37), a));
     stroke_rrect(x, y, w, h, 22, 2, RGBA(255, 255, 255, (uint8_t)(18 * a)));
+}
+
+/* the home screen step: a small sketch of the layout in focus (grid: rows of tiles; carousel: one row, the middle one big) */
+static void draw_layout_preview(float x, float y, bool car, float a) {
+    float w = RIGHT_W, h = 250;
+    draw_card(x, y, w, h, a);
+    fill_rrect(x + 36, y + 30, 220, 18, 9, RGBA(255, 255, 255, (uint8_t)(70 * a))); /* the title at the top */
+    fill_rrect(x + 36, y + 58, 340, 10, 5, RGBA(255, 255, 255, (uint8_t)(35 * a)));
+    Color on = color_alpha(C_ACCENT, a), off = RGBA(255, 255, 255, (uint8_t)(40 * a));
+    if (!car) {
+        float tw = (w - 72 - 5 * 14) / 6, th = tw * 0.56f;
+        for (int r = 0; r < 2; r++)
+            for (int c = 0; c < 6; c++)
+                fill_rrect(x + 36 + c * (tw + 14), y + 96 + r * (th + 22), tw, th, 8, r == 0 && c == 1 ? on : off);
+    } else {
+        float tw = (w - 72) / 5.6f, th = tw * 0.56f, big = 1.3f, cy = y + 160;
+        float xx = x + 36;
+        for (int c = 0; c < 5; c++) {
+            float sc = c == 1 ? big : 1, ww = tw * sc, hh = th * sc;
+            fill_rrect(xx, cy - hh / 2, ww, hh, 8, c == 1 ? on : off);
+            xx += ww + 14;
+        }
+    }
 }
 
 static void draw_apps(const Setup *v, float x, float y, float a) {
@@ -413,6 +448,11 @@ static void setup_draw(Screen *s) {
         title = N_("Name your box");
         body = N_("The name is shown when you send to the TV from your phone - AirPlay, Bluetooth, Plex and YouTube.");
         break;
+    case ST_HOME:
+        icon = ICON_TV;
+        title = N_("Choose the home screen");
+        body = N_("Grid: the apps in rows of six. Carousel: one row where the app in focus is the biggest. You can change it later under Settings → Home screen.");
+        break;
     case ST_APPS:
         icon = ICON_CHECK;
         title = N_("Choose your apps");
@@ -425,7 +465,7 @@ static void setup_draw(Screen *s) {
         break;
     }
     if (v->step < ST_DONE) {
-        snprintf(buf, sizeof buf, T("STEP %d OF %d"), v->step + 1, 5);
+        snprintf(buf, sizeof buf, T("STEP %d OF %d"), v->step + 1, 6);
         kicker = buf;
     }
     /* left: what the step is about */
@@ -462,6 +502,10 @@ static void setup_draw(Screen *s) {
         text_draw(F_REG, 24, rx + 80 + cw, ry + 86, color_alpha(C_TEXT2, a), AL_LEFT, T("The clock shown on the box"));
         ry += 150 + 30;
     }
+    if (v->step == ST_HOME) { /* the sketch follows the choice in focus */
+        draw_layout_preview(rx, ry, v->sel == 1, a);
+        ry += 250 + 30;
+    }
     if (v->step == ST_APPS) draw_apps(v, rx, ry, a);
     else if (v->step == ST_DONE) {
         int inst = 0;
@@ -472,15 +516,16 @@ static void setup_draw(Screen *s) {
         char apps[64], net[96];
         snprintf(apps, sizeof apps, T("%d installed"), inst);
         snprintf(net, sizeof net, "%s", ip[0] ? T("Connected") : T("Not connected"));
-        const char *k[] = {T("Language"), T("Network"), T("Region"), T("Name"), T("Apps")};
-        const char *val[] = {lang, net, tz_label(), cfg_get("device_name", "NotaTV"), apps};
-        float ch = 5 * 64 + 40;
+        const char *k[] = {T("Language"), T("Network"), T("Region"), T("Name"), T("Apps"), T("Home screen")};
+        const char *val[] = {lang, net, tz_label(), cfg_get("device_name", "NotaTV"), apps,
+                             !strcmp(cfg_get("home_layout", "grid"), "carousel") ? T("Carousel") : T("Grid")};
+        float ch = 6 * 64 + 40;
         draw_card(rx, ry, RIGHT_W, ch, a);
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             float yy = ry + 30 + i * 64;
             text_draw(F_REG, 28, rx + 40, yy, color_alpha(C_TEXT2, a), AL_LEFT, k[i]);
             text_draw_clip(F_SEMI, 28, rx + RIGHT_W - 40, yy, RIGHT_W * 0.6f, color_alpha(C_TEXT, a), AL_RIGHT, val[i]);
-            if (i < 4) fill_rect(rx + 40, yy + 50, RIGHT_W - 80, 1, RGBA(255, 255, 255, (uint8_t)(20 * a)));
+            if (i < 5) fill_rect(rx + 40, yy + 50, RIGHT_W - 80, 1, RGBA(255, 255, 255, (uint8_t)(20 * a)));
         }
         ry += ch + 24;
         /* the phone page: the most useful tip for typing logins and links */

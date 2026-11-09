@@ -484,6 +484,13 @@ const char *set_hdr_locked(void) { return display_hdr_ok() ? NULL : T("Not suppo
 static const char *ac3_locked(void) { return display_audio_ok(DA_AC3) ? NULL : T("The TV does not accept it (check its sound output, e.g. Bitstream)"); }
 static const char *dts_locked(void) { return display_audio_ok(DA_DTS) ? NULL : T("The TV does not accept it (check its sound output, e.g. Bitstream)"); }
 static const char *hd_locked(void) { return display_audio_ok(DA_HD) ? NULL : T("The TV does not accept it (check its sound output, e.g. Bitstream)"); }
+/* Home screen: the layout of the apps (STATUS 105). Chosen here, in the setup guide or on the card after an update */
+static const char *const layout_o[] = {"grid", "carousel", NULL}, *const layout_l[] = {N_("Grid"), N_("Carousel"), NULL};
+static void layout_changed(void) { cfg_set_int("home_layout_offered", 1); } /* chosen: the home screen no longer asks */
+static const Item home_items[] = {
+    {N_("Layout"), IT_CYCLE, "home_layout", "grid", layout_o, layout_l, .changed = layout_changed,
+     .help = N_("Grid: the apps in rows of six. Carousel: one row where the app in focus is the biggest. Move apps with Edit home screen above the apps")},
+};
 static const char *const hdrm_o[] = {"apple", "film", NULL}, *const hdrm_l[] = {N_("Like Apple TV"), N_("From the movie"), NULL};
 static const Item av_items[] = {
     {N_("Display"), IT_INFO, .info_cmd = "display info"},
@@ -662,6 +669,7 @@ static void build_app_sections(void) {
     n_app_links = n + 1;
 }
 static Section sections[] = { /* not const: the number of Apps items is set when Settings opens */
+    {N_("Home screen"), ICON_TV, home_items, NI(home_items)},
     {N_("Network"), ICON_WIFI, net_items, NI(net_items)},
     {N_("Picture and sound"), ICON_FILM, av_items, NI(av_items)},
     {"HDMI-CEC", ICON_TV, cec_items, NI(cec_items)},
@@ -1063,7 +1071,7 @@ bool app_settings_open(const char *id) {
     return false;
 }
 
-/* Settings opened on one section (0 = Network, 1 = Picture and sound, 3 = Bluetooth ...) with the list in focus */
+/* Settings opened on one section (0 = Home screen, 1 = Network, 2 = Picture and sound, 4 = Bluetooth ...) with the list in focus */
 Screen *settings_screen_at(int sec) {
     Screen *s = settings_screen();
     Settings *st = s->st;

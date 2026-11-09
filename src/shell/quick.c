@@ -178,9 +178,9 @@ static bool quick_input(Screen *s, const InputEvent *ev) {
         int sec = -1;
         switch ((QItem)q->sel) {
         case Q_TIMER: timer_step(1); return true;
-        case Q_BT: sec = 3; break;
-        case Q_AV: sec = 1; break;
-        case Q_NET: sec = 0; break;
+        case Q_BT: sec = 4; break; /* the section numbers in ui_settings.c sections[] (0 = Home screen) */
+        case Q_AV: sec = 2; break;
+        case Q_NET: sec = 1; break;
         case Q_ALL: sec = 99; break;
         case Q_SLEEP: run_cmd("%s/power sleep &", helper_path()); break;
         case Q_RESTART: run_cmd("%s/power reboot &", helper_path()); break;
