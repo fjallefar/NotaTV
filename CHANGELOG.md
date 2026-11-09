@@ -1,23 +1,5 @@
 # Changelog
 
-What is new in each NotaTV version. The section for a version becomes the text of its GitHub release
-(`.github/workflows/release.yml` takes everything from `## <version>` to the next `## `).
-
-Start each section with a short summary as a quote: one line "In short" and a few points. The box shows it on the
-update card and before installing. A translation for the box can follow as an HTML comment (not shown on GitHub):
-
-```
-> **In short:** One sentence about the update.
-> - a point
-> - another point
-
-<!-- tldr:da
-Kort: Én sætning om opdateringen.
-- et punkt
-- et andet punkt
--->
-```
-
 ## 1.0.20
 
 > **In short:** A calmer home screen with a banner on top, and a new control center.
