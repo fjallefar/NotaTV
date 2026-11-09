@@ -13,6 +13,7 @@ typedef struct {
     char text[1024];
     bool password, shift, show_pw;
     bool typed; /* typed with a physical keyboard: Enter = Done */
+    bool nav;   /* the on-screen keys were moved over with the arrows since then: Enter presses the key in focus */
     int row, col;
     KbDone cb;
     void *ud;
@@ -153,6 +154,12 @@ static int kb_row_len(Kb *k, int r) {
 
 static bool kb_input(Screen *s, const InputEvent *ev) {
     Kb *k = s->st;
+    switch (ev->a) { /* the arrows move over the on-screen keys: from then on Enter presses the key in focus */
+    case A_UP: case A_DOWN: case A_LEFT: case A_RIGHT:
+        k->nav = true;
+        break;
+    default: break;
+    }
     switch (ev->a) {
     case A_UP:
         if (k->row > 0) {
@@ -172,7 +179,9 @@ static bool kb_input(Screen *s, const InputEvent *ev) {
     case A_RIGHT: k->col = (k->col + 1) % kb_row_len(k, k->row); break;
     case A_OK:
         if (ev->repeat) return true; /* OK held down: no repeated letters */
-        if (ev->ch == '\n' && k->typed) { kb_finish(s, true); return true; }
+        /* Enter after typing on a physical keyboard = Done - but not when the arrows chose an on-screen key since
+           (e.g. @ picked with the arrows and Enter: that key is pressed) */
+        if (ev->ch == '\n' && k->typed && !k->nav) { kb_finish(s, true); return true; }
         if (k->row < KB_ROWS) {
             int bl;
             const char *ch = utf8_at((k->shift ? kb_rows_hi : kb_rows_lo)[k->row], k->col, &bl);
@@ -192,7 +201,7 @@ static bool kb_input(Screen *s, const InputEvent *ev) {
     case A_BACKSPACE: kb_backspace(k); break;
     case A_YELLOW: k->show_pw = !k->show_pw; break;
     case A_CHAR: case A_DIGIT: {
-        if (ev->a == A_CHAR) k->typed = true;
+        if (ev->a == A_CHAR) { k->typed = true; k->nav = false; }
         char buf[8] = {0};
         uint32_t c = ev->ch;
         if (c < 0x80) buf[0] = (char)c;

@@ -17,7 +17,7 @@ static char dev_name[MAX_DEV][32];
 static int n_dev;
 static int ino_fd = -1;
 static bool evdev_on;
-static bool shift_down, ctrl_down;
+static bool shift_down, ctrl_down, alt_down, altgr_down; /* AltGr = right Alt; Ctrl+Alt counts as AltGr (as in Windows) */
 static InputEvent queue[QLEN];
 static int q_head, q_tail;
 static double last_activity;
@@ -104,6 +104,26 @@ int input_fds(int *fds, int max) {
 
 /* characters from the keyboard (Danish/US-like layout - enough for URLs and passwords) */
 /* a physical keyboard: the Danish layout when NotaTV is in Danish (æ ø å), otherwise US - one whole layout either way */
+/* Danish layout: what AltGr (or Ctrl+Alt) gives - @ £ $ € { [ ] } | \\ ~ (0 = nothing) */
+static uint32_t key_altgr_da(int code) {
+    switch (code) {
+    case KEY_2: return '@';
+    case KEY_3: return 0xA3; /* £ */
+    case KEY_4: return '$';
+    case KEY_5: return 0x20AC; /* € */
+    case KEY_7: return '{';
+    case KEY_8: return '[';
+    case KEY_9: return ']';
+    case KEY_0: return '}';
+    case KEY_E: return 0x20AC; /* € */
+    case KEY_EQUAL: return '|';     /* the ´ key */
+    case KEY_RIGHTBRACE: return '~'; /* the ¨ key */
+    case KEY_102ND: return '\\';    /* the < key */
+    case KEY_M: return 0xB5;        /* µ */
+    default: return 0;
+    }
+}
+
 static uint32_t key_char(int code, bool shift) {
     static const struct { int code; uint32_t lo, hi; } letters[] = {
         {KEY_Q, 'q', 'Q'}, {KEY_W, 'w', 'W'}, {KEY_E, 'e', 'E'}, {KEY_R, 'r', 'R'}, {KEY_T, 't', 'T'},
@@ -152,6 +172,8 @@ static double last_press_t;
 static void handle_key(int code, int value) {
     if (code == KEY_LEFTSHIFT || code == KEY_RIGHTSHIFT) { shift_down = value != 0; return; }
     if (code == KEY_LEFTCTRL || code == KEY_RIGHTCTRL) { ctrl_down = value != 0; return; }
+    if (code == KEY_LEFTALT) { alt_down = value != 0; return; }
+    if (code == KEY_RIGHTALT) { altgr_down = value != 0; return; }
     if (value == 0) return; /* only press + autorepeat */
     bool rep = value == 2;
     if (value == 1) {
@@ -208,6 +230,10 @@ static void handle_key(int code, int value) {
     case KEY_KP4 ... KEY_KP6: a = A_DIGIT; ch = '4' + (code - KEY_KP4); break;
     case KEY_KP7 ... KEY_KP9: a = A_DIGIT; ch = '7' + (code - KEY_KP7); break;
     default:
+        /* AltGr (or Ctrl+Alt) on a Danish keyboard: @ on 2 and the other third-level characters */
+        ch = (altgr_down || (ctrl_down && alt_down)) && kb_layout_da() ? key_altgr_da(code) : 0;
+        if (ch) { a = A_CHAR; break; }
+        if (altgr_down || alt_down) break; /* Alt/AltGr with a key that has no character: not the plain letter */
         ch = key_char(code, shift_down);
         if (ch) {
             /* ctrl+q = quit (development) */
