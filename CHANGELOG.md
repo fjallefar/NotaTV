@@ -18,6 +18,21 @@ Kort: Én sætning om opdateringen.
 -->
 ```
 
+## 1.0.18
+
+> **In short:** Typing an e-mail address works again: @ can be typed on the on-screen and the physical keyboard.
+> - On-screen keyboard: Enter on a physical keyboard presses the key you moved to with the arrows (e.g. @)
+> - Physical keyboard with a Danish layout: AltGr or Ctrl+Alt with 2 gives @ (and £ $ € { [ ] } | ~ \\ µ as usual)
+
+- On-screen keyboard: after typing on a physical keyboard, Enter always meant Done - also when the arrows had moved to a key on the screen, so @ picked with the arrows could not be typed. Now Enter presses the key in focus after the arrows were used, and means Done after typing.
+- Physical keyboard on the box: AltGr and Alt were not read, so a Danish keyboard could not type @ at all. AltGr (or Ctrl+Alt, as in Windows) now gives the third-level characters of a Danish keyboard, and Alt with a letter no longer types the plain letter.
+
+<!-- tldr:da
+Kort: Nu kan man skrive en e-mailadresse igen: @ kan skrives på skærmtastaturet og et fysisk tastatur.
+- Skærmtastaturet: Enter på et fysisk tastatur trykker på den tast, du har gået hen til med pilene (fx @)
+- Fysisk tastatur med dansk layout: AltGr eller Ctrl+Alt med 2 giver @ (og £ $ € { [ ] } | ~ \\ µ som normalt)
+-->
+
 ## 1.0.17
 
 > **In short:** One rule for the remote everywhere: OK on something you can watch or hear opens its choices.
