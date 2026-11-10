@@ -1,5 +1,8 @@
 #!/bin/sh
 # udhcpc hook: set address, route and DNS
+# udhcpc may be started by tvshell (wifi), which runs with umask 077: resolv.conf must still be readable for
+# everyone, or mpv/yt-dlp as the user media cannot look up any host name (1.0.21: nothing played over Wi-Fi)
+umask 022
 case "$1" in
 deconfig) ip addr flush dev $interface; ip link set $interface up ;;
 bound|renew)
@@ -22,6 +25,7 @@ bound|renew)
 	for d in $dns; do echo "nameserver $d" >> $R.tmp; done
 	# if the DNS server does not answer a query, wait 1 s (not 5) before retrying
 	echo "options timeout:1 attempts:3" >> $R.tmp
+	chmod 644 $R.tmp
 	mv $R.tmp $R
 	# the firewall lets this network in (it may use public addresses)
 	/usr/libexec/notatv/firewall apply >/dev/null 2>&1 &

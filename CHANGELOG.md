@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.22
+
+> **In short:** A fix for 1.0.21: video plays again when the box is on Wi-Fi.
+> - After a fresh install on Wi-Fi, nothing but TV 2 Play would play ("The server did not send ... in time")
+
+<!-- tldr:da
+Kort: En rettelse til 1.0.21: video spiller igen, når boksen er på Wi-Fi.
+- Efter en ny installation på Wi-Fi kunne kun TV 2 Play afspille ("Serveren sendte ikke ... i tide")
+-->
+
+When Wi-Fi was connected from the box's menus (always the case right after a fresh install), the network
+settings were saved so that only the system could read them. Since 1.0.21 the video player runs without system
+rights, so it could not look up any server by name. The file is now readable again.
+
 ## 1.0.21
 
 > **In short:** A safer and sturdier NotaTV, with a newer Linux kernel.
