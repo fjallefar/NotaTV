@@ -338,9 +338,11 @@ static void pitem_parse(PItem *it, cJSON *m, int si) {
                 if (!k) { n_emb++; if (sel) sel_emb = n_emb; }
                 else if (sel) sel_ext = n_ext + 1;
                 if (k) {
-                    n_ext++;
-                    it->subs = realloc(it->subs, sizeof(char *) * (it->n_subs + 1));
+                    char **ns = realloc(it->subs, sizeof(char *) * (it->n_subs + 1));
+                    if (!ns) { free(k); if (sel) sel_ext = 0; continue; } /* out of memory: skip this subtitle */
+                    it->subs = ns;
                     it->subs[it->n_subs++] = k;
+                    n_ext++;
                 }
             }
         }

@@ -709,9 +709,10 @@ static void write_token_file(Tv2 *v) {
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
     FILE *f = fopen(tmp, "w");
     if (!f) return;
-    fwrite(v->token, 1, strlen(v->token), f);
-    fflush(f);
-    fclose(f);
+    size_t n = strlen(v->token);
+    bool ok = fwrite(v->token, 1, n, f) == n;
+    if (fclose(f) != 0) ok = false;
+    if (!ok) { unlink(tmp); return; } /* disk full: never rename an empty/partial token into place */
     chmod(tmp, 0600);
     rename(tmp, path);
 }

@@ -27,6 +27,16 @@ using namespace wv;
 static uint32_t rd32(const uint8_t* p){return (p[0]<<24)|(p[1]<<16)|(p[2]<<8)|p[3];}
 static uint64_t rd64(const uint8_t* p){return ((uint64_t)rd32(p)<<32)|rd32(p+4);}
 
+// q..q+n skal ligge inde i boxen (end): segmentet kommer fra en CDN, saa alt skal graenses
+static bool fits(const uint8_t* q,const uint8_t* end,uint64_t n){
+  if(q<=end&&(uint64_t)(end-q)>=n) return true;
+  fprintf(stderr,"[serve] laesning uden for box\n"); return false;
+}
+static bool skip(const uint8_t*& q,const uint8_t* end,uint64_t n){
+  if(!fits(q,end,n)) return false;
+  q+=n; return true;
+}
+
 static const uint8_t* find_box(const uint8_t* p,const uint8_t* end,const char* type,
                                const uint8_t** pl,uint64_t* ps){
   while(p+8<=end){
@@ -59,8 +69,9 @@ static std::mutex g_keys_mtx;
 static void patch_init(std::vector<uint8_t>& b, const std::string& repid){
   const uint8_t* pl; uint64_t pz;
   const uint8_t* tenc=find_box(b.data(),b.data()+b.size(),"tenc",&pl,&pz);
-  if(tenc){ TrackKey tk; tk.iv_size=pl[7]; tk.kid.assign(pl+8,pl+24);
+  if(tenc&&pz>=24){ TrackKey tk; tk.iv_size=pl[7]; tk.kid.assign(pl+8,pl+24);
     std::lock_guard<std::mutex> lk(g_keys_mtx); g_keys[repid]=tk; }
+  else if(tenc) fprintf(stderr,"[serve] tenc for kort (%llu byte) - ingen KID\n",(unsigned long long)pz);
   for(const char* e:{"encv","enca"}){ const uint8_t* x=find_box(b.data(),b.data()+b.size(),e,&pl,&pz);
     if(x) memcpy((void*)(x+4), e[3]=='v'?"avc1":"mp4a",4); }
   for(const char* s:{"sinf"}){ const uint8_t* x; while((x=find_box(b.data(),b.data()+b.size(),s,&pl,&pz))) { memcpy((void*)(x+4),"free",4);} }
@@ -74,19 +85,33 @@ static bool decrypt_segment(std::vector<uint8_t>& seg, const std::string& repid)
   const uint8_t* moof=find_box(S0,SE,"moof",&moofpl,&z); if(!moof) return true;
   uint64_t moof_off=moof-S0;
   if(!find_box(S0,SE,"trun",&trunp,&z)) return true;
+  const uint8_t* trun_end=trunp+z;            // trun's egen payload-graense (z bruges til flere bokse nedenfor)
+  if(tk.iv_size>16){fprintf(stderr,"[serve] ugyldig iv_size %u\n",(unsigned)tk.iv_size);return false;}
+  if(!fits(trunp,trun_end,8)) return false;
   uint32_t trf=rd32(trunp)&0xffffff, n=rd32(trunp+4); const uint8_t* q=trunp+8; int32_t doff=0;
-  if(trf&0x1){doff=(int32_t)rd32(q);q+=4;} if(trf&0x4)q+=4;
-  uint32_t defsz=0; { const uint8_t* tfp; uint64_t tz; if(find_box(S0,SE,"tfhd",&tfp,&tz)){ uint32_t ff=rd32(tfp)&0xffffff; const uint8_t* r=tfp+8; if(ff&0x1)r+=8; if(ff&0x2)r+=4; if(ff&0x8)r+=4; if(ff&0x10){defsz=rd32(r);} } }
+  if(n>(1u<<22)){fprintf(stderr,"[serve] %u samples i trun - afvist\n",n);return false;} // foer vektoren allokeres
+  if(trf&0x1){ if(!fits(q,trun_end,4)) return false; doff=(int32_t)rd32(q);q+=4; }
+  if(trf&0x4){ if(!fits(q,trun_end,4)) return false; q+=4; }
+  uint32_t defsz=0; { const uint8_t* tfp; uint64_t tz; if(find_box(S0,SE,"tfhd",&tfp,&tz)){ uint32_t ff=rd32(tfp)&0xffffff; const uint8_t* r=tfp+8; if(ff&0x1)r+=8; if(ff&0x2)r+=4; if(ff&0x8)r+=4; if(ff&0x10&&fits(r,tfp+tz,4)){defsz=rd32(r);} } }
   std::vector<uint32_t> sizes(n,defsz);
-  for(uint32_t i=0;i<n;i++){ if(trf&0x100)q+=4; if(trf&0x200){sizes[i]=rd32(q);q+=4;} if(trf&0x400)q+=4; if(trf&0x800)q+=4; }
+  // hvert flag flytter q videre: stop hvis en raekke samples ikke kan vaere inde i trun'en
+  for(uint32_t i=0;i<n;i++){
+    if(trf&0x100&&!skip(q,trun_end,4)) return false;
+    if(trf&0x200){ if(!fits(q,trun_end,4)) return false; sizes[i]=rd32(q); q+=4; }
+    if(trf&0x400&&!skip(q,trun_end,4)) return false;
+    if(trf&0x800&&!skip(q,trun_end,4)) return false;
+  }
   const uint8_t* senc=find_box(S0,SE,"senc",&sp,&z); if(!senc) return true;
+  const uint8_t* senc_end=sp+z;                // senc's egen payload-graense
+  if(!fits(sp,senc_end,8)) return false;
   uint32_t sfl=rd32(sp)&0xffffff, cnt=rd32(sp+4); const uint8_t* e=sp+8;
   uint64_t off=moof_off+doff;
   std::lock_guard<std::mutex> lk(g_mtx);
   for(uint32_t i=0;i<n&&i<cnt;i++){
+    if(!fits(e,senc_end,tk.iv_size)) return false;
     uint8_t iv[16]={0}; memcpy(iv,e,tk.iv_size); e+=tk.iv_size;
     std::vector<cdm::SubsampleEntry> subs;
-    if(sfl&0x2){ uint16_t sc=(e[0]<<8)|e[1]; e+=2; for(uint16_t j=0;j<sc;j++){ cdm::SubsampleEntry s; s.clear_bytes=(e[0]<<8)|e[1]; s.cipher_bytes=rd32(e+2); e+=6; subs.push_back(s);} }
+    if(sfl&0x2){ if(!fits(e,senc_end,2)) return false; uint16_t sc=(e[0]<<8)|e[1]; e+=2; if(!fits(e,senc_end,(uint64_t)sc*6)) return false; for(uint16_t j=0;j<sc;j++){ cdm::SubsampleEntry s; s.clear_bytes=(e[0]<<8)|e[1]; s.cipher_bytes=rd32(e+2); e+=6; subs.push_back(s);} }
     else { cdm::SubsampleEntry s; s.clear_bytes=0; s.cipher_bytes=sizes[i]; subs.push_back(s); }
     while(!subs.empty()&&subs.back().cipher_bytes==0) subs.pop_back();
     uint32_t cover=0; bool anyc=false; for(auto&s:subs){cover+=s.clear_bytes+s.cipher_bytes; if(s.cipher_bytes)anyc=true;}

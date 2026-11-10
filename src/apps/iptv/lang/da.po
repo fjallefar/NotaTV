@@ -6,6 +6,9 @@ msgstr ""
 msgid "Could not read the playlist"
 msgstr "Kunne ikke læse playlisten"
 
+msgid "Out of memory"
+msgstr "Ikke nok hukommelse"
+
 msgid "Channel"
 msgstr "Kanal"
 
@@ -80,6 +83,9 @@ msgstr "Programguide: kunne ikke hentes"
 
 msgid "Program guide: no channels matched"
 msgstr "Programguide: ingen kanaler matchede"
+
+msgid "Program guide: out of memory"
+msgstr "Programguide: ikke nok hukommelse"
 
 msgid "Program guide: %d of %d channels"
 msgstr "Programguide: %d af %d kanaler"

@@ -470,8 +470,12 @@ static void ipc_read(MpvState *st, const PlayRequest *rq) {
 }
 
 static void add_arg(char ***argv, int *n, const char *s) {
-    *argv = realloc(*argv, sizeof(char *) * (*n + 2));
-    (*argv)[(*n)++] = str_dup(s);
+    char **na = realloc(*argv, sizeof(char *) * (*n + 2));
+    char *ns = str_dup(s); /* NULL input stays NULL (the old behaviour); NULL from malloc is a failure */
+    /* the argv feeds execvpe: a silently truncated command is worse than stopping, so give up here */
+    if (!na || (!ns && s)) { fprintf(stderr, "player: out of memory building argv\n"); _exit(1); }
+    *argv = na;
+    (*argv)[(*n)++] = ns;
     (*argv)[*n] = NULL;
 }
 
