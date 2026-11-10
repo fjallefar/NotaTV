@@ -20,19 +20,24 @@ index f22af52..8b076cb 100644
          _activeSourceId = sourceId;
 diff --git a/lib/notatv.dart b/lib/notatv.dart
 new file mode 100644
-index 0000000..f8fa12f
+index 0000000..76729f7
 --- /dev/null
 +++ b/lib/notatv.dart
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,50 @@
 +// NotaTV build (Peezy): --dart-define=NOTATV=true. See NotaTV's docs/peezy.md.
 +import 'dart:async';
 +import 'dart:convert';
 +
 +import 'package:flutter/services.dart';
 +
++import 'i18n/strings.g.dart';
++
 +/// True in the NotaTV build: a TV, no desktop window, no services the Plezy project runs (trackers' OAuth proxy,
 +/// crash reports, Discord, updates), and video played by NotaTV's own player.
 +const bool kNotaTV = bool.fromEnvironment('NOTATV');
++
++/// NotaTV's own texts (not in Plezy's translations): English, or Danish when the app runs in Danish.
++String notaText(String en, String da) => LocaleSettings.currentLocale.languageCode == 'da' ? da : en;
 +
 +/// NotaTV's player was closed by the user (Back): the player screen leaves too.
 +final StreamController<void> notaPlayerClosed = StreamController<void>.broadcast();
@@ -87,8 +92,80 @@ index 4d5dae3..b12b38e 100644
      final Future<void> applied;
      if (Platform.isLinux) {
        applied = windowManager.setBrightness(dark ? Brightness.dark : Brightness.light);
+diff --git a/lib/screens/auth/plex_pin_auth_flow.dart b/lib/screens/auth/plex_pin_auth_flow.dart
+index 4e59192..e562ce1 100644
+--- a/lib/screens/auth/plex_pin_auth_flow.dart
++++ b/lib/screens/auth/plex_pin_auth_flow.dart
+@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
+ 
+ import '../../exceptions/media_server_exceptions.dart';
+ import '../../i18n/strings.g.dart';
++import '../../notatv.dart';
+ import '../../services/plex_auth_service.dart';
+ import '../../focus/focusable_button.dart';
+ import '../../theme/mono_tokens.dart';
+@@ -78,6 +79,7 @@ class _PlexPinAuthFlowState extends State<PlexPinAuthFlow> {
+   bool _isPolling = false;
+   bool _useQr = false;
+   String? _qrAuthUrl;
++  String? _pinCode;
+   int _attemptId = 0;
+   String? _errorMessage;
+ 
+@@ -133,7 +135,10 @@ class _PlexPinAuthFlowState extends State<PlexPinAuthFlow> {
+ 
+       if (!_isCurrentAttempt(attemptId)) return;
+       if (resolvedUseQr) {
+-        setState(() => _qrAuthUrl = url);
++        setState(() {
++          _qrAuthUrl = url;
++          _pinCode = pinCode;
++        });
+       } else {
+         final uri = Uri.parse(url);
+         try {
+@@ -295,6 +300,20 @@ class _PlexPinAuthFlowState extends State<PlexPinAuthFlow> {
+             ),
+           ),
+         ),
++        if (kNotaTV && _pinCode != null) ...[
++          const SizedBox(height: 24),
++          Text(
++            notaText('Or go to plex.tv/link and enter the code', 'Eller gå til plex.tv/link og skriv koden'),
++            textAlign: TextAlign.center,
++            style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
++          ),
++          const SizedBox(height: 8),
++          Text(
++            _pinCode!,
++            textAlign: TextAlign.center,
++            style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 8),
++          ),
++        ],
+         const SizedBox(height: 24),
+         _buildRetryCancelRow(),
+         if (_errorMessage != null) ...[
+diff --git a/lib/screens/auth_screen.dart b/lib/screens/auth_screen.dart
+index c7a2d90..81706b3 100644
+--- a/lib/screens/auth_screen.dart
++++ b/lib/screens/auth_screen.dart
+@@ -1,3 +1,4 @@
++import '../notatv.dart';
+ import 'dart:async';
+ import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
+@@ -385,7 +386,8 @@ class _AuthScreenState extends State<AuthScreen> {
+               ),
+             ),
+           ),
+-          if (!isAppleTV) ...[
++          // NotaTV: there is no browser on the box
++          if (!isAppleTV && !kNotaTV) ...[
+             const SizedBox(height: 12),
+             FocusableButton(
+               onPressed: busy ? null : startBrowserAfterRecovery,
 diff --git a/lib/screens/settings/about_screen.dart b/lib/screens/settings/about_screen.dart
-index 7bcb8df..c7d9ae8 100644
+index 7bcb8df..62c0aba 100644
 --- a/lib/screens/settings/about_screen.dart
 +++ b/lib/screens/settings/about_screen.dart
 @@ -1,4 +1,5 @@
@@ -235,6 +312,25 @@ index 6259e2f..a84166f 100644
      PlaybackCoordinator.instance.unregisterVideoSession(
        _shutdownVideo,
        retirement: () async {
+diff --git a/lib/services/plex_auth_service.dart b/lib/services/plex_auth_service.dart
+index 3ca88c6..2b9eb95 100644
+--- a/lib/services/plex_auth_service.dart
++++ b/lib/services/plex_auth_service.dart
+@@ -1,3 +1,4 @@
++import '../notatv.dart';
+ import 'dart:async';
+ import 'dart:io' show InternetAddress, InternetAddressType, Platform;
+ import 'package:flutter/foundation.dart';
+@@ -154,7 +155,8 @@ class PlexAuthService {
+ 
+   Future<Map<String, dynamic>> createPin() async {
+     final response = await _http.post(
+-      '$_plexApiBase/pins?strong=true',
++      // NotaTV: a short code (4 characters) can also be typed at plex.tv/link; the QR code works with both
++      kNotaTV ? '$_plexApiBase/pins?strong=false' : '$_plexApiBase/pins?strong=true',
+       headers: _getCommonHeaders(),
+       timeout: MediaServerTimeouts.plexTvReceive,
+     );
 diff --git a/lib/theme/mono_theme.dart b/lib/theme/mono_theme.dart
 index a259f43..23677d0 100644
 --- a/lib/theme/mono_theme.dart
@@ -340,6 +436,64 @@ index c3eb0fa..08996c2 100644
  
    @override
    void initState() {
+diff --git a/lib/widgets/startup_failure_view.dart b/lib/widgets/startup_failure_view.dart
+index 07a9c02..9f0087b 100644
+--- a/lib/widgets/startup_failure_view.dart
++++ b/lib/widgets/startup_failure_view.dart
+@@ -4,6 +4,7 @@ import 'package:material_symbols_icons/symbols.dart';
+ 
+ import '../focus/focusable_button.dart';
+ import '../i18n/strings.g.dart';
++import '../notatv.dart';
+ import '../services/app_exit_service.dart';
+ import '../services/log_upload_service.dart';
+ import '../services/startup_diagnostics.dart';
+@@ -146,7 +147,21 @@ class _StartupFailureViewState extends State<StartupFailureView> {
+     final canAct = enabled && !restartRequired;
+     final repair = widget.onRepair;
+ 
+-    return Center(
++    // NotaTV: this screen has no way out on a TV - Back (or the Close button) ends Peezy
++    // and returns to NotaTV (flutter-pi exits on SystemNavigator.pop)
++    return Focus(
++      canRequestFocus: false,
++      skipTraversal: true,
++      onKeyEvent: (node, event) {
++        if (kNotaTV &&
++            event is KeyDownEvent &&
++            (event.logicalKey == LogicalKeyboardKey.escape || event.logicalKey == LogicalKeyboardKey.goBack)) {
++          SystemNavigator.pop();
++          return KeyEventResult.handled;
++        }
++        return KeyEventResult.ignored;
++      },
++      child: Center(
+       child: SingleChildScrollView(
+         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+         child: ConstrainedBox(
+@@ -234,6 +249,14 @@ class _StartupFailureViewState extends State<StartupFailureView> {
+                         child: Text(t.startup.quitPlezy),
+                       ),
+                     ),
++                  if (kNotaTV)
++                    FocusableButton(
++                      onPressed: () => SystemNavigator.pop(),
++                      child: OutlinedButton(
++                        onPressed: () => SystemNavigator.pop(),
++                        child: Text(t.common.close),
++                      ),
++                    ),
+                   FocusableButton(
+                     onPressed: enabled ? _copyDetails : null,
+                     child: OutlinedButton(
+@@ -256,6 +279,7 @@ class _StartupFailureViewState extends State<StartupFailureView> {
+           ),
+         ),
+       ),
++      ),
+     );
+   }
+ 
 diff --git a/lib/widgets/video_controls/parts/playback_extras.dart b/lib/widgets/video_controls/parts/playback_extras.dart
 index 53d46ff..f330f42 100644
 --- a/lib/widgets/video_controls/parts/playback_extras.dart
@@ -370,7 +524,7 @@ index 81103e3..8500400 100644
  
  import '../../media/ids.dart';
 diff --git a/pubspec.yaml b/pubspec.yaml
-index f95c242..fea04d4 100644
+index f95c242..1c8c0e1 100644
 --- a/pubspec.yaml
 +++ b/pubspec.yaml
 @@ -186,6 +186,14 @@ flutter:

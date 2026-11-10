@@ -1,6 +1,6 @@
 {
   "id": "peezy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "Peezy",
   "desc": "Plex, Jellyfin and Emby - based on Plezy",
@@ -12,5 +12,14 @@
   "default": false,
   "helpers": [
     "flutter-pi"
-  ]
+  ],
+  "changes": {
+    "summary": "Peezy starts and is easier to use on a TV",
+    "points": [
+      "Fixed: Peezy could not start (the database was not found)",
+      "Back on the remote works, also on the error screen",
+      "Text and buttons have the right size on 4K TVs",
+      "Plex sign-in: scan the QR code or type the code at plex.tv/link"
+    ]
+  }
 }

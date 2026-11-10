@@ -20,3 +20,18 @@ msgstr "Log ud af Peezy"
 
 msgid "Deletes all servers, accounts and settings Peezy has saved on this TV"
 msgstr "Sletter alle servere, konti og indstillinger, Peezy har gemt på dette tv"
+
+msgid "Peezy starts and is easier to use on a TV"
+msgstr "Peezy starter og er lettere at bruge på et tv"
+
+msgid "Fixed: Peezy could not start (the database was not found)"
+msgstr "Rettet: Peezy kunne ikke starte (databasen blev ikke fundet)"
+
+msgid "Back on the remote works, also on the error screen"
+msgstr "Tilbage på fjernbetjeningen virker, også på fejlskærmen"
+
+msgid "Text and buttons have the right size on 4K TVs"
+msgstr "Tekst og knapper har den rigtige størrelse på 4K-tv"
+
+msgid "Plex sign-in: scan the QR code or type the code at plex.tv/link"
+msgstr "Plex-login: scan QR-koden eller skriv koden på plex.tv/link"

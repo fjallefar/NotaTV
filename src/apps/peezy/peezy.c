@@ -177,12 +177,30 @@ static void stop_child(pid_t pid) {
 
 /* the folders Plezy keeps its sign-in, settings and cache in (all inside the app's data folder) */
 static void env_dirs(const char *data) {
-    static const char *const sub[] = { "home", "config", "share", "cache", NULL };
+    static const char *const sub[] = { "home", "config", "share", "cache", "home/Documents", "home/Downloads", "bin", NULL };
     for (int i = 0; sub[i]; i++) {
         char *p = str_printf("%s/%s", data, sub[i]);
         mkdir(p, 0700);
         free(p);
     }
+    /* Plezy asks for the documents folder; there is no xdg-user-dir on the box, so it is written down here */
+    char *f = str_printf("%s/config/user-dirs.dirs", data);
+    FILE *fp = fopen(f, "w");
+    if (fp) {
+        fprintf(fp, "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\nXDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\n");
+        fclose(fp);
+    }
+    free(f);
+    /* ... and Flutter's path_provider runs the program xdg-user-dir to read it: a tiny stand-in (PATH, see child_exec) */
+    f = str_printf("%s/bin/xdg-user-dir", data);
+    fp = fopen(f, "w");
+    if (fp) {
+        fprintf(fp, "#!/bin/sh\ncase \"$1\" in\nDOCUMENTS) echo \"$HOME/Documents\" ;;\n"
+                    "DOWNLOAD) echo \"$HOME/Downloads\" ;;\n*) echo \"$HOME\" ;;\nesac\n");
+        fclose(fp);
+        chmod(f, 0700);
+    }
+    free(f);
 }
 
 static void child_exec(const char *pkg, const char *data) {
@@ -202,11 +220,13 @@ static void child_exec(const char *pkg, const char *data) {
     const char *lang = i18n_lang();
     setenv("LANG", !strcmp(lang, "da") ? "da_DK.UTF-8" : "en_US.UTF-8", 1);
     setenv("LC_ALL", !strcmp(lang, "da") ? "da_DK.UTF-8" : "en_US.UTF-8", 1);
-    /* flutter-pi has no native-assets support: Plezy's sqlite3 (FFI) is found in the process instead */
-    setenv("LD_PRELOAD", (v = str_printf("%s/bundle/libsqlite3.so", pkg)), 1);
+    const char *path = getenv("PATH");
+    setenv("PATH", (v = str_printf("%s/bin:%s", data, path ? path : "/usr/bin:/bin")), 1);
     setenv("XKB_DEFAULT_LAYOUT", !strcmp(lang, "da") ? "dk" : "us", 1);
     char *bin = str_printf("%s/flutter-pi", pkg);
     char *bundle = str_printf("%s/bundle", pkg);
+    /* the engine opens Plezy's native libraries (sqlite3) as ./<name>: relative to the working folder */
+    if (chdir(bundle) != 0) _exit(126);
     execl(bin, "flutter-pi", "--release", bundle, (char *)NULL);
     _exit(127);
 }

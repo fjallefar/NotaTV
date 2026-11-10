@@ -57,6 +57,115 @@ index c264493..4f0569a 100644
  int flutterpi_post_platform_task_with_time(int (*callback)(void *userdata), void *userdata, uint64_t target_time_usec);
  
  int flutterpi_sd_event_add_io(sd_event_source **source_out, int fd, uint32_t events, sd_event_io_handler_t callback, void *userdata);
+diff --git a/src/keyboard.c b/src/keyboard.c
+index 9c499bc..1076ecf 100644
+--- a/src/keyboard.c
++++ b/src/keyboard.c
+@@ -211,6 +211,11 @@ static struct xkb_compose_table *load_default_compose_table(struct xkb_context *
+     setlocale(LC_ALL, "");
+ 
+     tbl = xkb_compose_table_new_from_locale(context, setlocale(LC_CTYPE, NULL), XKB_COMPOSE_COMPILE_NO_FLAGS);
++    if (tbl == NULL) {
++        /* NotaTV: no locale/Compose data on the box - an empty table keeps the keyboard (and the TV remote) working */
++        static const char empty[] = "\n";
++        tbl = xkb_compose_table_new_from_buffer(context, empty, sizeof empty - 1, "C", XKB_COMPOSE_FORMAT_TEXT_V1, XKB_COMPOSE_COMPILE_NO_FLAGS);
++    }
+     if (tbl == NULL) {
+         LOG_ERROR("Could not create compose table from locale.\n");
+     }
+@@ -236,10 +241,8 @@ struct keyboard_config *keyboard_config_new(void) {
+         goto fail_free_cfg;
+     }
+ 
++    /* NotaTV: may be NULL (no Compose data on the box) - the keyboard then works without dead keys */
+     compose_table = load_default_compose_table(ctx);
+-    if (compose_table == NULL) {
+-        goto fail_free_context;
+-    }
+ 
+     keymap = load_default_keymap(ctx);
+     if (keymap == NULL) {
+@@ -253,7 +256,11 @@ struct keyboard_config *keyboard_config_new(void) {
+     return cfg;
+ 
+ fail_free_compose_table:
+-    xkb_compose_table_unref(compose_table);
++    if (compose_table != NULL) {
++        xkb_compose_table_unref(compose_table);
++    }
++    xkb_context_unref(ctx);
++    goto fail_free_cfg;
+ 
+ fail_free_context:
+     xkb_context_unref(ctx);
+@@ -267,7 +274,9 @@ fail_return_null:
+ 
+ void keyboard_config_destroy(struct keyboard_config *config) {
+     xkb_keymap_unref(config->default_keymap);
+-    xkb_compose_table_unref(config->default_compose_table);
++    if (config->default_compose_table != NULL) {
++        xkb_compose_table_unref(config->default_compose_table);
++    }
+     xkb_context_unref(config->context);
+     free(config);
+ }
+@@ -296,11 +305,9 @@ keyboard_state_new(struct keyboard_config *config, struct xkb_keymap *keymap_ove
+         goto fail_free_xkb_state;
+     }
+ 
+-    compose_state = xkb_compose_state_new(
+-        compose_table_override != NULL ? compose_table_override : config->default_compose_table,
+-        XKB_COMPOSE_STATE_NO_FLAGS
+-    );
+-    if (compose_state == NULL) {
++    struct xkb_compose_table *ctable = compose_table_override != NULL ? compose_table_override : config->default_compose_table;
++    compose_state = ctable != NULL ? xkb_compose_state_new(ctable, XKB_COMPOSE_STATE_NO_FLAGS) : NULL;
++    if (ctable != NULL && compose_state == NULL) {
+         LOG_ERROR("Could not create new XKB compose state.\n");
+         goto fail_free_plain_xkb_state;
+     }
+@@ -326,7 +333,9 @@ fail_return_null:
+ }
+ 
+ void keyboard_state_destroy(struct keyboard_state *state) {
+-    xkb_compose_state_unref(state->compose_state);
++    if (state->compose_state != NULL) {
++        xkb_compose_state_unref(state->compose_state);
++    }
+     xkb_state_unref(state->plain_state);
+     xkb_state_unref(state->state);
+     free(state);
+@@ -358,17 +367,19 @@ int keyboard_state_process_key_event(
+     if (evdev_value) {
+         keysym = xkb_state_key_get_one_sym(state->state, xkb_keycode);
+ 
+-        feed_result = xkb_compose_state_feed(state->compose_state, keysym);
+-        compose_status = xkb_compose_state_get_status(state->compose_state);
+-        if (feed_result == XKB_COMPOSE_FEED_ACCEPTED && compose_status == XKB_COMPOSE_COMPOSING) {
+-            keysym = XKB_KEY_NoSymbol;
+-        }
+-
+-        if (compose_status == XKB_COMPOSE_COMPOSED) {
+-            keysym = xkb_compose_state_get_one_sym(state->compose_state);
+-            xkb_compose_state_reset(state->compose_state);
+-        } else if (compose_status == XKB_COMPOSE_CANCELLED) {
+-            xkb_compose_state_reset(state->compose_state);
++        if (state->compose_state != NULL) {
++            feed_result = xkb_compose_state_feed(state->compose_state, keysym);
++            compose_status = xkb_compose_state_get_status(state->compose_state);
++            if (feed_result == XKB_COMPOSE_FEED_ACCEPTED && compose_status == XKB_COMPOSE_COMPOSING) {
++                keysym = XKB_KEY_NoSymbol;
++            }
++
++            if (compose_status == XKB_COMPOSE_COMPOSED) {
++                keysym = xkb_compose_state_get_one_sym(state->compose_state);
++                xkb_compose_state_reset(state->compose_state);
++            } else if (compose_status == XKB_COMPOSE_CANCELLED) {
++                xkb_compose_state_reset(state->compose_state);
++            }
+         }
+ 
+         codepoint = xkb_state_key_get_utf32(state->state, xkb_keycode);
 diff --git a/src/modesetting.c b/src/modesetting.c
 index 4d3dc9c..2ed5208 100644
 --- a/src/modesetting.c
@@ -140,8 +249,21 @@ index ca49dea..882889e 100644
  int drmdev_resume(struct drmdev *drmdev);
  
  int drmdev_move_cursor(struct drmdev *drmdev, uint32_t crtc_id, struct vec2i pos);
+diff --git a/src/plugins/raw_keyboard.c b/src/plugins/raw_keyboard.c
+index a814088..dd5effa 100644
+--- a/src/plugins/raw_keyboard.c
++++ b/src/plugins/raw_keyboard.c
+@@ -803,6 +803,8 @@ int rawkb_on_key_event(
+ 
+     physical = physical_key_for_xkb_keycode(xkb_keycode);
+     logical = logical_key_for_xkb_keysym(xkb_keysym);
++    /* NotaTV: the remote's Back is "go back" (as on Android TV); Escape from a keyboard only closes dialogs in apps */
++    if (xkb_keycode == KEY_BACK + 8) logical = 0x00100001005;
+ 
+     if (is_down && !is_repeat) {
+         type = kFlutterKeyEventTypeDown;
 diff --git a/src/user_input.c b/src/user_input.c
-index 652d7df..5e8e4a6 100644
+index 652d7df..3f4e333 100644
 --- a/src/user_input.c
 +++ b/src/user_input.c
 @@ -702,6 +702,14 @@ static int on_key_event(struct user_input *input, struct libinput_event *event)
@@ -149,10 +271,10 @@ index 652d7df..5e8e4a6 100644
  
      evdev_keycode = (uint16_t) libinput_event_keyboard_get_key(key_event);
 +    /* NotaTV: the TV remote (HDMI-CEC) and IR remotes send keys a keyboard does not have; give the app the keys it
-+       knows: OK = Enter, Back = Escape, Menu/Red/Info = the context menu key */
++       knows: OK = Enter, Back/Exit = Back (sent to the app as goBack, see raw_keyboard.c), Menu/Red/Info = the context menu key */
 +    switch (evdev_keycode) {
 +        case KEY_OK: case KEY_SELECT: evdev_keycode = KEY_ENTER; break;
-+        case KEY_BACK: case KEY_EXIT: evdev_keycode = KEY_ESC; break;
++        case KEY_EXIT: evdev_keycode = KEY_BACK; break;
 +        case KEY_MENU: case KEY_CONTEXT_MENU: case KEY_RED: case KEY_INFO: case KEY_OPTION: evdev_keycode = KEY_COMPOSE; break;
 +        default: break;
 +    }
@@ -160,10 +282,21 @@ index 652d7df..5e8e4a6 100644
  
      LOG_DEBUG("on_key_event\n");
 diff --git a/src/window.c b/src/window.c
-index bd9185b..ecb26c4 100644
+index bd9185b..fe7661c 100644
 --- a/src/window.c
 +++ b/src/window.c
-@@ -443,6 +443,17 @@ void window_destroy(struct window *window) {
+@@ -315,6 +315,10 @@ static int window_init(
+ 
+     if (has_explicit_pixel_ratio) {
+         pixel_ratio = explicit_pixel_ratio;
++    } else if (getenv("NOTA_PEEZY_SOCK") != NULL && height > 0) {
++        /* NotaTV: a TV is seen from the sofa - lay out 540 logical pixels high like Android TV (2.0 at 1080p, 4.0 at 4K),
++           the TV's physical size would give tiny text */
++        pixel_ratio = height / 540.0;
+     } else if (has_dimensions == false) {
+         LOG_DEBUG(
+             "WARNING: display didn't provide valid physical dimensions. The device-pixel ratio will default "
+@@ -443,6 +447,17 @@ void window_destroy(struct window *window) {
      free(window);
  }
  
