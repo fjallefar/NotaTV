@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <!-- NotaTV Peezy: a screen with a play mark (own design) -->
+  <rect x="26" y="33" width="56" height="38" rx="7" fill="none" stroke="#FFFFFF" stroke-width="5"/>
+  <path d="M48 43.5v17l14-8.5z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M42 78h24" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+</svg>

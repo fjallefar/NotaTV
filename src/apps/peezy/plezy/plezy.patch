@@ -1,0 +1,390 @@
+diff --git a/lib/mpv/player/player_base.dart b/lib/mpv/player/player_base.dart
+index f22af52..8b076cb 100644
+--- a/lib/mpv/player/player_base.dart
++++ b/lib/mpv/player/player_base.dart
+@@ -1,4 +1,5 @@
+ import 'dart:async';
++import '../../notatv.dart';
+ import 'dart:io' show Platform;
+ import 'dart:math' as math;
+ 
+@@ -602,6 +603,9 @@ abstract class PlayerBase with PlayerStreamControllersMixin implements Player {
+     if (_disposed) return;
+     final sourceId = _finiteInt(data?['sourceId']);
+     switch (name) {
++      case 'nota-closed':
++        notaPlayerClosed.add(null);
++        break;
+       case 'start-file':
+         _deferringTrackList = false;
+         _activeSourceId = sourceId;
+diff --git a/lib/notatv.dart b/lib/notatv.dart
+new file mode 100644
+index 0000000..f8fa12f
+--- /dev/null
++++ b/lib/notatv.dart
+@@ -0,0 +1,45 @@
++// NotaTV build (Peezy): --dart-define=NOTATV=true. See NotaTV's docs/peezy.md.
++import 'dart:async';
++import 'dart:convert';
++
++import 'package:flutter/services.dart';
++
++/// True in the NotaTV build: a TV, no desktop window, no services the Plezy project runs (trackers' OAuth proxy,
++/// crash reports, Discord, updates), and video played by NotaTV's own player.
++const bool kNotaTV = bool.fromEnvironment('NOTATV');
++
++/// NotaTV's player was closed by the user (Back): the player screen leaves too.
++final StreamController<void> notaPlayerClosed = StreamController<void>.broadcast();
++
++/// Extra information for NotaTV's player (pause screen, skip intro/credits). Sent before `loadfile`.
++class NotaTVPlayer {
++  static const _channel = MethodChannel('com.plezy/mpv_player');
++
++  static Future<void> meta({String? title, String? subtitle, String? description, String? poster}) async {
++    if (!kNotaTV) return;
++    try {
++      await _channel.invokeMethod('notaMeta', {
++        'json': jsonEncode({
++          'title': ?title,
++          'subtitle': ?subtitle,
++          'description': ?description,
++          'poster': ?poster,
++        }),
++      });
++    } catch (_) {}
++  }
++
++  /// [markers]: (start s, end s, credits?)
++  static Future<void> skip(List<(double, double, bool)> markers) async {
++    if (!kNotaTV) return;
++    try {
++      await _channel.invokeMethod('notaSkip', {
++        'json': jsonEncode({
++          'markers': [
++            for (final m in markers) {'start': m.$1, 'end': m.$2, 'credits': m.$3},
++          ],
++        }),
++      });
++    } catch (_) {}
++  }
++}
+diff --git a/lib/providers/theme_provider.dart b/lib/providers/theme_provider.dart
+index 4d5dae3..b12b38e 100644
+--- a/lib/providers/theme_provider.dart
++++ b/lib/providers/theme_provider.dart
+@@ -1,4 +1,5 @@
+ import 'dart:async' show unawaited;
++import '../notatv.dart';
+ import 'dart:io' show Platform;
+ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+@@ -189,6 +190,7 @@ class ThemeProvider extends ChangeNotifier with DisposableChangeNotifierMixin, W
+   ///
+   /// Static so startup can theme the frame as soon as settings load, before this provider exists.
+   static void applyWindowChromeBrightness(bool dark) {
++    if (kNotaTV) return; // no window frame: flutter-pi draws straight to the TV
+     final Future<void> applied;
+     if (Platform.isLinux) {
+       applied = windowManager.setBrightness(dark ? Brightness.dark : Brightness.light);
+diff --git a/lib/screens/settings/about_screen.dart b/lib/screens/settings/about_screen.dart
+index 7bcb8df..c7d9ae8 100644
+--- a/lib/screens/settings/about_screen.dart
++++ b/lib/screens/settings/about_screen.dart
+@@ -1,4 +1,5 @@
+ import 'package:flutter/material.dart';
++import '../../notatv.dart';
+ import 'package:plezy/widgets/app_icon.dart';
+ import 'package:material_symbols_icons/symbols.dart';
+ import 'package:package_info_plus/package_info_plus.dart';
+@@ -47,6 +48,16 @@ class AboutScreen extends StatelessWidget {
+                           style: Theme.of(context).textTheme.bodyLarge,
+                           textAlign: TextAlign.center,
+                         ),
++                        if (kNotaTV) ...[
++                          const SizedBox(height: 16),
++                          Text(
++                            'Peezy for NotaTV is based on Plezy (github.com/edde746/plezy) and, like it, licensed '
++                            'under GPL-3.0. It is not made or endorsed by the Plezy project. Source and changes: '
++                            "NotaTV's src/apps/peezy.",
++                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens(context).textMuted),
++                            textAlign: TextAlign.center,
++                          ),
++                        ],
+                       ],
+                     ),
+                   ),
+diff --git a/lib/screens/settings/app_icon_setting.dart b/lib/screens/settings/app_icon_setting.dart
+index 0e18233..20b215e 100644
+--- a/lib/screens/settings/app_icon_setting.dart
++++ b/lib/screens/settings/app_icon_setting.dart
+@@ -1,4 +1,5 @@
+ import 'dart:io' show Platform;
++import '../../notatv.dart';
+ import 'dart:math' as math;
+ 
+ import 'package:flutter/foundation.dart';
+@@ -34,6 +35,7 @@ class AppIconSetting extends StatelessWidget {
+   /// tvOS, Android phones and Android TV). Rebuilds [context] when either
+   /// changes.
+   static bool isShown(BuildContext context) =>
++      !kNotaTV &&
+       context.select<SupporterService?, bool>((supporter) => supporter?.isAvailable ?? false) &&
+       context.select<AppIconService?, bool>((appIcons) => appIcons?.isSupported ?? false);
+ 
+diff --git a/lib/screens/settings/logs_screen.dart b/lib/screens/settings/logs_screen.dart
+index e52757d..9bf2ff6 100644
+--- a/lib/screens/settings/logs_screen.dart
++++ b/lib/screens/settings/logs_screen.dart
+@@ -1,4 +1,5 @@
+ import 'dart:async';
++import '../../notatv.dart';
+ import 'dart:io';
+ 
+ import 'package:device_info_plus/device_info_plus.dart';
+@@ -483,7 +484,7 @@ class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
+                                 tooltip: t.common.refresh,
+                                 onPressed: _loadLogs,
+                               ),
+-                              FocusableAction(
++                              if (!kNotaTV) FocusableAction(
+                                 icon: Symbols.upload_rounded,
+                                 tooltip: t.logs.uploadLogs,
+                                 onPressed: _hasDiagnostics ? _uploadLogs : null,
+diff --git a/lib/screens/settings/tracker_service_info.dart b/lib/screens/settings/tracker_service_info.dart
+index dde8d0f..14717c7 100644
+--- a/lib/screens/settings/tracker_service_info.dart
++++ b/lib/screens/settings/tracker_service_info.dart
+@@ -1,4 +1,5 @@
+ import 'package:flutter/widgets.dart';
++import '../../notatv.dart';
+ import 'package:provider/provider.dart';
+ 
+ import '../../i18n/strings.g.dart';
+@@ -60,7 +61,7 @@ class TrackerServiceInfo {
+ 
+   /// Display order shared by every list. Built per call because [displayName]
+   /// reads the active locale.
+-  static List<TrackerServiceInfo> get all => [
++  static List<TrackerServiceInfo> get all => kNotaTV ? const [] : [
+     TrackerServiceInfo(
+       service: TrackerService.trakt,
+       displayName: t.trakt.title,
+diff --git a/lib/screens/video_player/parts/playback_open.dart b/lib/screens/video_player/parts/playback_open.dart
+index ece9c64..605573b 100644
+--- a/lib/screens/video_player/parts/playback_open.dart
++++ b/lib/screens/video_player/parts/playback_open.dart
+@@ -894,6 +894,22 @@ extension _VideoPlayerOpenMethods on VideoPlayerScreenState {
+       _lastLogError = null;
+       _transportFaultSeen = false;
+       onOpening?.call();
++      if (kNotaTV) {
++        final meta = _currentMetadata;
++        final isEpisode = meta.grandparentTitle != null;
++        unawaited(
++          NotaTVPlayer.meta(
++            title: isEpisode ? meta.grandparentTitle : meta.title,
++            subtitle: isEpisode
++                ? [
++                    if (meta.parentIndex != null && meta.index != null) 'S${meta.parentIndex} E${meta.index}',
++                    ?meta.title,
++                  ].join(' · ')
++                : null,
++            description: meta.summary,
++          ),
++        );
++      }
+       return player.open(
+         media,
+         // The last word on the vehicle and the resume profile picker, taken here because this is
+diff --git a/lib/screens/video_player_screen.dart b/lib/screens/video_player_screen.dart
+index 6259e2f..a84166f 100644
+--- a/lib/screens/video_player_screen.dart
++++ b/lib/screens/video_player_screen.dart
+@@ -1,4 +1,5 @@
+ import 'dart:async';
++import '../notatv.dart';
+ import '../services/playback_launch_observer.dart';
+ import '../media/ids.dart';
+ import 'dart:io';
+@@ -811,6 +812,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Player-driven listeners re-created by [_wirePlayerStreams] on every
+   /// player (re)wire.
+   final List<StreamSubscription<dynamic>> _playerStreamSubscriptions = [];
++  StreamSubscription<void>? _notaClosedSubscription;
+ 
+   /// Media-controls listeners created once per attempt by [_initializeServices].
+   final List<StreamSubscription<dynamic>> _mediaControlSubscriptions = [];
+@@ -1389,6 +1391,11 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
+   @override
+   void initState() {
+     super.initState();
++    if (kNotaTV) {
++      _notaClosedSubscription = notaPlayerClosed.stream.listen((_) {
++        if (mounted) unawaited(_handleBackButton());
++      });
++    }
+     PlaybackCoordinator.instance.registerVideoSession(
+       shutdown: _shutdownVideo,
+       stopAndExit: _stopVideoAndExit,
+@@ -2456,6 +2463,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
+ 
+   @override
+   void dispose() {
++    unawaited(_notaClosedSubscription?.cancel());
+     PlaybackCoordinator.instance.unregisterVideoSession(
+       _shutdownVideo,
+       retirement: () async {
+diff --git a/lib/theme/mono_theme.dart b/lib/theme/mono_theme.dart
+index a259f43..23677d0 100644
+--- a/lib/theme/mono_theme.dart
++++ b/lib/theme/mono_theme.dart
+@@ -2,6 +2,7 @@ import 'dart:math' as math;
+ 
+ import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
++import '../notatv.dart';
+ import 'gapped_track_shape.dart';
+ import 'mono_tokens.dart';
+ 
+@@ -131,6 +132,17 @@ class MonoPalette {
+     accent: Color(0xFFE29BF0),
+   );
+ 
++  /// NotaTV's own colours (tvshell's gfx.c: C_BG, C_SURFACE, C_TEXT, C_TEXT2); focus and selection are white, as in
++  /// the rest of NotaTV.
++  static const notatv = MonoPalette(
++    bg: Color(0xFF0A0C11),
++    surface: Color(0xFF1C202A),
++    outline: Color(0x1FF2F4F8),
++    text: Color(0xFFF2F4F8),
++    textMuted: Color(0xFFA0A8B8),
++    accent: Color(0xFFF2F4F8),
++  );
++
+   /// Warm off-white paper with a deep teal accent; the light preset.
+   static const paper = MonoPalette(
+     bg: Color(0xFFF3F0E9),
+@@ -238,6 +250,7 @@ ThemeData monoTheme(MonoPalette palette) {
+ ThemeData monoThemeUncached(MonoPalette palette) => _buildMonoTheme(palette, platform: defaultTargetPlatform);
+ 
+ ThemeData _buildMonoTheme(MonoPalette c, {required TargetPlatform platform}) {
++  if (kNotaTV) c = MonoPalette.notatv; // NotaTV: one look, the same as the rest of the TV
+   final brightness = c.brightness;
+   final onAccent = c.onAccent;
+   final clickableCursor = WidgetStateProperty.resolveWith<MouseCursor>(
+@@ -266,6 +279,7 @@ ThemeData _buildMonoTheme(MonoPalette c, {required TargetPlatform platform}) {
+     // Linux resolves UI text through fontconfig, which on a minimal desktop
+     // may have no CJK font at all; the bundled subtitle fonts (pubspec
+     // `fonts:`) cover it. Other platforms keep their native CJK fonts.
++    fontFamily: kNotaTV ? 'Inter' : null, // NotaTV's font (tvshell's assets)
+     fontFamilyFallback: platform == TargetPlatform.linux ? const ['Go Noto Current', 'Go Noto Current Hangul'] : null,
+     colorScheme: ColorScheme(
+       brightness: brightness,
+diff --git a/lib/utils/platform_detector.dart b/lib/utils/platform_detector.dart
+index f97d98f..cc4f793 100644
+--- a/lib/utils/platform_detector.dart
++++ b/lib/utils/platform_detector.dart
+@@ -1,4 +1,5 @@
+ import 'dart:io';
++import '../notatv.dart';
+ import 'dart:math';
+ 
+ import 'package:device_info_plus/device_info_plus.dart';
+@@ -93,6 +94,13 @@ class TvDetectionService {
+ 
+   Future<void> _detect(bool forceTv) async {
+     if (_initialized) return;
++    if (kNotaTV) {
++      _detected = true;
++      _detectionReasons = const ['notatv'];
++      _forceTv = forceTv;
++      _initialized = true;
++      return;
++    }
+ 
+     final deviceInfo = DeviceInfoPlugin();
+     if (Platform.isAndroid) {
+@@ -281,6 +289,7 @@ class PlatformDetector {
+   /// BuildContext. Use for OS-level capability checks (window state, native
+   /// keyboard, etc.); use [isDesktop] for layout decisions.
+   static bool isDesktopOS() {
++    if (kNotaTV) return _debugIsDesktopOSOverride ?? false;
+     return _debugIsDesktopOSOverride ?? (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+   }
+ 
+@@ -317,6 +326,7 @@ class PlatformDetector {
+   }
+ 
+   static bool supportsExternalPlayers() {
++    if (kNotaTV) return false;
+     return Platform.isAndroid || Platform.isIOS || Platform.isMacOS || Platform.isLinux || Platform.isWindows;
+   }
+ 
+diff --git a/lib/widgets/side_navigation_rail.dart b/lib/widgets/side_navigation_rail.dart
+index c3eb0fa..08996c2 100644
+--- a/lib/widgets/side_navigation_rail.dart
++++ b/lib/widgets/side_navigation_rail.dart
+@@ -1,4 +1,5 @@
+ import 'dart:async';
++import '../notatv.dart';
+ import 'dart:ui' show lerpDouble;
+ import '../media/ids.dart';
+ import 'dart:io' show Platform;
+@@ -501,7 +502,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
+   bool get _showDownloads => !PlatformDetector.isAppleTV();
+ 
+   /// macOS has the system green button; mobile/TV have no OS fullscreen toggle.
+-  bool get _showFullscreenToggle => Platform.isWindows || Platform.isLinux;
++  bool get _showFullscreenToggle => !kNotaTV && (Platform.isWindows || Platform.isLinux);
+ 
+   @override
+   void initState() {
+diff --git a/lib/widgets/video_controls/parts/playback_extras.dart b/lib/widgets/video_controls/parts/playback_extras.dart
+index 53d46ff..f330f42 100644
+--- a/lib/widgets/video_controls/parts/playback_extras.dart
++++ b/lib/widgets/video_controls/parts/playback_extras.dart
+@@ -41,6 +41,14 @@ extension _PlexVideoControlsPlaybackExtrasMethods on _PlexVideoControlsState {
+       _chaptersLoaded = true;
+       _markersLoaded = true;
+     });
++    if (kNotaTV) {
++      unawaited(
++        NotaTVPlayer.skip([
++          for (final m in extras.markers)
++            (m.startTimeOffset / 1000.0, m.endTimeOffset / 1000.0, m.isCredits),
++        ]),
++      );
++    }
+     _syncCurrentMarkerForCurrentPosition();
+   }
+ }
+diff --git a/lib/widgets/video_controls/video_controls.dart b/lib/widgets/video_controls/video_controls.dart
+index 81103e3..8500400 100644
+--- a/lib/widgets/video_controls/video_controls.dart
++++ b/lib/widgets/video_controls/video_controls.dart
+@@ -1,4 +1,5 @@
+ import 'dart:async' show StreamSubscription, Timer, unawaited;
++import '../../notatv.dart';
+ import 'dart:io' show Platform;
+ 
+ import '../../media/ids.dart';
+diff --git a/pubspec.yaml b/pubspec.yaml
+index f95c242..fea04d4 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -186,6 +186,14 @@ flutter:
+   # Registered as UI font families so the Linux build, whose fontconfig may
+   # lack CJK fonts, can fall back to the bundled subtitle fonts (mono_theme).
+   fonts:
++    # NotaTV's font (copied from NotaTV's src/shell/assets by src/apps/peezy/build/plezy.sh)
++    - family: Inter
++      fonts:
++        - asset: assets/fonts/Inter-Regular.ttf
++        - asset: assets/fonts/Inter-SemiBold.ttf
++          weight: 600
++        - asset: assets/fonts/Inter-Bold.ttf
++          weight: 700
+     - family: Go Noto Current
+       fonts:
+         - asset: assets/go-noto-current-regular.ttf

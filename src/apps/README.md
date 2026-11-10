@@ -5,7 +5,7 @@ drawing, the player, the on-screen keyboard and dialogs, network calls, settings
 adds its own screens and logic.
 
 Every app is a package, i.e. a folder here in `src/apps/`: Live TV (`iptv`), Plex, Jellyfin, YouTube, Twitch, TV 2 Play (`tv2`), DRTV (`drtv`), Weather (`weather`), Electricity price (`electricity`),
-Seerr, Music, Radio, Games, Tesla and Media. Each one is built into its own `app.so`. Only Settings and the App Store are part of
+Seerr, Music, Radio, Games, Tesla, Media and Peezy (Plezy, see `docs/peezy.md`). Each one is built into its own `app.so`. Only Settings and the App Store are part of
 `tvshell` itself. The image comes without apps: they are downloaded from the App Store (the GitHub release `apps`)
 into `/data/notatv/apps-pkg/<id>/`.
 

@@ -1,0 +1,22 @@
+# NotaTV app "peezy" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Plex, Jellyfin and Emby - based on Plezy"
+msgstr "Plex, Jellyfin og Emby - bygget på Plezy"
+
+msgid "Peezy is incomplete - install it again in the App Store"
+msgstr "Peezy er ikke hel - installér den igen i App Store"
+
+msgid "Peezy could not start"
+msgstr "Peezy kunne ikke starte"
+
+msgid "Peezy stopped unexpectedly"
+msgstr "Peezy stoppede uventet"
+
+msgid "Sign out of Peezy"
+msgstr "Log ud af Peezy"
+
+msgid "Deletes all servers, accounts and settings Peezy has saved on this TV"
+msgstr "Sletter alle servere, konti og indstillinger, Peezy har gemt på dette tv"

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.23
+
+> **In short:** New app in the App Store: Peezy, for Plex, Jellyfin and Emby, based on Plezy.
+> - Plezy's interface, with NotaTV's own player for video
+> - Everything is in the app: nothing is added to the system, and uninstalling removes it all
+
+<!-- tldr:da
+Kort: Ny app i App Store: Peezy, til Plex, Jellyfin og Emby, bygget på Plezy.
+- Plezys brugerflade med NotaTVs egen afspiller til video
+- Alt ligger i appen: intet lægges i systemet, og afinstallering fjerner det hele
+-->
+
+### Apps
+
+- **Peezy 1.0.0 (new):** Plezy's interface (GPL-3.0) run by flutter-pi, with NotaTV's own player for video (same OSD,
+  subtitles, HDR and passthrough as the Plex app) and libmpv for music. About 33 MB to download. Not made or endorsed
+  by the Plezy project.
+- The release builds Peezy with its Flutter toolchain (`src/apps/peezy/build/`, kept in `tools/` on the build machine).
+- `apps-catalog.py` leaves out an app when a program listed in its `helpers` is missing.
+
 ## 1.0.22
 
 > **In short:** A fix for 1.0.21: video plays again when the box is on Wi-Fi.

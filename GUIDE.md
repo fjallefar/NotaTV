@@ -198,7 +198,7 @@ Then update under *Settings → System → Update NotaTV*. If it says "Restart t
 
 **Torn frames?** Set `kms_finish=1` in `/data/notatv/notatv.conf` and restart.
 
-**Playback, YouTube or AirPlay stopped working after 1.0.21?** Since 1.0.21 they run as the user `media` instead of root. Set `media_user=0` in `/data/notatv/notatv.conf` and restart to check whether that is the cause (and tell us).
+**Playback, YouTube or AirPlay stopped working after 1.0.21?** Since 1.0.21 they run as the user `media` instead of root. Set `media_user=0` in `/data/notatv/notatv.conf` and restart to check whether that is the cause (and tell us). Nothing but TV 2 Play played after a fresh 1.0.21 install on Wi-Fi: update to 1.0.22, which fixes it.
 
 **Logs on the box** (with *Developer mode (SSH)*; readable by root only, tokens and passwords masked):
 

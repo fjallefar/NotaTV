@@ -132,6 +132,10 @@ def main():
         app_id, ver, api = m['id'], m['version'], int(m['api'])
         assert app_id == os.path.basename(d), f'{d}: id must be the folder name'
         assert re.fullmatch(r'[a-z0-9_-]{1,32}', app_id) and re.fullmatch(r'[0-9]+(\.[0-9]+){0,3}', ver)
+        missing = [h for h in m.get('helpers', []) if not os.path.exists(os.path.join(d, h))]
+        if missing:  # e.g. cinema without its flutter-pi (made by src/apps/cinema/build): never publish half an app
+            print(f'{app_id}: skipped, missing {", ".join(missing)}', file=sys.stderr)
+            continue
         with tempfile.TemporaryDirectory() as tmp:
             pkg = os.path.join(tmp, 'pkg')
             shutil.copytree(d, pkg)

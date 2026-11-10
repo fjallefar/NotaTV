@@ -1,0 +1,16 @@
+{
+  "id": "peezy",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Peezy",
+  "desc": "Plex, Jellyfin and Emby - based on Plezy",
+  "icon": "film",
+  "c1": [58, 46, 120],
+  "c2": [24, 18, 56],
+  "fg": [255, 255, 255],
+  "order": 22,
+  "default": false,
+  "helpers": [
+    "flutter-pi"
+  ]
+}

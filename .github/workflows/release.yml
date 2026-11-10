@@ -125,6 +125,9 @@ jobs:
           rm -f pkg.list pkg.release pkg.tvshell
           ls -la notatv-rpi4.img.xz notatv-rpi4-update.tar.gz notatv-rpi4-update.tar.gz.sha256
           # the apps for the App Store (they are not in the image): packages + catalog in dist-apps/
+          # Peezy: flutter-pi, its libraries and Plezy's Flutter bundle next to its app.so (src/apps/peezy/build,
+          # the Flutter toolchain is kept in tools/ between builds); without them apps-catalog.py leaves Peezy out
+          src/apps/peezy/build/package.sh output-rpi4/build/tvshell-1.0/apps-out/peezy all > peezy-build.log 2>&1 || { tail -80 peezy-build.log; exit 1; }
           rm -rf dist-apps
           python3 scripts/apps-catalog.py output-rpi4/build/tvshell-1.0/apps-out dist-apps --strip output-rpi4/host/bin/aarch64-linux-strip --notes apps-notes.md --tools src/tools --dl dl
           ls -la dist-apps

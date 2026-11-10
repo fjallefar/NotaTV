@@ -1,0 +1,196 @@
+diff --git a/src/flutter-pi.c b/src/flutter-pi.c
+index e1246b7..1332002 100644
+--- a/src/flutter-pi.c
++++ b/src/flutter-pi.c
+@@ -729,6 +729,33 @@ fail_unlock_event_loop:
+     return ok;
+ }
+ 
++/* NotaTV: lend the display and input to tvshell's player (on = false) and take them back (on = true) */
++static struct window *nota_main_window;
++void flutterpi_nota_display(bool on) {
++    struct flutterpi *fpi = flutterpi;
++    if (fpi == NULL || fpi->drmdev == NULL) {
++        return;
++    }
++    if (!on) {
++        if (fpi->user_input != NULL) {
++            user_input_suspend(fpi->user_input);
++        }
++        drmdev_nota_release(fpi->drmdev);
++        return;
++    }
++    drmdev_nota_reacquire(fpi->drmdev);
++    if (fpi->user_input != NULL) {
++        user_input_resume(fpi->user_input);
++    }
++    if (nota_main_window != NULL) {
++        struct fl_layer_composition *c = window_nota_composition(nota_main_window);
++        if (c != NULL) {
++            window_push_composition(nota_main_window, c);
++            fl_layer_composition_unref(c);
++        }
++    }
++}
++
+ int flutterpi_sd_event_add_io(sd_event_source **source_out, int fd, uint32_t events, sd_event_io_handler_t callback, void *userdata) {
+     int ok;
+ 
+@@ -2597,6 +2624,7 @@ struct flutterpi *flutterpi_new_from_args(int argc, char **argv) {
+             LOG_ERROR("Couldn't create KMS window.\n");
+             goto fail_unref_renderer;
+         }
++        nota_main_window = window;
+     }
+ 
+     compositor = compositor_new(tracer, window);
+diff --git a/src/flutter-pi.h b/src/flutter-pi.h
+index c264493..4f0569a 100644
+--- a/src/flutter-pi.h
++++ b/src/flutter-pi.h
+@@ -153,6 +153,8 @@ int flutterpi_fill_view_properties(bool has_orientation, enum device_orientation
+ 
+ int flutterpi_post_platform_task(int (*callback)(void *userdata), void *userdata);
+ 
++void flutterpi_nota_display(bool on);
++
+ int flutterpi_post_platform_task_with_time(int (*callback)(void *userdata), void *userdata, uint64_t target_time_usec);
+ 
+ int flutterpi_sd_event_add_io(sd_event_source **source_out, int fd, uint32_t events, sd_event_io_handler_t callback, void *userdata);
+diff --git a/src/modesetting.c b/src/modesetting.c
+index 4d3dc9c..2ed5208 100644
+--- a/src/modesetting.c
++++ b/src/modesetting.c
+@@ -1875,6 +1875,52 @@ bool drmdev_can_modeset(struct drmdev *drmdev) {
+     return can_modeset;
+ }
+ 
++/* NotaTV: lend the display to another process (tvshell's player) and take it back, keeping the same fd (GBM uses it) */
++bool nota_display_off;
++
++void drmdev_nota_release(struct drmdev *drmdev) {
++    ASSERT_NOT_NULL(drmdev);
++    drmdev_lock(drmdev);
++    nota_display_off = true;
++    for (size_t i = 0; i < drmdev->n_crtcs; i++) {
++        kms_req_swap_ptrs(&drmdev->per_crtc_state[i].queued, NULL);
++    }
++    for (size_t i = 0; i < drmdev->n_crtcs; i++) {
++        while (drmdev->per_crtc_state[i].flip_pending) {
++            if (drmdev_on_modesetting_fd_ready_locked(drmdev) != 0) {
++                break;
++            }
++        }
++    }
++    if (drmDropMaster(drmdev->master_fd) != 0) {
++        LOG_ERROR("nota: drmDropMaster: %s\n", strerror(errno));
++    }
++    drmdev_unlock(drmdev);
++}
++
++int drmdev_nota_reacquire(struct drmdev *drmdev) {
++    int ok = 0;
++    ASSERT_NOT_NULL(drmdev);
++    drmdev_lock(drmdev);
++    if (drmSetMaster(drmdev->master_fd) != 0) {
++        ok = errno;
++        LOG_ERROR("nota: drmSetMaster: %s\n", strerror(ok));
++    }
++    /* the other process left its own planes on: learn what is really shown, so the next frame turns them off */
++    for (size_t i = 0; i < drmdev->n_planes; i++) {
++        struct drm_plane *plane = drmdev->planes + i;
++        drmModePlane *kp = drmModeGetPlane(drmdev->fd, plane->id);
++        if (kp != NULL) {
++            plane->committed_state.crtc_id = kp->crtc_id;
++            plane->committed_state.fb_id = kp->fb_id;
++            drmModeFreePlane(kp);
++        }
++    }
++    nota_display_off = false;
++    drmdev_unlock(drmdev);
++    return ok;
++}
++
+ void drmdev_suspend(struct drmdev *drmdev) {
+     ASSERT_NOT_NULL(drmdev);
+ 
+@@ -3119,7 +3165,9 @@ int kms_req_present(struct kms_req *req) {
+     builder = (struct kms_req_builder *) req;
+     drmdev = builder->drmdev;
+     drmdev_lock(drmdev);
+-    if (drmdev->master_fd < 0) {
++    if (nota_display_off) {
++        ok = 0; /* NotaTV: the display is lent to tvshell's player - the frame is dropped */
++    } else if (drmdev->master_fd < 0) {
+         ok = EBUSY;
+     } else if (!builder->use_legacy && drmdev->per_crtc_state[builder->crtc->index].flip_pending) {
+         // At most one request waits behind the kernel's outstanding page flip.
+diff --git a/src/modesetting.h b/src/modesetting.h
+index ca49dea..882889e 100644
+--- a/src/modesetting.h
++++ b/src/modesetting.h
+@@ -715,6 +715,10 @@ bool drmdev_can_modeset(struct drmdev *drmdev);
+ 
+ void drmdev_suspend(struct drmdev *drmdev);
+ 
++extern bool nota_display_off;
++void drmdev_nota_release(struct drmdev *drmdev);
++int drmdev_nota_reacquire(struct drmdev *drmdev);
++
+ int drmdev_resume(struct drmdev *drmdev);
+ 
+ int drmdev_move_cursor(struct drmdev *drmdev, uint32_t crtc_id, struct vec2i pos);
+diff --git a/src/user_input.c b/src/user_input.c
+index 652d7df..5e8e4a6 100644
+--- a/src/user_input.c
++++ b/src/user_input.c
+@@ -702,6 +702,14 @@ static int on_key_event(struct user_input *input, struct libinput_event *event)
+     data = libinput_device_get_user_data(device);
+ 
+     evdev_keycode = (uint16_t) libinput_event_keyboard_get_key(key_event);
++    /* NotaTV: the TV remote (HDMI-CEC) and IR remotes send keys a keyboard does not have; give the app the keys it
++       knows: OK = Enter, Back = Escape, Menu/Red/Info = the context menu key */
++    switch (evdev_keycode) {
++        case KEY_OK: case KEY_SELECT: evdev_keycode = KEY_ENTER; break;
++        case KEY_BACK: case KEY_EXIT: evdev_keycode = KEY_ESC; break;
++        case KEY_MENU: case KEY_CONTEXT_MENU: case KEY_RED: case KEY_INFO: case KEY_OPTION: evdev_keycode = KEY_COMPOSE; break;
++        default: break;
++    }
+     key_state = libinput_event_keyboard_get_key_state(key_event);
+ 
+     LOG_DEBUG("on_key_event\n");
+diff --git a/src/window.c b/src/window.c
+index bd9185b..ecb26c4 100644
+--- a/src/window.c
++++ b/src/window.c
+@@ -443,6 +443,17 @@ void window_destroy(struct window *window) {
+     free(window);
+ }
+ 
++/* NotaTV: the last composition (a reference), shown again when the display comes back */
++struct fl_layer_composition *window_nota_composition(struct window *window) {
++    struct fl_layer_composition *c = NULL;
++    window_lock(window);
++    if (window->composition != NULL) {
++        c = fl_layer_composition_ref(window->composition);
++    }
++    window_unlock(window);
++    return c;
++}
++
+ int window_push_composition(struct window *window, struct fl_layer_composition *composition) {
+     ASSERT_NOT_NULL(window);
+     ASSERT_NOT_NULL(composition);
+diff --git a/src/window.h b/src/window.h
+index 342f2ec..d4c1114 100644
+--- a/src/window.h
++++ b/src/window.h
+@@ -109,6 +109,8 @@ MUST_CHECK struct window *dummy_window_new(
+  */
+ int window_push_composition(struct window *window, struct fl_layer_composition *composition);
+ 
++struct fl_layer_composition *window_nota_composition(struct window *window);
++
+ /**
+  * @brief Get the current view geometry of this window.
+  *
