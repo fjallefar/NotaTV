@@ -120,6 +120,9 @@ SDL_Texture *kms_present_target(void);
 void kms_present_begin(SDL_Renderer *ren); /* before drawing a frame: the display buffer it goes into */
 bool kms_present_display_changed(void); /* every few seconds: true = the display changed, set the video up again */
 bool kms_present_last_mode(int *w, int *h); /* size of the mode the menus last ran in */
+bool kms_present_y420(void);               /* the menus run in 4K60 as packed YCbCr 4:2:0 (SDR only) */
+uint32_t kms_present_y420_id(void);        /* that TV's EDID checksum (0 = not in 4:2:0) */
+const char *kms_present_rgb_mode(void);    /* while they do: "WxH@R" mpv uses when no other mode fits, else "" */
 bool kms_present_copy_shown(SDL_Renderer *ren); /* the frame on screen into the current target; false = copy K.ui */
 void kms_present_frame(SDL_Renderer *ren); /* debugging: count since the last call */ /* draw the UI in HDR10 (PQ/BT.2020) when the TV is always in HDR */
 SDL_Renderer *gfx_renderer(void);
@@ -326,8 +329,10 @@ void drm_set_ui_hdr(bool on); /* the TV in HDR10 for the UI (on) or back to SDR 
 bool display_mode_for(int w, int h, double hz, char *out, size_t n); /* "WxH@R" of an existing display mode that fits hz (same rate, exact multiple or almost the same); false = none */
 struct _drmModeConnector;
 struct _drmModeModeInfo;
-bool display_pick_mode(const struct _drmModeConnector *c, struct _drmModeModeInfo *out, bool *no_4k60); /* the mode the menus run in: 4K60 on a 4K TV, never 24/30 Hz unless the display has nothing else */
+bool display_pick_mode(int fd, const struct _drmModeConnector *c, struct _drmModeModeInfo *out, bool *no_4k60); /* the mode the menus run in: 4K60 on a 4K TV, never 24/30 Hz unless the display has nothing else */
 double display_mode_hz(const struct _drmModeModeInfo *m);
+uint32_t display_y420_id(void); /* checksum of the EDID of the TV last checked for 4:2:0 */
+bool display_is_y420(const struct _drmModeModeInfo *m); /* the 4K60 4:2:0 mode (1920x2160 packed, see drm_util.c) */
 /* OpenSubtitles */
 int subs_search(int tmdb, const char *query, int season, int episode, char ***labels);
 char *subs_fetch(int idx);

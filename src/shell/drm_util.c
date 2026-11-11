@@ -186,6 +186,42 @@ static void edid_caps(const uint8_t *e, size_t len, EdidCaps *c) {
     }
 }
 
+/* 4K at 60/50 Hz as YCbCr 4:2:0 in the EDID: VIC 97/96 in a Y420 Video Data Block (4:2:0 only), or in the SVD list and
+   marked by a Y420 Capability Map. Bit 0 = 4K60, bit 1 = 4K50. */
+static unsigned svd_vic(uint8_t v) { return v >= 129 && v <= 192 ? v & 0x7f : v; }
+static unsigned vic_bit(unsigned vic) { return vic == 97 ? 1 : vic == 96 ? 2 : 0; }
+
+static unsigned edid_y420(const uint8_t *e, size_t len) {
+    unsigned r = 0;
+    for (size_t b = 128; b + 128 <= len; b += 128) {
+        const uint8_t *x = e + b;
+        if (x[0] != 0x02) continue; /* CTA-861 extension */
+        int end = x[2];
+        if (end < 4 || end > 127) continue;
+        uint8_t svd[64];
+        int nsvd = 0;
+        for (int i = 4; i < end;) {
+            int tag = x[i] >> 5, n = x[i] & 31;
+            if (i + 1 + n > end) break;
+            if (tag == 2)
+                for (int k = 0; k < n && nsvd < 64; k++) svd[nsvd++] = x[i + 1 + k];
+            i += 1 + n;
+        }
+        for (int i = 4; i < end;) {
+            int tag = x[i] >> 5, n = x[i] & 31;
+            if (i + 1 + n > end) break;
+            if (tag == 7 && n >= 1 && x[i + 1] == 14) /* Y420VDB */
+                for (int k = 2; k <= n; k++) r |= vic_bit(svd_vic(x[i + k]));
+            if (tag == 7 && n >= 1 && x[i + 1] == 15) { /* Y420CMDB: no bitmap = every SVD */
+                for (int j = 0; j < nsvd; j++)
+                    if (n == 1 || (j / 8 + 2 <= n && (x[i + 2 + j / 8] >> (j % 8)) & 1)) r |= vic_bit(svd_vic(svd[j]));
+            }
+            i += 1 + n;
+        }
+    }
+    return r;
+}
+
 /* reads the EDID of a connected connector (sysfs dir); false if not connected or no EDID */
 static bool connector_caps(const char *dir, EdidCaps *c) {
     char p[300], st[16] = "";
@@ -299,7 +335,68 @@ static const drmModeModeInfo *largest_at(const drmModeConnector *c, double hz, i
     return best;
 }
 
-bool display_pick_mode(const drmModeConnector *c, drmModeModeInfo *out, bool *no_4k60) {
+/* 4K60 (or 4K50) sent as YCbCr 4:2:0: the Pi's HDMI block has no 4:2:0 encoder, but 4:2:0 at 4K60 is on the cable
+   exactly a 1920x2160 timing at 297 MHz where every "pixel" carries two Y values and Cb or Cr (every other line).
+   Our kernel patch (0004) signals that mode as 4:2:0 VIC 97/96 and sends the pixels untouched, and kms_present.c packs
+   the picture. Used for TVs that only offer 4K60 as 4:2:0 on the input (e.g. an HDMI port in "standard" mode), and
+   for the Pi 4's second HDMI port (297 MHz is within its limit). The CEA timings with every horizontal value halved. */
+static void y420_mode(drmModeModeInfo *m, bool hz50) {
+    memset(m, 0, sizeof *m);
+    m->clock = 297000;
+    m->hdisplay = 1920;
+    m->hsync_start = hz50 ? 2448 : 2008;
+    m->hsync_end = hz50 ? 2492 : 2052;
+    m->htotal = hz50 ? 2640 : 2200;
+    m->vdisplay = 2160;
+    m->vsync_start = 2168;
+    m->vsync_end = 2178;
+    m->vtotal = 2250;
+    m->vrefresh = hz50 ? 50 : 60;
+    m->flags = DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC;
+    m->type = DRM_MODE_TYPE_USERDEF;
+    snprintf(m->name, sizeof m->name, "3840x2160 (4:2:0)");
+}
+
+/* does the TV take 4K60/50 as 4:2:0 (bits as edid_y420), and does the kernel have patch 0004 switched on?
+   g_y420_id: a checksum of that TV's EDID - a TV where the picture did not come (y420_bad) does not get it again */
+static uint32_t g_y420_id;
+uint32_t display_y420_id(void) { return g_y420_id; }
+
+static unsigned y420_caps(int fd, uint32_t conn) {
+    if (fd < 0 || !cfg_int("y420", 1)) return 0;
+    FILE *f = fopen("/sys/module/vc4/parameters/notatv_y420", "r");
+    int on = f ? fgetc(f) : 0;
+    if (f) fclose(f);
+    if (on != 'Y') return 0;
+    unsigned r = 0;
+    drmModeObjectProperties *pr = drmModeObjectGetProperties(fd, conn, DRM_MODE_OBJECT_CONNECTOR);
+    for (uint32_t k = 0; pr && k < pr->count_props; k++) {
+        drmModePropertyRes *p = drmModeGetProperty(fd, pr->props[k]);
+        if (p && !strcmp(p->name, "EDID") && pr->prop_values[k]) {
+            drmModePropertyBlobRes *b = drmModeGetPropertyBlob(fd, (uint32_t)pr->prop_values[k]);
+            if (b) {
+                r = edid_y420(b->data, b->length);
+                uint32_t h = 2166136261u;
+                for (uint32_t i = 0; i < b->length; i++) h = (h ^ ((const uint8_t *)b->data)[i]) * 16777619u;
+                g_y420_id = h;
+                char id[16];
+                snprintf(id, sizeof id, "%08x", h);
+                if (r && !strcmp(cfg_get("y420_bad", ""), id)) {
+                    SDL_Log("drm: 4K60 som 4:2:0 blev fravalgt på dette tv - bruges ikke");
+                    r = 0;
+                }
+            }
+            drmModeFreePropertyBlob(b);
+        }
+        drmModeFreeProperty(p);
+    }
+    drmModeFreeObjectProperties(pr);
+    return r;
+}
+
+bool display_is_y420(const drmModeModeInfo *m) { return m->hdisplay == 1920 && m->vdisplay == 2160 && m->clock == 297000; }
+
+bool display_pick_mode(int fd, const drmModeConnector *c, drmModeModeInfo *out, bool *no_4k60) {
     *no_4k60 = false;
     if (!c || c->count_modes <= 0) return false;
     const drmModeModeInfo *pref = &c->modes[0];
@@ -311,6 +408,14 @@ bool display_pick_mode(const drmModeConnector *c, drmModeModeInfo *out, bool *no
     if (!m) m = largest_at(c, 50, 0, 0);
     if (!m) m = pref;
     *out = *m;
+    bool uhd = m->hdisplay >= 3840 && (hz_near(m, 60) || hz_near(m, 50));
+    if (!uhd) {
+        unsigned y = y420_caps(fd, c->connector_id);
+        if (y) {
+            y420_mode(out, !(y & 1));
+            return true;
+        }
+    }
     for (int i = 0; i < c->count_modes; i++)
         if (c->modes[i].hdisplay >= 3840 && m->hdisplay < 3840) *no_4k60 = true;
     return true;

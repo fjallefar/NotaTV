@@ -1,0 +1,130 @@
+From: NotaTV
+Subject: [PATCH] drm/vc4: hdmi: send packed 1920x2160 modes as 4K60/50 YCbCr 4:2:0
+
+The HDMI block has no 4:2:0 encoder, but 4K60 4:2:0 on the wire is a
+1920x2160 timing at 297 MHz with two Y samples and Cb/Cr per pixel.
+Userspace packs the picture; the driver sends it untouched and marks the
+AVI infoframe as YCbCr 4:2:0 with VIC 97/96 when the sink supports it.
+Gives 4K60 on TVs that offer it only as 4:2:0 (HDMI input in "standard"
+mode) and on the Pi 4 second HDMI port.
+---
+--- a/drivers/gpu/drm/vc4/vc4_hdmi.h
++++ b/drivers/gpu/drm/vc4/vc4_hdmi.h
+@@ -221,6 +221,13 @@
+ 	enum hdmi_colorspace output_format;
+ 
+ 	/**
++	 * @notatv_y420_vic: NotaTV - VIC (97/96) when the current mode is 4K60/50
++	 * YCbCr 4:2:0 packed by userspace into a 1920x2160 RGB timing, else 0.
++	 * Set in atomic_mode_set. Protected by @mutex.
++	 */
++	u8 notatv_y420_vic;
++
++	/**
+ 	 * @plugged_cb: Callback provided by hdmi-codec to indicate that an
+ 	 * HDMI hotplug occurred and jack state should be updated. Protected by
+ 	 * @update_plugged_status_lock.
+--- a/drivers/gpu/drm/vc4/vc4_hdmi.c
++++ b/drivers/gpu/drm/vc4/vc4_hdmi.c
+@@ -118,6 +118,67 @@
+ static int force_hotplug;
+ module_param(force_hotplug, int, 0644);
+ 
++/*
++ * NotaTV: 4K at 60/50 Hz as YCbCr 4:2:0. The HDMI block has no 4:2:0 encoder,
++ * but on the wire 4:2:0 at 3840x2160 is a timing with every horizontal value
++ * halved (1920x2160, 297 MHz) where each "pixel" carries two Y samples and Cb
++ * or Cr (every other line). Userspace packs the picture in that form and sets
++ * such a mode; here it is sent untouched (unity CSC, full range) and the AVI
++ * infoframe says YCbCr 4:2:0 with VIC 97/96. Only when the sink lists that VIC
++ * as 4:2:0 capable. Many TVs offer 4K60 only as 4:2:0 on an HDMI input in its
++ * "standard" mode, and 297 MHz also fits the Pi 4's second HDMI port.
++ */
++static bool notatv_y420 = true;
++module_param(notatv_y420, bool, 0644);
++MODULE_PARM_DESC(notatv_y420, "Send packed 1920x2160 modes as 4K YCbCr 4:2:0 (NotaTV)");
++
++static u8 notatv_y420_vic_for(struct vc4_hdmi *vc4_hdmi,
++			      const struct drm_display_mode *mode)
++{
++	const struct drm_display_info *info = &vc4_hdmi->connector.display_info;
++	int hz = drm_mode_vrefresh(mode);
++	u8 vic;
++
++	if (!notatv_y420 || !info->is_hdmi ||
++	    mode->hdisplay != 1920 || mode->vdisplay != 2160 ||
++	    (mode->flags & DRM_MODE_FLAG_INTERLACE) ||
++	    mode->clock < 296000 || mode->clock > 297100)
++		return 0;
++
++	vic = hz == 60 ? 97 : hz == 50 ? 96 : 0;
++	if (!vic)
++		return 0;
++
++	if (!test_bit(vic, info->hdmi.y420_vdb_modes) &&
++	    !test_bit(vic, info->hdmi.y420_cmdb_modes))
++		return 0;
++
++	return vic;
++}
++
++/* AVI infoframe (packed: header 3 bytes, checksum, PB1...) -> YCbCr 4:2:0 */
++static void notatv_y420_avi(u8 *f, size_t len, u8 vic)
++{
++	unsigned int sum = 0;
++	size_t i;
++
++	if (len < 9)
++		return;
++
++	f[4] = (f[4] & ~0x60) | (3 << 5);		/* Y: YCbCr 4:2:0 */
++	if ((f[5] >> 6) != 3)				/* C: BT.709 unless extended */
++		f[5] = (f[5] & 0x3f) | (2 << 6);
++	f[5] = (f[5] & 0xc0) | (2 << 4) | 8;		/* M: 16:9, R: as picture */
++	f[6] &= ~0x0c;					/* Q: default */
++	f[7] = vic;
++	f[8] &= ~0xc0;					/* YQ: limited */
++
++	f[3] = 0;
++	for (i = 0; i < len; i++)
++		sum += f[i];
++	f[3] = (u8)(256 - (sum & 0xff));
++}
++
+ static bool vc4_hdmi_supports_scrambling(struct vc4_hdmi *vc4_hdmi)
+ {
+ 	struct drm_display_info *display = &vc4_hdmi->connector.display_info;
+@@ -723,6 +784,9 @@
+ 
+ 	memcpy(buffer, infoframe, len);
+ 
++	if (type == HDMI_INFOFRAME_TYPE_AVI && vc4_hdmi->notatv_y420_vic)
++		notatv_y420_avi(buffer, len, vc4_hdmi->notatv_y420_vic);
++
+ 	WARN_ONCE(!(HDMI_READ(HDMI_RAM_PACKET_CONFIG) &
+ 		    VC4_HDMI_RAM_PACKET_ENABLE),
+ 		  "Packet RAM has to be on to store the packet.");
+@@ -1248,7 +1312,8 @@
+ 	case HDMI_COLORSPACE_RGB:
+ 		if_xbar = 0x354021;
+ 
+-		vc5_hdmi_set_csc_coeffs(vc4_hdmi, vc5_hdmi_csc_full_rgb_to_rgb[lim_range]);
++		/* NotaTV: packed 4:2:0 is already YCbCr - send it untouched */
++		vc5_hdmi_set_csc_coeffs(vc4_hdmi, vc5_hdmi_csc_full_rgb_to_rgb[vc4_hdmi->notatv_y420_vic ? 0 : lim_range]);
+ 		break;
+ 
+ 	default:
+@@ -1715,6 +1780,13 @@
+ 		      &crtc_state->adjusted_mode);
+ 	vc4_hdmi->output_bpc = conn_state->hdmi.output_bpc;
+ 	vc4_hdmi->output_format = conn_state->hdmi.output_format;
++	vc4_hdmi->notatv_y420_vic =
++		conn_state->hdmi.output_format == HDMI_COLORSPACE_RGB &&
++		conn_state->hdmi.output_bpc == 8 ?
++		notatv_y420_vic_for(vc4_hdmi, &crtc_state->adjusted_mode) : 0;
++	if (vc4_hdmi->notatv_y420_vic)
++		drm_info(encoder->dev, "NotaTV: 4K as YCbCr 4:2:0 (VIC %u)\n",
++			 vc4_hdmi->notatv_y420_vic);
+ 	mutex_unlock(&vc4_hdmi->mutex);
+ }
+ 

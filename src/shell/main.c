@@ -337,6 +337,46 @@ void app_home(void) {
     if (t && t->resume) t->resume(t);
 }
 
+/* ---------- 4K60 as YCbCr 4:2:0: does the TV show it? ----------
+   No software can see whether a TV accepts a signal, so the first time a TV gets 4:2:0 the box asks, as a PC does
+   after a resolution change: "Keep" must be chosen within 15 s, otherwise (no picture, nobody can answer) the box
+   switches back to the ordinary signal and never uses 4:2:0 on that TV again (y420_bad). Asked once per TV. */
+static uint32_t y420_asked;   /* the TV asked about (or already confirmed) */
+static double y420_deadline;  /* > 0: waiting for an answer until then */
+static Screen *y420_dlg;
+static int y420_answer;       /* 0 none yet, 1 keep, 2 switch back */
+static void y420_done(void *ud, bool yes) { (void)ud; y420_answer = yes ? 1 : 2; }
+
+static void y420_check(double now) {
+    uint32_t id = kms_present_y420_id();
+    char ids[16];
+    snprintf(ids, sizeof ids, "%08x", id);
+    if (id && id != y420_asked) {
+        y420_asked = id;
+        y420_deadline = 0;
+        if (strcmp(cfg_get("y420_ok", ""), ids)) {
+            y420_answer = 0;
+            confirm_open(T("Can you see this?"),
+                         T("The TV now gets 4K at 60 Hz in a format it asks for. Choose Keep. If nothing is chosen within 15 seconds, the box switches back."),
+                         T("Keep"), T("Switch back"), y420_done, NULL);
+            y420_dlg = app_top();
+            y420_deadline = now + 15;
+        }
+    }
+    if (y420_deadline <= 0 || (!y420_answer && now < y420_deadline)) return;
+    y420_deadline = 0;
+    if (!y420_answer && app_top() == y420_dlg) app_pop();
+    if (y420_answer == 1 && id) {
+        cfg_set("y420_ok", ids);
+        SDL_Log("4:2:0: bekræftet på tv %s", ids);
+        return;
+    }
+    if (!id) return; /* the TV changed meanwhile */
+    SDL_Log("4:2:0: %s på tv %s - skifter tilbage", y420_answer ? "fravalgt" : "intet svar", ids);
+    cfg_set("y420_bad", ids);
+    if (app_video_suspend()) app_video_resume();
+}
+
 /* ---------- video ---------- */
 static bool kms_failed; /* own presentation failed: use SDL's KMSDRM driver */
 
@@ -1181,7 +1221,7 @@ int main(int argc, char **argv) {
         static double hdr_check_t;
         if (now - hdr_check_t > 3) {
             hdr_check_t = now;
-            if (display_known() && hdr_cfg("hdr_always", 0) != gfx_get_hdr() && app_video_suspend()) app_video_resume();
+            if (display_known() && !kms_present_y420() && hdr_cfg("hdr_always", 0) != gfx_get_hdr() && app_video_suspend()) app_video_resume();
         }
         /* the TV woke up (its EDID came back), another display was plugged in, or the box started without one: set
            the video up again, which chooses the display mode anew (4K60 on a 4K TV, see display_pick_mode) */
@@ -1190,6 +1230,7 @@ int main(int argc, char **argv) {
             disp_check_t = now;
             if (kms_present_display_changed() && app_video_suspend()) app_video_resume();
         }
+        y420_check(now);
         float dt = (float)(now - last);
         if (dt > 0.1f) dt = 0.1f;
         last = now;

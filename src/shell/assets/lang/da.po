@@ -1959,3 +1959,15 @@ msgstr "Sæt tv'et i HDMI-porten ved strømstikket for at få 4K i 60 Hz"
 
 msgid "The TV does not offer 4K at 60 Hz on this input. Turn on the enhanced HDMI format for the input in the TV's settings, and use an Ultra High Speed HDMI cable"
 msgstr "Tv'et tilbyder ikke 4K i 60 Hz på denne indgang. Slå forbedret HDMI-format til for indgangen i tv'ets indstillinger, og brug et Ultra High Speed HDMI-kabel"
+
+msgid "Can you see this?"
+msgstr "Kan du se det her?"
+
+msgid "The TV now gets 4K at 60 Hz in a format it asks for. Choose Keep. If nothing is chosen within 15 seconds, the box switches back."
+msgstr "Tv'et får nu 4K i 60 Hz i et format, det selv beder om. Vælg Behold. Vælges der ikke noget inden 15 sekunder, skifter boksen tilbage."
+
+msgid "Keep"
+msgstr "Behold"
+
+msgid "Switch back"
+msgstr "Skift tilbage"

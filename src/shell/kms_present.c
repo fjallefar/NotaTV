@@ -52,6 +52,13 @@ static struct {
     bool headless;        /* no display connected: draw, but show nothing until one is (kms_present_display_changed) */
     uint32_t mode_blob, p_mode_id, p_active, p_conn_crtc;
     char sig[160];        /* the displays as they were when this was set up (display_signature) */
+    bool y420;            /* 4K60 as packed YCbCr 4:2:0 (display_is_y420): every frame goes through pack_y420 */
+    bool reinit;          /* the 4:2:0 mode failed: set the video up again without it */
+    uint32_t p_bpc, p_cs, p_hdr;
+    GLuint prog, vbo;
+    GLint u_tex, u_par;
+    float y420_par;
+    uint32_t y420_id;     /* display_y420_id of the TV (main.c asks once per TV whether the picture came) */
     uint32_t p_fb, p_crtc, p_sx, p_sy, p_sw, p_sh, p_cx, p_cy, p_cw, p_ch;
     Buf buf[NBUF];
     SDL_Texture *ui;  /* SDL draws the UI here (ordinary GPU texture) */
@@ -89,6 +96,8 @@ static uint32_t prop(uint32_t obj, uint32_t type, const char *name) {
 }
 
 static void display_signature(char *out, size_t n);
+static bool y420_failed;   /* the 4:2:0 mode did not work on this box: not again until restart */
+static char rgb_mode[48];  /* "WxH@R" for mpv while the menus run in 4:2:0 (kms_present_rgb_mode) */
 
 static bool same_mode(const drmModeModeInfo *a, const drmModeModeInfo *b) {
     return a->hdisplay == b->hdisplay && a->vdisplay == b->vdisplay && a->clock == b->clock && a->htotal == b->htotal &&
@@ -119,6 +128,7 @@ static uint32_t conn_crtc(int fd, const drmModeRes *res, const drmModeConnector 
    video is set up (display_pick_mode: 4K60 on a 4K TV, never 24/30 Hz), and set if the display is not in it.
    No display connected: the first HDMI connector is used "headless" until one is (kms_present_display_changed). */
 static bool find_output(void) {
+    rgb_mode[0] = 0;
     for (int pass = 0; pass < 2 && K.fd < 0; pass++)
         for (int c = 0; c < 4 && K.fd < 0; c++) {
             char path[32];
@@ -137,12 +147,25 @@ static bool find_output(void) {
                     K.fd = fd; K.conn = cn->connector_id; K.crtc = crtc;
                     display_signature(K.sig, sizeof K.sig); /* after the probe above */
                     bool no_4k60 = false;
-                    if (pass == 0 && display_pick_mode(cn, &K.mode, &no_4k60)) {
+                    if (pass == 0 && display_pick_mode(y420_failed ? -1 : fd, cn, &K.mode, &no_4k60)) {
                         K.modeset = !(cur && cur->mode_valid && same_mode(&cur->mode, &K.mode));
                         K.safe = cn->modes[0];
                         for (int m = 0; m < cn->count_modes; m++)
                             if (cn->modes[m].type & DRM_MODE_TYPE_PREFERRED) { K.safe = cn->modes[m]; break; }
-                        if (cur && cur->mode_valid) K.safe = cur->mode;
+                        if (cur && cur->mode_valid && !display_is_y420(&cur->mode)) K.safe = cur->mode;
+                        K.y420 = display_is_y420(&K.mode);
+                        K.y420_id = K.y420 ? display_y420_id() : 0;
+                        rgb_mode[0] = 0;
+                        if (K.y420) {
+                            /* what the menus would run in without 4:2:0 (and what mpv gets when no other mode fits) */
+                            bool dummy;
+                            drmModeModeInfo rgb;
+                            if (display_pick_mode(-1, cn, &rgb, &dummy)) {
+                                snprintf(rgb_mode, sizeof rgb_mode, "%dx%d@%.2f", rgb.hdisplay, rgb.vdisplay, display_mode_hz(&rgb));
+                                K.safe = rgb;
+                            }
+                            no_4k60 = false;
+                        }
                         SDL_Log("kms: skærm %s-%u: %s@%.2f%s (nu: %s)", cn->connector_type == DRM_MODE_CONNECTOR_HDMIA ? "HDMI-A" : "conn",
                                 cn->connector_type_id, K.mode.name, display_mode_hz(&K.mode), no_4k60 ? ", 4K60 findes ikke på denne indgang" : "",
                                 cur && cur->mode_valid ? cur->mode.name : "slukket");
@@ -218,6 +241,7 @@ static int probe_thread(void *ud) {
 
 bool kms_present_display_changed(void) {
     if (!K.on) return false;
+    if (K.reinit) return true;
     char s[sizeof K.sig];
     display_signature(s, sizeof s);
     static char pending[sizeof K.sig];
@@ -226,6 +250,7 @@ bool kms_present_display_changed(void) {
     else {
         SDL_Log("kms: skærmen er ændret (%s -> %s) - sætter skærmen op igen", K.sig, s);
         pending[0] = 0;
+        y420_failed = false; /* another TV may take it */
         return true;
     }
     /* unchanged: connected without an EDID (or a box running without a display) -> ask the TV again now and then */
@@ -251,6 +276,129 @@ bool kms_present_last_mode(int *w, int *h) {
     if (!last_w) return false;
     *w = last_w; *h = last_h;
     return true;
+}
+
+bool kms_present_y420(void) { return K.on && K.y420; }
+uint32_t kms_present_y420_id(void) { return K.on && K.y420 ? K.y420_id : 0; }
+const char *kms_present_rgb_mode(void) { return rgb_mode; }
+
+/* ---------- packing the UI as YCbCr 4:2:0 (see y420_mode in drm_util.c) ----------
+   Output pixel x on line y carries luma of the 4K pixels 2x and 2x+1 and the chroma of their 2x2 block: Cb on even
+   lines, Cr on odd ones. HDMI puts them on TMDS channel 1 (first Y), 2 (second Y) and 0 (chroma) - the channels RGB
+   uses for G, R and B. Values are BT.709 limited range; the kernel patch sends them unchanged. y420_parity=1 in
+   notatv.conf swaps Cb and Cr, should a TV want them the other way round.
+   The UI is 1080p, so in 4K every UI pixel is a 2x2 block: both Y values and the chroma come from the same UI
+   pixel (one nearest fetch per output pixel - the GPU is the bottleneck on a Pi 4, and an exact 2x scale loses
+   nothing). */
+static const char *pack_vs = "attribute vec2 p;\nvoid main() { gl_Position = vec4(p, 0.0, 1.0); }\n";
+static const char *pack_fs =
+    "precision highp float;\n"
+    "uniform sampler2D t;\n"
+    "uniform float par;\n"
+    "const vec3 KY = vec3(65.481, 128.553, 24.966) / 255.0;\n"
+    "const vec3 KB = vec3(-37.797, -74.203, 112.0) / 255.0;\n"
+    "const vec3 KR = vec3(112.0, -93.786, -18.214) / 255.0;\n"
+    "void main() {\n"
+    "  vec3 a = texture2D(t, gl_FragCoord.xy * vec2(1.0 / 1920.0, 1.0 / 2160.0)).rgb;\n"
+    "  float y = 16.0 / 255.0 + dot(a, KY);\n"
+    "  float c = 128.0 / 255.0 + mix(dot(a, KB), dot(a, KR), mod(floor(gl_FragCoord.y) + par, 2.0));\n"
+    "  gl_FragColor = vec4(y, y, c, 1.0);\n"
+    "}\n";
+
+static GLuint shader(GLenum type, const char *src) {
+    GLuint sh = glCreateShader(type);
+    glShaderSource(sh, 1, &src, NULL);
+    glCompileShader(sh);
+    GLint ok = 0;
+    glGetShaderiv(sh, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[512] = "";
+        glGetShaderInfoLog(sh, sizeof log, NULL, log);
+        SDL_Log("kms: 4:2:0-shader fejlede: %s", log);
+        glDeleteShader(sh);
+        return 0;
+    }
+    return sh;
+}
+
+static bool pack_init(void) {
+    GLuint vs = shader(GL_VERTEX_SHADER, pack_vs), fs = shader(GL_FRAGMENT_SHADER, pack_fs);
+    if (!vs || !fs) { if (vs) glDeleteShader(vs); if (fs) glDeleteShader(fs); return false; }
+    GLint prev_prog = 0, prev_buf = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prev_prog);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &prev_buf);
+    K.prog = glCreateProgram();
+    glAttachShader(K.prog, vs);
+    glAttachShader(K.prog, fs);
+    glBindAttribLocation(K.prog, 0, "p");
+    glLinkProgram(K.prog);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    GLint ok = 0;
+    glGetProgramiv(K.prog, GL_LINK_STATUS, &ok);
+    if (!ok) { SDL_Log("kms: 4:2:0-program fejlede"); glDeleteProgram(K.prog); K.prog = 0; return false; }
+    K.u_tex = glGetUniformLocation(K.prog, "t");
+    K.u_par = glGetUniformLocation(K.prog, "par");
+    K.y420_par = cfg_int("y420_parity", 0) ? 1.0f : 0.0f;
+    static const float quad[] = {-1, -1, 1, -1, -1, 1, 1, 1};
+    glGenBuffers(1, &K.vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, K.vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof quad, quad, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, (GLuint)prev_buf);
+    glUseProgram((GLuint)prev_prog);
+    return true;
+}
+
+/* K.ui (1920x1080) -> packed 4:2:0 in the display buffer (1920x2160). SDL's GLES2 renderer keeps its own idea of the
+   GL state, so everything touched here is put back exactly as it was. */
+static void pack_y420(Buf *b) {
+    GLint prog, abuf, atex, tex, vp[4], fbo, en, size, type, norm, stride, vbuf;
+    void *ptr = NULL;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &abuf);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &atex);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &tex);
+    glGetIntegerv(GL_VIEWPORT, vp);
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &en);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_SIZE, &size);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_TYPE, &type);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &norm);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &stride);
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &vbuf);
+    glGetVertexAttribPointerv(0, GL_VERTEX_ATTRIB_ARRAY_POINTER, &ptr);
+    GLboolean blend = glIsEnabled(GL_BLEND), sc = glIsEnabled(GL_SCISSOR_TEST);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, b->fbo);
+    glViewport(0, 0, 1920, 2160);
+    if (blend) glDisable(GL_BLEND);
+    if (sc) glDisable(GL_SCISSOR_TEST);
+    glUseProgram(K.prog);
+    glBindTexture(GL_TEXTURE_2D, K.ui_gltex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glUniform1i(K.u_tex, 0);
+    glUniform1f(K.u_par, K.y420_par);
+    glBindBuffer(GL_ARRAY_BUFFER, K.vbo);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    /* SDL keeps its own idea of the texture's filter (linear) - put it back */
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glBindBuffer(GL_ARRAY_BUFFER, (GLuint)vbuf);
+    glVertexAttribPointer(0, size, (GLenum)type, (GLboolean)norm, stride, ptr);
+    if (!en) glDisableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, (GLuint)abuf);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)tex);
+    glActiveTexture((GLenum)atex);
+    glUseProgram((GLuint)prog);
+    glViewport(vp[0], vp[1], vp[2], vp[3]);
+    if (blend) glEnable(GL_BLEND);
+    if (sc) glEnable(GL_SCISSOR_TEST);
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)fbo);
 }
 
 /* primary plane for our CRTC */
@@ -325,6 +473,8 @@ void kms_present_quit(void) {
     /* a running probe holds a copy of our file (and thus DRM master): let it finish, so mpv can take over */
     for (int i = 0; i < 100 && SDL_GetAtomicInt(&probing); i++) SDL_Delay(10);
     if (K.mode_blob) drmModeDestroyPropertyBlob(K.fd, K.mode_blob);
+    if (K.prog) glDeleteProgram(K.prog);
+    if (K.vbo) glDeleteBuffers(1, &K.vbo);
     for (int i = 0; i < NBUF; i++) free_buf(&K.buf[i]);
     if (K.read_fbo) glDeleteFramebuffers(1, &K.read_fbo);
     if (K.ui) SDL_DestroyTexture(K.ui);
@@ -350,6 +500,20 @@ bool kms_present_init(SDL_Renderer *ren, int w, int h) {
     if (drmSetMaster(K.fd) != 0) SDL_Log("kms: drmSetMaster: %s (fortsætter)", strerror(errno));
     drmSetClientCap(K.fd, DRM_CLIENT_CAP_ATOMIC, 1);
     if (!find_plane()) { SDL_Log("kms: ingen primær plan"); kms_present_quit(); return false; }
+    if (K.y420) {
+        /* 4:2:0 is 8 bit SDR in RGB form for the kernel (so 297 MHz, no YUV 4:2:2 for HDR): the connector must have
+           max bpc 8, no BT.2020 and no HDR metadata - after an HDR movie it may not, and then the mode is set again */
+        K.p_bpc = prop(K.conn, DRM_MODE_OBJECT_CONNECTOR, "max bpc");
+        K.p_cs = prop(K.conn, DRM_MODE_OBJECT_CONNECTOR, "Colorspace");
+        K.p_hdr = prop(K.conn, DRM_MODE_OBJECT_CONNECTOR, "HDR_OUTPUT_METADATA");
+        drmModeObjectProperties *cp = drmModeObjectGetProperties(K.fd, K.conn, DRM_MODE_OBJECT_CONNECTOR);
+        for (uint32_t k = 0; cp && k < cp->count_props; k++)
+            if ((cp->props[k] == K.p_bpc && cp->prop_values[k] != 8) || (cp->props[k] == K.p_cs && cp->prop_values[k]) ||
+                (cp->props[k] == K.p_hdr && cp->prop_values[k]))
+                K.modeset = true;
+        drmModeFreeObjectProperties(cp);
+        gfx_set_hdr(false);
+    }
     if (K.modeset) {
         K.p_mode_id = prop(K.crtc, DRM_MODE_OBJECT_CRTC, "MODE_ID");
         K.p_active = prop(K.crtc, DRM_MODE_OBJECT_CRTC, "ACTIVE");
@@ -360,7 +524,7 @@ bool kms_present_init(SDL_Renderer *ren, int w, int h) {
             return false;
         }
     }
-    if (!K.headless) { last_w = K.mode_w; last_h = K.mode_h; }
+    if (!K.headless) { last_w = K.y420 ? 3840 : K.mode_w; last_h = K.mode_h; }
     uint32_t pl = K.plane, t = DRM_MODE_OBJECT_PLANE;
     K.p_fb = prop(pl, t, "FB_ID"); K.p_crtc = prop(pl, t, "CRTC_ID");
     K.p_sx = prop(pl, t, "SRC_X"); K.p_sy = prop(pl, t, "SRC_Y"); K.p_sw = prop(pl, t, "SRC_W"); K.p_sh = prop(pl, t, "SRC_H");
@@ -368,7 +532,7 @@ bool kms_present_init(SDL_Renderer *ren, int w, int h) {
     K.gbm = gbm_create_device(K.fd);
     if (!K.gbm) { kms_present_quit(); return false; }
     for (int i = 0; i < NBUF; i++)
-        if (!make_buf(ren, &K.buf[i], w, h)) { kms_present_quit(); return false; }
+        if (!make_buf(ren, &K.buf[i], K.y420 ? 1920 : w, K.y420 ? 2160 : h)) { kms_present_quit(); return false; }
     K.ui = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_TARGET, w, h);
     GLuint uitex = K.ui ? (GLuint)SDL_GetNumberProperty(SDL_GetTextureProperties(K.ui), SDL_PROP_TEXTURE_OPENGLES2_TEXTURE_NUMBER, 0) : 0;
     if (!uitex) { SDL_Log("kms: UI-tekstur fejlede"); kms_present_quit(); return false; }
@@ -383,7 +547,13 @@ bool kms_present_init(SDL_Renderer *ren, int w, int h) {
     K.cur = 0;
     /* direct mode: find SDL's framebuffer for K.ui (SDL binds it at once in SetRenderTarget) and see whether the
        driver takes a display buffer as its color attachment */
-    if (cfg_int("kms_direct", 1)) {
+    if (K.y420 && !pack_init()) {
+        SDL_Log("kms: 4:2:0 kan ikke pakkes - bruger det almindelige signal");
+        y420_failed = true;
+        kms_present_quit();
+        return kms_present_init(ren, w, h);
+    }
+    if (cfg_int("kms_direct", 1) && !K.y420) {
         SDL_Texture *was = SDL_GetRenderTarget(ren);
         SDL_SetRenderTarget(ren, NULL);
         SDL_SetRenderTarget(ren, K.ui);
@@ -400,8 +570,10 @@ bool kms_present_init(SDL_Renderer *ren, int w, int h) {
         }
         SDL_SetRenderTarget(ren, was);
     }
-    SDL_Log("kms: UI i %dx%d, skaleres af skærmhardwaren til %dx%d (%s)", w, h, K.mode_w, K.mode_h,
-            K.direct ? "tegnes direkte i skærmbufferen" : "kopieres til skærmbufferen");
+    if (K.y420) SDL_Log("kms: UI i %dx%d, pakkes som 4K60 YCbCr 4:2:0 (mpv: %s)", w, h, rgb_mode[0] ? rgb_mode : "?");
+    else
+        SDL_Log("kms: UI i %dx%d, skaleres af skærmhardwaren til %dx%d (%s)", w, h, K.mode_w, K.mode_h,
+                K.direct ? "tegnes direkte i skærmbufferen" : "kopieres til skærmbufferen");
     return true;
 }
 
@@ -458,7 +630,8 @@ void kms_present_frame(SDL_Renderer *ren) {
     if (!K.on) return;
     SDL_FlushRenderer(ren);
     Buf *b = &K.buf[K.cur];
-    if (!K.direct) {
+    if (K.y420) pack_y420(b);
+    else if (!K.direct) {
     /* copy the UI texture into the display buffer; save/restore the GL state SDL relies on */
     GLint rf = 0, df = 0;
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rf);
@@ -490,6 +663,11 @@ void kms_present_frame(SDL_Renderer *ren) {
         drmModeAtomicAddProperty(rq, K.crtc, K.p_mode_id, K.mode_blob);
         drmModeAtomicAddProperty(rq, K.crtc, K.p_active, 1);
         drmModeAtomicAddProperty(rq, K.conn, K.p_conn_crtc, K.crtc);
+        if (K.y420) {
+            if (K.p_bpc) drmModeAtomicAddProperty(rq, K.conn, K.p_bpc, 8);
+            if (K.p_cs) drmModeAtomicAddProperty(rq, K.conn, K.p_cs, 0);
+            if (K.p_hdr) drmModeAtomicAddProperty(rq, K.conn, K.p_hdr, 0);
+        }
         flags = DRM_MODE_ATOMIC_ALLOW_MODESET | DRM_MODE_PAGE_FLIP_EVENT;
     }
     drmModeAtomicAddProperty(rq, K.plane, K.p_fb, b->fb);
@@ -509,6 +687,11 @@ void kms_present_frame(SDL_Renderer *ren) {
         if (!r) SDL_Log("kms: skærmen sat til %s@%.2f", K.mode.name, display_mode_hz(&K.mode));
         else {
             SDL_Log("kms: skærmtilstand %s fejlede: %s", K.mode.name, strerror(-r));
+            if (K.y420) { /* the packed buffers only fit 4:2:0: set everything up again without it */
+                y420_failed = true;
+                K.reinit = true;
+                return;
+            }
             /* never a black screen: once more with the safe mode (the next frame) */
             uint32_t blob = 0;
             if (!K.fell_back && !same_mode(&K.safe, &K.mode) && !drmModeCreatePropertyBlob(K.fd, &K.safe, sizeof K.safe, &blob)) {

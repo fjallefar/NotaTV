@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.29
+
+> **In short:** 4K at 60 Hz now also works on TVs whose HDMI input only takes 4K60 as YCbCr 4:2:0.
+> - No TV setting needed: the box sends 4K60 in the form the TV asks for
+> - Also gives 4K60 on the Pi 4's second HDMI port
+
+<!-- tldr:da
+Kort: 4K i 60 Hz virker nu også på tv'er, hvis HDMI-indgang kun tager 4K60 som YCbCr 4:2:0.
+- Ingen tv-indstilling nødvendig: boksen sender 4K60 i den form, tv'et beder om
+- Giver også 4K60 på Pi 4's anden HDMI-port
+-->
+
+### System
+
+- **4K60 as YCbCr 4:2:0:** many TVs (e.g. an HDMI input in "standard" mode) list 4K at 60 Hz only as 4:2:0. The Pi's
+  HDMI block has no 4:2:0 encoder, so the kernel dropped those modes and the box ran 1080p60. On the wire 4K60 4:2:0
+  is a 1920x2160 timing at 297 MHz where each pixel carries two Y samples and Cb or Cr, so NotaTV now packs the menus
+  in that form on the GPU, and a kernel patch sends it untouched and tells the TV it is 4:2:0 (VIC 97/96). Used only
+  when the input has no ordinary 4K60 but lists it as 4:2:0. 297 MHz also fits the Pi 4's second HDMI port.
+- The first time a TV gets it, the box asks "Can you see this?" - choose *Keep*. Without an answer in 15 seconds (no
+  picture) it switches back by itself and does not try 4:2:0 on that TV again.
+- In that mode the menus are SDR and drawn with one GPU pass more (packing, one texture read per pixel); video still
+  plays in an ordinary mode (4K at the video's frame rate, else 1080p).
+- `y420_parity=1` in notatv.conf swaps Cb and Cr, should a TV show wrong colors; `y420=0` turns it off.
+
 ## 1.0.28
 
 > **In short:** The picture now finds the right resolution on more TVs - 4K at 60 Hz on a 4K TV.
