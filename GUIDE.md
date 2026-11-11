@@ -190,6 +190,7 @@ The user interface is in **English** (the default) and **Danish**. Change it und
 - **Undo last update** (same menu) puts the previous version back. This also happens by itself if the user interface keeps crashing right after an update.
 - **An app that crashes** NotaTV twice in a row right after start is turned off, and the box says which one. It stays installed: a new version from the App Store is loaded again, and *Install* in the App Store tries it once more.
 - **Update reminders:** the box looks for a new release twice a day and shows a reminder on the home screen at most every other day. Turn it off under *Settings → System → Update reminders*; then the box never contacts GitHub by itself.
+- **Anonymous usage count** (from 1.0.27): once a day the box sends only its version number, so we can see how many boxes are in use. No box id, account, settings or address is sent or stored. Turn it off under *Settings → System → Send anonymous usage count*. Details in [Privacy](PRIVACY.md); the server's code is in [`server/stats`](server/stats).
 - The update card shows a short summary of what is new (from [CHANGELOG.md](CHANGELOG.md)).
 - **A new kernel is tried once** (from 1.0.25): if it does not start, the box goes back to the previous version by itself at the next start - no new flash.
 - **Beta updates** (*Settings → Advanced*): get new versions and apps before everyone else, to test them. They can have errors.

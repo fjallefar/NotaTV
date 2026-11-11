@@ -73,9 +73,11 @@ src/shell/                      the user interface (C11 + SDL3)
   ui_*.c         the system's screens: home, App Store, settings, setup guide, network monitor
   bt.c dlna.c mirror.c netdisc.c moon.c   Bluetooth, DLNA, AirPlay mirroring, server discovery, game streaming
   i18n.c subs.c tz.c quick.c   translations, OpenSubtitles, time zones, the control center
+  update_notice.c usage_ping.c   update reminder, anonymous daily version ping
   assets/        fonts (Inter), app icons and language files
 src/apps/                       the apps, one package per folder, downloaded from the App Store into /data/notatv/apps-pkg
 src/moon/                       tvmoon: game streaming client (Moonlight protocol)
+server/stats/                   Cloudflare Worker + D1 for the anonymous usage count, with a dashboard (see its README)
 scripts/                        i18n check, UI tests, app catalog, app icons, time zone list
 .github/workflows/              release.yml (v* tags) and apps.yml (apps-* tags)
 ```
