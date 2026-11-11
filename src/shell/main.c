@@ -1183,6 +1183,13 @@ int main(int argc, char **argv) {
             hdr_check_t = now;
             if (display_known() && hdr_cfg("hdr_always", 0) != gfx_get_hdr() && app_video_suspend()) app_video_resume();
         }
+        /* the TV woke up (its EDID came back), another display was plugged in, or the box started without one: set
+           the video up again, which chooses the display mode anew (4K60 on a 4K TV, see display_pick_mode) */
+        static double disp_check_t;
+        if (now - disp_check_t > 2) {
+            disp_check_t = now;
+            if (kms_present_display_changed() && app_video_suspend()) app_video_resume();
+        }
         float dt = (float)(now - last);
         if (dt > 0.1f) dt = 0.1f;
         last = now;

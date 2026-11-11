@@ -118,6 +118,8 @@ void kms_present_quit(void);
 bool kms_present_active(void);
 SDL_Texture *kms_present_target(void);
 void kms_present_begin(SDL_Renderer *ren); /* before drawing a frame: the display buffer it goes into */
+bool kms_present_display_changed(void); /* every few seconds: true = the display changed, set the video up again */
+bool kms_present_last_mode(int *w, int *h); /* size of the mode the menus last ran in */
 bool kms_present_copy_shown(SDL_Renderer *ren); /* the frame on screen into the current target; false = copy K.ui */
 void kms_present_frame(SDL_Renderer *ren); /* debugging: count since the last call */ /* draw the UI in HDR10 (PQ/BT.2020) when the TV is always in HDR */
 SDL_Renderer *gfx_renderer(void);
@@ -322,6 +324,10 @@ bool display_audio_ok(DisplayAudio a);     /* false if the display's EDID lists 
 bool audio_cfg(const char *key, int def, DisplayAudio a); /* passthrough setting that only counts if the display accepts it */
 void drm_set_ui_hdr(bool on); /* the TV in HDR10 for the UI (on) or back to SDR (off) */
 bool display_mode_for(int w, int h, double hz, char *out, size_t n); /* "WxH@R" of an existing display mode that fits hz (same rate, exact multiple or almost the same); false = none */
+struct _drmModeConnector;
+struct _drmModeModeInfo;
+bool display_pick_mode(const struct _drmModeConnector *c, struct _drmModeModeInfo *out, bool *no_4k60); /* the mode the menus run in: 4K60 on a 4K TV, never 24/30 Hz unless the display has nothing else */
+double display_mode_hz(const struct _drmModeModeInfo *m);
 /* OpenSubtitles */
 int subs_search(int tmdb, const char *query, int season, int episode, char ***labels);
 char *subs_fetch(int idx);

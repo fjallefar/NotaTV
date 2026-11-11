@@ -1953,3 +1953,9 @@ msgstr "Telefonens og boksens ur går forskelligt - tjek tiden på begge"
 
 msgid "Scan the QR code on the TV first (Settings → Network → Connect a phone) - logins are only sent encrypted"
 msgstr "Scan først QR-koden på TV'et (Indstillinger → Netværk → Forbind en telefon) - logins sendes kun krypteret"
+
+msgid "For 4K at 60 Hz, plug the TV into the HDMI port next to the power socket"
+msgstr "Sæt tv'et i HDMI-porten ved strømstikket for at få 4K i 60 Hz"
+
+msgid "The TV does not offer 4K at 60 Hz on this input. Turn on the enhanced HDMI format for the input in the TV's settings, and use an Ultra High Speed HDMI cable"
+msgstr "Tv'et tilbyder ikke 4K i 60 Hz på denne indgang. Slå forbedret HDMI-format til for indgangen i tv'ets indstillinger, og brug et Ultra High Speed HDMI-kabel"

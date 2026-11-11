@@ -818,7 +818,8 @@ static int playback_modes(const PlayRequest *rq, char modes[2][48]) {
     if (cfg_int("match_rate", 1) && input_evdev_active()) {
         char res_s[32];
         int w = 0, h = 0;
-        if (preferred_res(res_s, sizeof res_s) && sscanf(res_s, "%dx%d", &w, &h) == 2) {
+        /* the resolution the menus ran in (chosen by display_pick_mode), else the display's preferred one */
+        if (kms_present_last_mode(&w, &h) || (preferred_res(res_s, sizeof res_s) && sscanf(res_s, "%dx%d", &w, &h) == 2)) {
             double rate = rq->is_live ? cfg_int("iptv_rate", 50) : display_rate_for(g_probe_fps);
             if (rate > 0 && display_mode_for(w, h, rate, modes[n_modes], sizeof modes[n_modes])) n_modes++;
         }

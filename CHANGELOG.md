@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.28
+
+> **In short:** The picture now finds the right resolution on more TVs - 4K at 60 Hz on a 4K TV.
+> - The box picks the TV's resolution itself and picks again when the TV wakes up or is changed
+> - A message tells you if the TV's input cannot give 4K at 60 Hz
+
+<!-- tldr:da
+Kort: Billedet finder nu den rigtige opløsning på flere tv'er - 4K i 60 Hz på et 4K-tv.
+- Boksen vælger selv tv'ets opløsning og vælger igen, når tv'et vågner eller skiftes
+- En besked fortæller, hvis tv'ets indgang ikke kan give 4K i 60 Hz
+-->
+
+### System
+
+- **Display mode:** the menus used the mode the kernel picked at boot. If the TV was in standby or on another input
+  then (no EDID), the box could stay in an emergency mode or find no display until it was restarted. Now NotaTV
+  picks the mode itself each time the video is set up: 4K at 60 Hz when the TV offers it, otherwise the TV's own
+  mode at 50/60 Hz, otherwise its largest 60 Hz mode - never 24/30 Hz for the menus, unless the display has nothing
+  else (there is always a picture). If setting the mode fails, the mode that worked is used.
+- **TV woke up or was changed:** every 2 s the box checks the HDMI status and EDID. When they change, the video is set
+  up again with the right mode. A TV that is connected but hides its EDID (e.g. Google TV in standby) is asked again
+  every 5 s. A box started without a display now starts the menus and shows them when a TV is plugged in.
+- **No 4K60 on this input:** a message says so once per TV - on a Pi 4 with the TV in HDMI 1 (only HDMI 0 does 4K60),
+  otherwise to turn on the enhanced HDMI format for the input and use an Ultra High Speed cable.
+- Frame rate match during playback keeps the resolution the menus run in.
+
 ## 1.0.27
 
 > **In short:** NotaTV can now count how many boxes are in use - anonymously, and you can turn it off.

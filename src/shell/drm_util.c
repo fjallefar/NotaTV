@@ -274,6 +274,48 @@ static double mode_hz(const drmModeModeInfo *m) {
     return (m->flags & DRM_MODE_FLAG_INTERLACE) ? hz * 2 : hz;
 }
 
+double display_mode_hz(const drmModeModeInfo *m) { return mode_hz(m); }
+
+/* the mode the menus run in. A 4K TV runs 4K at 60 Hz when this input offers it; otherwise the display's own
+   preferred mode if that is 50/60 Hz, otherwise its largest 60 (then 50) Hz mode - never 24/30 Hz for the menus (a 4K TV
+   whose input only offers 4K30 gets 1080p60). Only when the display has nothing at 50/60 Hz at all is its preferred
+   mode used anyway, so there is always a picture. *no_4k60: the display has 4K, but not at 60 Hz on this input.
+   false = no modes (no display). */
+static bool hz_near(const drmModeModeInfo *m, double hz) {
+    return !(m->flags & DRM_MODE_FLAG_INTERLACE) && fabs(mode_hz(m) - hz) < 0.6;
+}
+
+static const drmModeModeInfo *largest_at(const drmModeConnector *c, double hz, int only_w, int only_h) {
+    const drmModeModeInfo *best = NULL;
+    for (int i = 0; i < c->count_modes; i++) {
+        const drmModeModeInfo *m = &c->modes[i];
+        if (!hz_near(m, hz) || (only_w && (m->hdisplay != only_w || m->vdisplay != only_h))) continue;
+        if (!best) { best = m; continue; }
+        long a = (long)m->hdisplay * m->vdisplay, b = (long)best->hdisplay * best->vdisplay;
+        bool mp = m->type & DRM_MODE_TYPE_PREFERRED, bp = best->type & DRM_MODE_TYPE_PREFERRED;
+        /* the same size: the TV's preferred one, then the rate closest to exactly hz (60.00 before 59.94) */
+        if (a > b || (a == b && (mp > bp || (mp == bp && fabs(mode_hz(m) - hz) < fabs(mode_hz(best) - hz))))) best = m;
+    }
+    return best;
+}
+
+bool display_pick_mode(const drmModeConnector *c, drmModeModeInfo *out, bool *no_4k60) {
+    *no_4k60 = false;
+    if (!c || c->count_modes <= 0) return false;
+    const drmModeModeInfo *pref = &c->modes[0];
+    for (int i = 0; i < c->count_modes; i++)
+        if (c->modes[i].type & DRM_MODE_TYPE_PREFERRED) { pref = &c->modes[i]; break; }
+    const drmModeModeInfo *m = largest_at(c, 60, 3840, 2160);
+    if (!m && (hz_near(pref, 60) || hz_near(pref, 50))) m = pref;
+    if (!m) m = largest_at(c, 60, 0, 0);
+    if (!m) m = largest_at(c, 50, 0, 0);
+    if (!m) m = pref;
+    *out = *m;
+    for (int i = 0; i < c->count_modes; i++)
+        if (c->modes[i].hdisplay >= 3840 && m->hdisplay < 3840) *no_4k60 = true;
+    return true;
+}
+
 /* how well a mode rate fits the wanted rate; lower is better, < 0 = not usable.
    0: same rate. 1: an exact multiple (e.g. 47.952 for 23.976 - no judder). 2: almost the same (24 for 23.976 -
    one repeated frame every ~40 s, still better than 60 Hz) */

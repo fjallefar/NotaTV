@@ -21,6 +21,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <gbm.h>
+#include <glob.h>
+#include <stdint.h>
 #include <poll.h>
 #include <stdio.h>
 #include <string.h>
@@ -43,6 +45,13 @@ static struct {
     struct gbm_device *gbm;
     uint32_t crtc, plane, conn;
     int mode_w, mode_h;
+    drmModeModeInfo mode; /* the mode the menus run in (display_pick_mode) */
+    drmModeModeInfo safe; /* if setting it fails: the mode the display was in, else the TV's own preferred one */
+    bool fell_back;
+    bool modeset;         /* the display is not in that mode yet: the first frame sets it */
+    bool headless;        /* no display connected: draw, but show nothing until one is (kms_present_display_changed) */
+    uint32_t mode_blob, p_mode_id, p_active, p_conn_crtc;
+    char sig[160];        /* the displays as they were when this was set up (display_signature) */
     uint32_t p_fb, p_crtc, p_sx, p_sy, p_sw, p_sh, p_cx, p_cy, p_cw, p_ch;
     Buf buf[NBUF];
     SDL_Texture *ui;  /* SDL draws the UI here (ordinary GPU texture) */
@@ -79,36 +88,169 @@ static uint32_t prop(uint32_t obj, uint32_t type, const char *name) {
     return id;
 }
 
-/* find a card with a connected display and an active CRTC */
+static void display_signature(char *out, size_t n);
+
+static bool same_mode(const drmModeModeInfo *a, const drmModeModeInfo *b) {
+    return a->hdisplay == b->hdisplay && a->vdisplay == b->vdisplay && a->clock == b->clock && a->htotal == b->htotal &&
+           a->vtotal == b->vtotal && a->flags == b->flags;
+}
+
+/* the CRTC a connector is on now, else the first one it can use */
+static uint32_t conn_crtc(int fd, const drmModeRes *res, const drmModeConnector *cn, drmModeCrtc **cur) {
+    *cur = NULL;
+    if (cn->encoder_id) {
+        drmModeEncoder *e = drmModeGetEncoder(fd, cn->encoder_id);
+        uint32_t id = e ? e->crtc_id : 0;
+        drmModeFreeEncoder(e);
+        if (id) { *cur = drmModeGetCrtc(fd, id); return id; }
+    }
+    for (int k = 0; k < cn->count_encoders; k++) {
+        drmModeEncoder *pe = drmModeGetEncoder(fd, cn->encoders[k]);
+        for (int j = 0; pe && j < res->count_crtcs; j++)
+            if (pe->possible_crtcs & (1u << j)) { drmModeFreeEncoder(pe); return res->crtcs[j]; }
+        drmModeFreeEncoder(pe);
+    }
+    return 0;
+}
+
+/* Find the display and choose the mode the menus run in. Before, the mode the kernel's console set at boot was
+   simply used - if the TV was in standby or on another input then (no EDID), the box stayed in an emergency mode
+   (e.g. 1024x768) or found no display at all until it was restarted. Now the mode is chosen here every time the
+   video is set up (display_pick_mode: 4K60 on a 4K TV, never 24/30 Hz), and set if the display is not in it.
+   No display connected: the first HDMI connector is used "headless" until one is (kms_present_display_changed). */
 static bool find_output(void) {
-    for (int c = 0; c < 4; c++) {
-        char path[32];
-        snprintf(path, sizeof path, "/dev/dri/card%d", c);
-        int fd = open(path, O_RDWR | O_CLOEXEC);
-        if (fd < 0) continue;
-        drmModeRes *res = drmModeGetResources(fd);
-        for (int i = 0; res && i < res->count_connectors; i++) {
-            drmModeConnector *cn = drmModeGetConnector(fd, res->connectors[i]);
-            if (cn && cn->connection == DRM_MODE_CONNECTED && cn->encoder_id) {
-                drmModeEncoder *e = drmModeGetEncoder(fd, cn->encoder_id);
-                if (e && e->crtc_id) {
-                    drmModeCrtc *crtc = drmModeGetCrtc(fd, e->crtc_id);
-                    if (crtc && crtc->mode_valid) {
-                        K.fd = fd; K.conn = cn->connector_id; K.crtc = e->crtc_id;
-                        K.mode_w = crtc->mode.hdisplay; K.mode_h = crtc->mode.vdisplay;
+    for (int pass = 0; pass < 2 && K.fd < 0; pass++)
+        for (int c = 0; c < 4 && K.fd < 0; c++) {
+            char path[32];
+            snprintf(path, sizeof path, "/dev/dri/card%d", c);
+            int fd = open(path, O_RDWR | O_CLOEXEC);
+            if (fd < 0) continue;
+            drmModeRes *res = drmModeGetResources(fd);
+            for (int i = 0; res && i < res->count_connectors && K.fd < 0; i++) {
+                /* a full probe (re-reads the EDID): the TV may have woken up since the kernel last looked */
+                drmModeConnector *cn = drmModeGetConnector(fd, res->connectors[i]);
+                bool use = cn && (pass == 0 ? cn->connection == DRM_MODE_CONNECTED && cn->count_modes > 0
+                                            : cn->connector_type == DRM_MODE_CONNECTOR_HDMIA);
+                drmModeCrtc *cur = NULL;
+                uint32_t crtc = use ? conn_crtc(fd, res, cn, &cur) : 0;
+                if (crtc) {
+                    K.fd = fd; K.conn = cn->connector_id; K.crtc = crtc;
+                    display_signature(K.sig, sizeof K.sig); /* after the probe above */
+                    bool no_4k60 = false;
+                    if (pass == 0 && display_pick_mode(cn, &K.mode, &no_4k60)) {
+                        K.modeset = !(cur && cur->mode_valid && same_mode(&cur->mode, &K.mode));
+                        K.safe = cn->modes[0];
+                        for (int m = 0; m < cn->count_modes; m++)
+                            if (cn->modes[m].type & DRM_MODE_TYPE_PREFERRED) { K.safe = cn->modes[m]; break; }
+                        if (cur && cur->mode_valid) K.safe = cur->mode;
+                        SDL_Log("kms: skærm %s-%u: %s@%.2f%s (nu: %s)", cn->connector_type == DRM_MODE_CONNECTOR_HDMIA ? "HDMI-A" : "conn",
+                                cn->connector_type_id, K.mode.name, display_mode_hz(&K.mode), no_4k60 ? ", 4K60 findes ikke på denne indgang" : "",
+                                cur && cur->mode_valid ? cur->mode.name : "slukket");
+                        if (no_4k60) {
+                            static char warned[160];
+                            if (strcmp(warned, K.sig)) { /* once per display, not after every movie */
+                                snprintf(warned, sizeof warned, "%s", K.sig);
+                                if (board_pi() == 4 && cn->connector_type == DRM_MODE_CONNECTOR_HDMIA && cn->connector_type_id == 2)
+                                    app_toast("%s", T("For 4K at 60 Hz, plug the TV into the HDMI port next to the power socket"));
+                                else
+                                    app_toast("%s", T("The TV does not offer 4K at 60 Hz on this input. Turn on the enhanced HDMI format for the input in the TV's settings, and use an Ultra High Speed HDMI cable"));
+                            }
+                        }
+                    } else {
+                        K.headless = true;
+                        SDL_Log("kms: ingen skærm tilsluttet - tegner uden skærm, indtil en bliver det");
                     }
-                    drmModeFreeCrtc(crtc);
+                    K.mode_w = K.mode.hdisplay ? K.mode.hdisplay : 1920;
+                    K.mode_h = K.mode.vdisplay ? K.mode.vdisplay : 1080;
                 }
-                drmModeFreeEncoder(e);
+                drmModeFreeCrtc(cur);
+                drmModeFreeConnector(cn);
             }
-            drmModeFreeConnector(cn);
-            if (K.fd >= 0) break;
+            drmModeFreeResources(res);
+            if (K.fd < 0) close(fd);
         }
-        drmModeFreeResources(res);
-        if (K.fd >= 0) return true;
-        close(fd);
+    return K.fd >= 0;
+}
+
+/* ---------- the display changing while the menus run ----------
+   The kernel reads the EDID again on a hotplug (and retrains the 4K60 link), but the mode stays what we set. A
+   short text per HDMI connector (status, EDID length and checksum) shows when that is no longer the right one:
+   the TV woke up with its EDID, another display was plugged in, or a display was plugged into a box without one. */
+static void display_signature(char *out, size_t n) {
+    out[0] = 0;
+    glob_t g;
+    if (glob("/sys/class/drm/card*-HDMI-A-*", 0, NULL, &g) != 0) return;
+    size_t len = 0;
+    for (size_t i = 0; i < g.gl_pathc; i++) {
+        char p[300], st[16] = "";
+        snprintf(p, sizeof p, "%s/status", g.gl_pathv[i]);
+        FILE *f = fopen(p, "r");
+        if (f) { if (!fgets(st, sizeof st, f)) st[0] = 0; fclose(f); }
+        uint32_t h = 2166136261u;
+        long el = 0;
+        snprintf(p, sizeof p, "%s/edid", g.gl_pathv[i]);
+        f = fopen(p, "rb");
+        if (f) {
+            int ch;
+            while ((ch = fgetc(f)) != EOF) { h = (h ^ (uint8_t)ch) * 16777619u; el++; }
+            fclose(f);
+        }
+        const char *name = strrchr(g.gl_pathv[i], '-');
+        len += (size_t)snprintf(out + len, len < n ? n - len : 0, "%s:%c%ld/%08x ", name ? name + 1 : "?", st[0] ? st[0] : '?', el, h);
+        if (len >= n) break;
+    }
+    globfree(&g);
+}
+
+/* connected, but no EDID: some TVs (e.g. Google TV in standby) keep the hotplug line up and only answer again when
+   asked, so the kernel never reads the EDID by itself. A probe on our own (master) file asks it to, on a thread
+   (reading an EDID takes tens of ms). */
+static SDL_AtomicInt probing;
+static int probe_thread(void *ud) {
+    int fd = (int)(intptr_t)ud;
+    drmModeRes *res = drmModeGetResources(fd);
+    for (int i = 0; res && i < res->count_connectors; i++) drmModeFreeConnector(drmModeGetConnector(fd, res->connectors[i]));
+    drmModeFreeResources(res);
+    close(fd);
+    SDL_SetAtomicInt(&probing, 0);
+    return 0;
+}
+
+bool kms_present_display_changed(void) {
+    if (!K.on) return false;
+    char s[sizeof K.sig];
+    display_signature(s, sizeof s);
+    static char pending[sizeof K.sig];
+    if (!strcmp(s, K.sig)) { pending[0] = 0; }
+    else if (strcmp(s, pending)) { snprintf(pending, sizeof pending, "%s", s); return false; } /* the same twice in a row: a waking TV flaps */
+    else {
+        SDL_Log("kms: skærmen er ændret (%s -> %s) - sætter skærmen op igen", K.sig, s);
+        pending[0] = 0;
+        return true;
+    }
+    /* unchanged: connected without an EDID (or a box running without a display) -> ask the TV again now and then */
+    static Uint64 last_probe;
+    Uint64 now = SDL_GetTicks();
+    bool no_edid = strstr(s, ":c0/") != NULL;
+    if ((no_edid || K.headless) && now - last_probe > 5000 && SDL_GetAtomicInt(&probing) == 0) {
+        last_probe = now;
+        int fd = dup(K.fd);
+        if (fd >= 0) {
+            SDL_SetAtomicInt(&probing, 1);
+            SDL_Thread *t = SDL_CreateThread(probe_thread, "drm-probe", (void *)(intptr_t)fd);
+            if (t) SDL_DetachThread(t);
+            else { close(fd); SDL_SetAtomicInt(&probing, 0); }
+        }
     }
     return false;
+}
+
+/* the size of the mode the menus last ran in (frame rate match during playback keeps it) */
+static int last_w, last_h;
+bool kms_present_last_mode(int *w, int *h) {
+    if (!last_w) return false;
+    *w = last_w; *h = last_h;
+    return true;
 }
 
 /* primary plane for our CRTC */
@@ -180,6 +322,9 @@ static void free_buf(Buf *b) {
 
 void kms_present_quit(void) {
     if (K.fd < 0) return;
+    /* a running probe holds a copy of our file (and thus DRM master): let it finish, so mpv can take over */
+    for (int i = 0; i < 100 && SDL_GetAtomicInt(&probing); i++) SDL_Delay(10);
+    if (K.mode_blob) drmModeDestroyPropertyBlob(K.fd, K.mode_blob);
     for (int i = 0; i < NBUF; i++) free_buf(&K.buf[i]);
     if (K.read_fbo) glDeleteFramebuffers(1, &K.read_fbo);
     if (K.ui) SDL_DestroyTexture(K.ui);
@@ -201,10 +346,21 @@ bool kms_present_init(SDL_Renderer *ren, int w, int h) {
         SDL_Log("kms: EGL-udvidelser mangler");
         return false;
     }
-    if (!find_output()) { SDL_Log("kms: ingen aktiv skærm"); return false; }
+    if (!find_output()) { SDL_Log("kms: intet HDMI-udgang fundet"); return false; }
     if (drmSetMaster(K.fd) != 0) SDL_Log("kms: drmSetMaster: %s (fortsætter)", strerror(errno));
     drmSetClientCap(K.fd, DRM_CLIENT_CAP_ATOMIC, 1);
     if (!find_plane()) { SDL_Log("kms: ingen primær plan"); kms_present_quit(); return false; }
+    if (K.modeset) {
+        K.p_mode_id = prop(K.crtc, DRM_MODE_OBJECT_CRTC, "MODE_ID");
+        K.p_active = prop(K.crtc, DRM_MODE_OBJECT_CRTC, "ACTIVE");
+        K.p_conn_crtc = prop(K.conn, DRM_MODE_OBJECT_CONNECTOR, "CRTC_ID");
+        if (!K.p_mode_id || !K.p_active || !K.p_conn_crtc || drmModeCreatePropertyBlob(K.fd, &K.mode, sizeof K.mode, &K.mode_blob)) {
+            SDL_Log("kms: kan ikke sætte skærmtilstand (mangler egenskaber)");
+            kms_present_quit();
+            return false;
+        }
+    }
+    if (!K.headless) { last_w = K.mode_w; last_h = K.mode_h; }
     uint32_t pl = K.plane, t = DRM_MODE_OBJECT_PLANE;
     K.p_fb = prop(pl, t, "FB_ID"); K.p_crtc = prop(pl, t, "CRTC_ID");
     K.p_sx = prop(pl, t, "SRC_X"); K.p_sy = prop(pl, t, "SRC_Y"); K.p_sw = prop(pl, t, "SRC_W"); K.p_sh = prop(pl, t, "SRC_H");
@@ -326,8 +482,16 @@ void kms_present_frame(SDL_Renderer *ren) {
     if (finish < 0) finish = cfg_int("kms_finish", 0) != 0;
     if (finish) glFinish();
     else glFlush();
+    if (K.headless) { SDL_Delay(16); return; } /* no display: keep ~60 fps without showing anything */
     wait_flip(); /* at most one page flip at a time (= vsync) */
     drmModeAtomicReq *rq = drmModeAtomicAlloc();
+    uint32_t flags = DRM_MODE_ATOMIC_NONBLOCK | DRM_MODE_PAGE_FLIP_EVENT;
+    if (K.modeset) { /* the first frame also puts the display in the chosen mode */
+        drmModeAtomicAddProperty(rq, K.crtc, K.p_mode_id, K.mode_blob);
+        drmModeAtomicAddProperty(rq, K.crtc, K.p_active, 1);
+        drmModeAtomicAddProperty(rq, K.conn, K.p_conn_crtc, K.crtc);
+        flags = DRM_MODE_ATOMIC_ALLOW_MODESET | DRM_MODE_PAGE_FLIP_EVENT;
+    }
     drmModeAtomicAddProperty(rq, K.plane, K.p_fb, b->fb);
     drmModeAtomicAddProperty(rq, K.plane, K.p_crtc, K.crtc);
     drmModeAtomicAddProperty(rq, K.plane, K.p_sx, 0);
@@ -338,8 +502,26 @@ void kms_present_frame(SDL_Renderer *ren) {
     drmModeAtomicAddProperty(rq, K.plane, K.p_cy, 0);
     drmModeAtomicAddProperty(rq, K.plane, K.p_cw, K.mode_w);
     drmModeAtomicAddProperty(rq, K.plane, K.p_ch, K.mode_h);
-    int r = drmModeAtomicCommit(K.fd, rq, DRM_MODE_ATOMIC_NONBLOCK | DRM_MODE_PAGE_FLIP_EVENT, NULL);
+    int r = drmModeAtomicCommit(K.fd, rq, flags, NULL);
     drmModeAtomicFree(rq);
+    if (K.modeset) {
+        K.modeset = false;
+        if (!r) SDL_Log("kms: skærmen sat til %s@%.2f", K.mode.name, display_mode_hz(&K.mode));
+        else {
+            SDL_Log("kms: skærmtilstand %s fejlede: %s", K.mode.name, strerror(-r));
+            /* never a black screen: once more with the safe mode (the next frame) */
+            uint32_t blob = 0;
+            if (!K.fell_back && !same_mode(&K.safe, &K.mode) && !drmModeCreatePropertyBlob(K.fd, &K.safe, sizeof K.safe, &blob)) {
+                K.fell_back = true;
+                drmModeDestroyPropertyBlob(K.fd, K.mode_blob);
+                K.mode_blob = blob;
+                K.mode = K.safe;
+                K.mode_w = last_w = K.mode.hdisplay;
+                K.mode_h = last_h = K.mode.vdisplay;
+                K.modeset = true;
+            }
+        }
+    }
     if (r) {
         static int errs;
         if (errs++ < 5) SDL_Log("kms: sideskift fejlede: %s", strerror(-r));
