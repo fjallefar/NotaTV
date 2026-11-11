@@ -61,9 +61,13 @@ jobs:
 
       - name: Host packages (GitHub's runner only)
         if: env.ON == 'github'
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q build-essential file wget curl cpio unzip rsync bc \
+          # Azure's own Ubuntu mirror was unreachable from GitHub's runners for hours (11/11): Ubuntu's main archive
+          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#; s#http://azure.archive.ubuntu.com/ubuntu/#http://archive.ubuntu.com/ubuntu/#' \
+            /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 update -q
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y -q build-essential file wget curl cpio unzip rsync bc \
             libncurses-dev libssl-dev python3 git xz-utils bzip2 zstd
 
       - name: Fetch the tagged code into the build folder
