@@ -59,6 +59,16 @@ jobs:
       - name: Where this is built
         run: echo "Building $TAG on $ON in $TREE"
 
+      - name: Public DNS (GitHub's runner only)
+        # 11/11: the runners' own DNS (Azure) stopped answering for names outside GitHub for hours - apt, Buildroot's
+        # downloads and everything else failed with "Temporary failure resolving". Cloudflare and Google instead.
+        if: env.ON == 'github'
+        run: |
+          sudo mkdir -p /etc/systemd/resolved.conf.d
+          printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\nFallbackDNS=9.9.9.9 1.0.0.1\nDomains=~.\n' | sudo tee /etc/systemd/resolved.conf.d/public-dns.conf >/dev/null
+          sudo systemctl restart systemd-resolved
+          getent hosts archive.ubuntu.com github.com || { echo "DNS still not working"; exit 1; }
+
       - name: Host packages (GitHub's runner only)
         if: env.ON == 'github'
         timeout-minutes: 10
