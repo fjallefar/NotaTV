@@ -178,6 +178,14 @@ static SDL_Mutex *g_share_lock[CURL_LOCK_DATA_LAST];
 static void share_lock(CURL *h, curl_lock_data d, curl_lock_access a, void *u) { SDL_LockMutex(g_share_lock[d]); }
 static void share_unlock(CURL *h, curl_lock_data d, void *u) { SDL_UnlockMutex(g_share_lock[d]); }
 
+/* sharing the connection pool between threads that run at the same time is only safe since libcurl's connection
+   pool was rewritten (8.10): with an older libcurl (Ubuntu 24.04 has 8.5) image threads crashed inside
+   curl_easy_perform now and then (found by the sanitizer test, A6). The box has a newer one and keeps sharing. */
+static bool share_connections(void) {
+    const curl_version_info_data *v = curl_version_info(CURLVERSION_NOW);
+    return v && v->version_num >= 0x080a00;
+}
+
 void http_init(void) {
     curl_global_init(CURL_GLOBAL_DEFAULT);
     for (int i = 0; i < CURL_LOCK_DATA_LAST; i++) g_share_lock[i] = SDL_CreateMutex();
@@ -186,7 +194,9 @@ void http_init(void) {
     curl_share_setopt(g_share, CURLSHOPT_UNLOCKFUNC, share_unlock);
     curl_share_setopt(g_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
     curl_share_setopt(g_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
-    curl_share_setopt(g_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+    bool conn = share_connections();
+    if (conn) curl_share_setopt(g_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+    else SDL_Log("http: libcurl %s - connections are not shared between threads", curl_version_info(CURLVERSION_NOW)->version);
     /* cookies must be shared in memory: with only a jar file, parallel calls read an old copy
        and overwrite the new login cookie when they finish (Seerr: "Signing in…" and 401) */
     g_ck_share = curl_share_init();
@@ -195,7 +205,7 @@ void http_init(void) {
     curl_share_setopt(g_ck_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
     curl_share_setopt(g_ck_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
     curl_share_setopt(g_ck_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
-    curl_share_setopt(g_ck_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+    if (conn) curl_share_setopt(g_ck_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
 }
 
 /* limits: http/https only (also on redirects - no file://, ftp:// etc. from a malicious server),
