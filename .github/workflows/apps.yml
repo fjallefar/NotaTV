@@ -59,7 +59,12 @@ jobs:
           sudo mkdir -p /etc/systemd/resolved.conf.d
           printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\nFallbackDNS=9.9.9.9 1.0.0.1\nDomains=~.\n' | sudo tee /etc/systemd/resolved.conf.d/public-dns.conf >/dev/null
           sudo systemctl restart systemd-resolved
-          getent hosts archive.ubuntu.com github.com || { echo "DNS still not working"; exit 1; }
+          getent ahostsv4 archive.ubuntu.com | head -3; getent ahostsv6 archive.ubuntu.com | head -1
+          curl -4 -sI -m 15 http://archive.ubuntu.com/ubuntu/dists/noble/InRelease | head -1 || echo "IPv4 to Ubuntu failed"
+          curl -6 -sI -m 15 http://archive.ubuntu.com/ubuntu/dists/noble/InRelease | head -1 || echo "IPv6 to Ubuntu failed"
+          # the runners have no IPv6 route: everything over IPv4 (apt here, curl/wget in Buildroot prefer it via gai.conf)
+          echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4 >/dev/null
+          echo 'precedence ::ffff:0:0/96 100' | sudo tee -a /etc/gai.conf >/dev/null
 
       - name: Host packages (GitHub's runner only)
         if: env.ON == 'github'
