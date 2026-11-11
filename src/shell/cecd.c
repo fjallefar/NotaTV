@@ -71,7 +71,15 @@ static int own_la(void) {
 
 static void tx(struct cec_msg *m) {
     m->timeout = 0; /* no waiting for a reply */
-    if (ioctl(fd, CEC_TRANSMIT, m) < 0) logmsg("%s: send 0x%02x failed (%s)", dev, m->msg[1], strerror(errno));
+    /* the fd is non-blocking (see main): the bus can briefly be busy (another transmit in
+     * progress, e.g. "cec wake" from another fd) and then the kernel returns EAGAIN.
+     * Retry for up to half a second instead of dropping the answer to the TV. */
+    for (int i = 0; i < 50; i++) {
+        if (ioctl(fd, CEC_TRANSMIT, m) == 0) return;
+        if (errno != EAGAIN && errno != EINTR) break;
+        usleep(10000);
+    }
+    logmsg("%s: send 0x%02x failed (%s)", dev, m->msg[1], strerror(errno));
 }
 
 static void claim_active(void) {
@@ -195,7 +203,11 @@ int main(int argc, char **argv) {
     }
     dev = argv[1];
     signal(SIGCHLD, SIG_IGN);
-    fd = open(dev, O_RDWR | O_CLOEXEC);
+    /* O_NONBLOCK: CEC_DQEVENT/CEC_RECEIVE below drain with "until error" loops; on a blocking
+     * fd that ioctl waits for the next event/message instead of returning EAGAIN, so the
+     * daemon hangs in the first DQEVENT (the kernel queues initial events at open) and the
+     * TV's questions are never read. Poll already tells us when something is ready. */
+    fd = open(dev, O_RDWR | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0) {
         logmsg("%s: cannot open (%s)", dev, strerror(errno));
         return 1;
@@ -223,6 +235,7 @@ int main(int argc, char **argv) {
             struct cec_event ev;
             while (ioctl(fd, CEC_DQEVENT, &ev) == 0) {
                 if (ev.event == CEC_EVENT_LOST_MSGS) logmsg("%s: %u messages lost", dev, ev.lost_msgs.lost_msgs);
+                memset(&ev, 0, sizeof ev);
             }
         }
         if (p.revents & POLLIN) {

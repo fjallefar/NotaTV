@@ -79,11 +79,18 @@ tv-off)
 	echo "Power-off command sent to the TV"
 	;;
 status)
-	d=$(devs | head -1)
-	[ -z "$d" ] && { echo "No CEC adapter found"; exit 0; }
-	pa=$(phys $d)
-	if [ -z "$pa" ] || [ "$pa" = "f.f.f.f" ]; then echo "Adapter found - no TV responds"; exit 0; fi
-	tv=$(cec-ctl -d $d --to 0 --give-osd-name 2>/dev/null | sed -n "s/.*name: '\(.*\)'.*/\1/p" | head -1)
+	# check every adapter: the TV can be on any of them (cec0 and cec1 are separate ports)
+	tv="" pa=""
+	for d in $(devs); do
+		p=$(phys $d)
+		[ -z "$p" ] || [ "$p" = "f.f.f.f" ] && continue
+		[ -z "$pa" ] && pa=$p
+		[ -n "$tv" ] && continue
+		# the name comes with or without quotes depending on the cec-ctl version
+		# ('\{0,1\}' works in both busybox and GNU sed; \? is not supported by BSD sed)
+		tv=$(cec-ctl -d $d --to 0 --give-osd-name 2>/dev/null | sed -n "s/.*name:[[:space:]]*'\{0,1\}\([^']*\)'\{0,1\}.*/\1/p" | head -1)
+	done
+	[ -z "$pa" ] && { echo "Adapter found - no TV responds"; exit 0; }
 	if [ -n "$tv" ]; then msg "Connected to %s (address %s)" "$tv" "$pa"; else msg "Connected (address %s)" "$pa"; fi
 	;;
 esac
