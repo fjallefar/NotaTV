@@ -1306,6 +1306,12 @@ msgstr "Vælg dine apps"
 msgid "Update reminders"
 msgstr "Påmindelser om opdateringer"
 
+msgid "Send anonymous usage count"
+msgstr "Send anonym brugstælling"
+
+msgid "Once a day the box sends only its version number, so we can see how many use NotaTV. No name, account or address"
+msgstr "Én gang i døgnet sender boksen kun sit versionsnummer, så vi kan se, hvor mange der bruger NotaTV. Intet navn, ingen konto eller adresse"
+
 msgid "Looks for a new version on GitHub twice a day and reminds you every other day. Off: NotaTV never checks by itself"
 msgstr "Ser efter en ny version på GitHub to gange om dagen og minder dig om den hver anden dag. Fra: NotaTV tjekker aldrig selv"
 

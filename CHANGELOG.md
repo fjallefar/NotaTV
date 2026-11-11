@@ -91,7 +91,7 @@ Kort: Sikkerheds- og stabilitetsrettelser fra en kodegennemgang.
 - Live TV og de andre apps tåler lav hukommelse uden at gå ned
 -->
 
-From the audit of 11/11 (`docs/audit-2026-11-11.md`, STATUS B1-B9). Not tested on a TV yet.
+From the audit of 11/11 (`docs/archive/audit-2026-11-11.md`, STATUS B1-B9). Not tested on a TV yet.
 Also includes pull request #1 from czingenberg (checked allocations in Live TV, Plex, Jellyfin, YouTube and the
 player, bounds checks in `wvserve`) - thank you!
 

@@ -817,6 +817,7 @@ void app_background_tick(bool playing) {
     mirror_tick();
     apps_tick(); /* the installed apps' background services (YouTube cast, Jellyfin "Play on") */
     update_tick();
+    usage_ping_tick();
 }
 
 /* one frame while the main thread waits (e.g. for ffprobe before playback): the screen keeps drawing with a spinner,

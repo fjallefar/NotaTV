@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NotaTV-brug</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --ink: #14171c; --muted: #616b78; --line: #e3e6eb;
+  --c1: #2f6fdb; --c2: #e0792b; --c3: #2a9d72; --c4: #b84fc4; --c5: #c9a227; --c6: #8a94a3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216; --card: #181c22; --ink: #e9edf2; --muted: #96a0ad; --line: #2a3039;
+    --c1: #5b93f0; --c2: #f0954f; --c3: #45bf90; --c4: #cf72da; --c5: #e0bd4a; --c6: #6d7684;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 28px 16px 48px; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+.sub { color: var(--muted); font-size: 13px; }
+.range { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.range button { background: none; border: 0; color: var(--muted); padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; }
+.range button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 20px 0; }
+.tile, .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+.tile .k { color: var(--muted); font-size: 13px; }
+.tile .v { font-size: 30px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile .d { color: var(--muted); font-size: 12px; }
+.card { margin-top: 12px; }
+.card h2 { font-size: 15px; margin: 0 0 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+svg { display: block; width: 100%; height: auto; }
+svg text { fill: var(--muted); font-size: 11px; }
+.grid line { stroke: var(--line); }
+.bar:hover { opacity: .75; }
+#tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12px;
+  padding: 6px 9px; border-radius: 8px; opacity: 0; transition: opacity .1s; white-space: pre; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 4px; border-bottom: 1px solid var(--line); font-size: 14px; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td.n { text-align: right; width: 70px; }
+.share { height: 8px; border-radius: 4px; background: var(--c1); min-width: 2px; }
+.empty { color: var(--muted); padding: 30px 0; text-align: center; }
+.note { color: var(--muted); font-size: 12px; margin-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>NotaTV-brug</h1>
+      <div class="sub" id="sub">Henter ...</div>
+    </div>
+    <div class="range" role="group" aria-label="Periode">
+      <button data-d="30">30 dage</button><button data-d="90" aria-pressed="true">90 dage</button><button data-d="365">1 år</button>
+    </div>
+  </header>
+
+  <section class="tiles">
+    <div class="tile"><div class="k">Aktive bokse i går</div><div class="v" id="t-y">-</div><div class="d" id="t-yd">&nbsp;</div></div>
+    <div class="tile"><div class="k">I dag indtil nu</div><div class="v" id="t-t">-</div><div class="d">nulstilles kl. 01 dansk tid</div></div>
+    <div class="tile"><div class="k">På nyeste version</div><div class="v" id="t-l">-</div><div class="d" id="t-ld">&nbsp;</div></div>
+    <div class="tile"><div class="k">Flest på én dag</div><div class="v" id="t-m">-</div><div class="d" id="t-md">&nbsp;</div></div>
+  </section>
+
+  <section class="card">
+    <h2>Aktive bokse pr. dag</h2>
+    <div class="legend" id="legend"></div>
+    <div id="chart"></div>
+  </section>
+
+  <section class="card">
+    <h2 id="vt-h">Versioner i går</h2>
+    <div id="versions"></div>
+  </section>
+
+  <p class="note">Hver boks sender én gang i døgnet kun sit versionsnummer. Der gemmes ingen IP-adresse eller boks-id, så tallene er et skøn over aktive bokse. Dage følger UTC.</p>
+</main>
+<div id="tip"></div>
+
+<script>
+const COLORS = ["--c1", "--c2", "--c3", "--c4", "--c5"].map(v => `var(${v})`);
+const OTHER = "var(--c6)";
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("da-DK");
+const dk = d => new Date(d + "T12:00:00Z").toLocaleDateString("da-DK", { day: "numeric", month: "short" });
+const cmpVer = (a, b) => {
+  const pa = a.split(/[.-]/), pb = b.split(/[.-]/);
+  for (let i = 0; i < 3; i++) if (+pa[i] !== +pb[i]) return +pb[i] - +pa[i];
+  return a < b ? 1 : -1;
+};
+const addDays = (d, n) => new Date(Date.parse(d + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+
+let days = 90;
+document.querySelectorAll(".range button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".range button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  days = +b.dataset.d; load();
+});
+
+async function load() {
+  const r = await fetch("/api/stats?days=" + days, { credentials: "same-origin" });
+  if (!r.ok) { $("sub").textContent = "Kunne ikke hente data (" + r.status + ")"; return; }
+  render(await r.json());
+}
+
+function render({ since, today, rows }) {
+  const yesterday = addDays(today, -1);
+  const dayList = [];
+  for (let d = since; d <= today; d = addDays(d, 1)) dayList.push(d);
+  const byDay = new Map(dayList.map(d => [d, new Map()]));
+  const verTotal = new Map();
+  for (const { day, version, n } of rows) {
+    byDay.get(day)?.set(version, n);
+    verTotal.set(version, (verTotal.get(version) || 0) + n);
+  }
+  const sum = d => [...(byDay.get(d)?.values() || [])].reduce((a, b) => a + b, 0);
+  const versions = [...verTotal.keys()].sort(cmpVer);
+  const latest = versions[0];
+
+  $("sub").textContent = rows.length
+    ? `${dk(since)} - ${dk(today)} · ${versions.length} versioner set`
+    : "Ingen pings endnu i perioden";
+
+  const y = sum(yesterday), yy = sum(addDays(today, -2));
+  $("t-y").textContent = fmt(y);
+  $("t-yd").textContent = yy ? `${y >= yy ? "+" : ""}${fmt(y - yy)} fra dagen før` : " ";
+  $("t-t").textContent = fmt(sum(today));
+  const ref = y ? yesterday : today, refTotal = sum(ref);
+  const onLatest = latest ? byDay.get(ref)?.get(latest) || 0 : 0;
+  $("t-l").textContent = refTotal ? Math.round(onLatest / refTotal * 100) + " %" : "-";
+  $("t-ld").textContent = latest ? `${latest} (${ref === yesterday ? "i går" : "i dag"})` : " ";
+  let maxDay = null, maxN = 0;
+  for (const d of dayList) { const s = sum(d); if (s > maxN) { maxN = s; maxDay = d; } }
+  $("t-m").textContent = maxN ? fmt(maxN) : "-";
+  $("t-md").textContent = maxDay ? dk(maxDay) : " ";
+
+  // Top 5 versions by volume get a colour, the rest is "Andre".
+  const top = [...verTotal.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0]).sort(cmpVer);
+  const colorOf = v => top.includes(v) ? COLORS[top.indexOf(v)] : OTHER;
+  const series = [...top, ...(versions.length > top.length ? ["Andre"] : [])];
+  $("legend").innerHTML = series.map(v =>
+    `<span><i style="background:${v === "Andre" ? OTHER : colorOf(v)}"></i>${v}</span>`).join("");
+
+  drawChart(dayList, byDay, series, colorOf, sum);
+  drawVersions(byDay.get(ref) || new Map(), ref === yesterday ? "Versioner i går" : "Versioner i dag");
+}
+
+function drawChart(dayList, byDay, series, colorOf, sum) {
+  if (!dayList.some(d => sum(d))) { $("chart").innerHTML = '<div class="empty">Ingen data endnu</div>'; return; }
+  const W = 1000, H = 280, L = 40, R = 8, T = 10, B = 26;
+  const max = Math.max(...dayList.map(sum));
+  const step = Math.pow(10, Math.floor(Math.log10(max || 1)));
+  const nice = [1, 2, 5, 10].map(m => m * step).find(s => max / s <= 5) || step * 10;
+  const top = Math.max(nice, Math.ceil(max / nice) * nice);
+  const sy = v => T + (H - T - B) * (1 - v / top);
+  const bw = (W - L - R) / dayList.length;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Aktive bokse pr. dag"><g class="grid">`;
+  for (let v = 0; v <= top; v += nice)
+    s += `<line x1="${L}" x2="${W - R}" y1="${sy(v)}" y2="${sy(v)}"/><text x="${L - 6}" y="${sy(v) + 4}" text-anchor="end">${fmt(v)}</text>`;
+  s += "</g>";
+  const labelEvery = Math.ceil(dayList.length / 8);
+  dayList.forEach((d, i) => {
+    const m = byDay.get(d);
+    const parts = series.map(v => [v, v === "Andre"
+      ? [...m.entries()].filter(([k]) => !series.includes(k)).reduce((a, [, n]) => a + n, 0)
+      : m.get(v) || 0]);
+    let acc = 0;
+    const x = L + i * bw + bw * 0.12, w = Math.max(1, bw * 0.76);
+    const tip = `${dk(d)}: ${fmt(sum(d))}\n` + parts.filter(p => p[1]).map(([v, n]) => `${v}: ${fmt(n)}`).join("\n");
+    s += `<g class="bar" data-tip="${tip}">`;
+    for (const [v, n] of parts) {
+      if (!n) continue;
+      const y0 = sy(acc), y1 = sy(acc + n);
+      s += `<rect x="${x}" y="${y1}" width="${w}" height="${Math.max(0.5, y0 - y1)}" fill="${v === "Andre" ? OTHER : colorOf(v)}"/>`;
+      acc += n;
+    }
+    s += `<rect x="${L + i * bw}" y="${T}" width="${bw}" height="${H - T - B}" fill="transparent"/></g>`;
+    if (i % labelEvery === 0) s += `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle">${dk(d)}</text>`;
+  });
+  $("chart").innerHTML = s + "</svg>";
+  const tipEl = $("tip");
+  $("chart").querySelectorAll(".bar").forEach(g => {
+    g.onmousemove = e => {
+      tipEl.textContent = g.dataset.tip; tipEl.style.opacity = 1;
+      tipEl.style.left = Math.min(e.clientX + 12, innerWidth - tipEl.offsetWidth - 8) + "px";
+      tipEl.style.top = e.clientY + 12 + "px";
+    };
+    g.onmouseleave = () => tipEl.style.opacity = 0;
+  });
+}
+
+function drawVersions(m, title) {
+  $("vt-h").textContent = title;
+  const total = [...m.values()].reduce((a, b) => a + b, 0);
+  if (!total) { $("versions").innerHTML = '<div class="empty">Ingen pings</div>'; return; }
+  const rows = [...m.entries()].sort((a, b) => cmpVer(a[0], b[0]));
+  $("versions").innerHTML = `<table><thead><tr><th>Version</th><th>Andel</th><th class="n">Bokse</th><th class="n">%</th></tr></thead><tbody>` +
+    rows.map(([v, n]) => `<tr><td>${v}</td><td><div class="share" style="width:${n / total * 100}%"></div></td><td class="n">${fmt(n)}</td><td class="n">${Math.round(n / total * 100)}</td></tr>`).join("") +
+    "</tbody></table>";
+}
+
+load();
+</script>
+</body>
+</html>

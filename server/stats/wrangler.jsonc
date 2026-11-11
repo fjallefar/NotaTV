@@ -1,0 +1,14 @@
+{
+  // NotaTV anonymous usage stats (STATUS 121). Deploy: see README.md
+  "name": "notatv-stats",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-01",
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "notatv-stats",
+      "database_id": "5868c8b7-03e6-4bb7-9fad-cf552faa9970"
+    }
+  ]
+}

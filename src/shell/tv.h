@@ -627,6 +627,7 @@ void settings_wifi(void);         /* search for and choose Wi-Fi (from Settings)
 void settings_apply_name(void);   /* device name changed: restart AirPlay/CEC/BT/DLNA */
 void update_install_open(const char *ver); /* update_notice.c: install the GitHub update with a progress bar, then offer a restart */
 void app_background_tick(bool playing); /* main.c: jobs, inbox, Bluetooth, installs (+ services when not playing) */
+void usage_ping_tick(void);       /* usage_ping.c: anonymous daily version ping (cfg usage_ping) */
 void update_tick(void);           /* update_notice.c: looks for updates on GitHub and reminds every other day */
 Screen *setup_screen(void);       /* setup guide (first boot) */
 const char *phone_pin(void);      /* code for the phone page (created if missing) */

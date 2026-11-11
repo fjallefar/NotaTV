@@ -10,7 +10,7 @@ The one opt-in exception: apps that need a closed module to play (DRM, e.g. TV 2
 
 **What stays on the box:** the logs are kept on the box's SD card and never sent anywhere by themselves - you download them from the phone page when you want to. The phone page (from 1.0.25) encrypts what it sends with a key from a QR code on the TV, which never travels over the network, so logins and YouTube cookies cannot be read by others on your network; its web server runs without root.
 
-The box only contacts outside services when you use a feature. Apps only do so when they are installed:
+The box only contacts outside services when you use a feature, with one exception: the anonymous usage count (one version number a day, can be turned off). Apps only do so when they are installed:
 
 | Service | When |
 |---|---|
@@ -34,3 +34,4 @@ The box only contacts outside services when you use a feature. Apps only do so w
 | itunes.apple.com, musicbrainz.org, coverartarchive.org | Cover art for Bluetooth music (artist and album or track; can be turned off) |
 | api.github.com, github.com | Updates, the App Store and its tools (yt-dlp and Node.js for YouTube) |
 | pool.ntp.org | Setting the clock at startup |
+| notatv-stats.notaapp.workers.dev (our own Cloudflare Worker, `server/stats`) | Anonymous usage count: once a day only the version number (e.g. `1.0.27`). No box id, account or settings, and the Worker stores no IP address. Turn it off under *Settings → System → Send anonymous usage count* |

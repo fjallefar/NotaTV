@@ -609,6 +609,8 @@ static const Item sys_items[] = {
     {N_("Update NotaTV"), IT_ACTION, .action = act_update_gh, .help = N_("Looks for a new version on GitHub and installs it")},
     {N_("Update reminders"), IT_TOGGLE, "update_notify", "1", onoff,
      .help = N_("Looks for a new version on GitHub twice a day and reminds you every other day. Off: NotaTV never checks by itself")},
+    {N_("Send anonymous usage count"), IT_TOGGLE, "usage_ping", "1", onoff,
+     .help = N_("Once a day the box sends only its version number, so we can see how many use NotaTV. No name, account or address")},
     {N_("Undo last update"), IT_ACTION, .action = act_rollback, .help = N_("Goes back to the version from before the last update")},
     {N_("Version"), IT_INFO, .info_cmd = "sys version"},
     {N_("Hardware"), IT_INFO, .info_cmd = "sys hw"},
