@@ -30,9 +30,11 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
       - name: Packages
+        # Ubuntu's mirrors are sometimes unreachable from GitHub's runners: fail after a few minutes, not 28
+        timeout-minutes: 8
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq build-essential cmake ninja-build pkg-config python3-pil \
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 update -qq
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y -qq build-essential cmake ninja-build pkg-config python3-pil \
             libcurl4-openssl-dev libdrm-dev libegl-dev libgles-dev libgbm-dev libdbus-1-dev libupnp-dev zlib1g-dev
       - name: SDL3 from the cache
         id: sdl
