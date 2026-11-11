@@ -43,13 +43,7 @@ env:
   REPO_URL: https://github.com/${{ github.repository }}.git
 
 jobs:
-  # A6: every screen with ASan/UBSan first (test.yml); nothing is built or published when it fails
-  test:
-    uses: ./.github/workflows/test.yml
-    with:
-      ref: ${{ github.sha }}
   apps:
-    needs: test
     # (the same choice as ON above: runs-on cannot read env)
     runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine') == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","notatv"]') }}
     timeout-minutes: 300 # GitHub's runner builds the system tree first

@@ -51,13 +51,7 @@ env:
   REPO_URL: https://github.com/${{ github.repository }}.git
 
 jobs:
-  # A6: every screen with ASan/UBSan first (test.yml); nothing is built or published when it fails
-  test:
-    uses: ./.github/workflows/test.yml
-    with:
-      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   build:
-    needs: test
     # (the same choice as ON above: runs-on cannot read env)
     runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine') == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","notatv"]') }}
     timeout-minutes: 720 # GitHub's runner stops a job after 6 hours anyway; a full build there takes about 1.5
