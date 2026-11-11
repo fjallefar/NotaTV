@@ -30,7 +30,7 @@ NotaTV is its own Linux distribution (Buildroot) with its own user interface, wr
 - **Casting**: DLNA, YouTube cast, Jellyfin "Play On", AirPlay screen mirroring
 - **Media player** for USB drives, SMB and NFS shares
 - **HDMI-CEC**: your TV remote controls the box
-- A **phone page** for typing, remote control and setup
+- A **phone page** for typing, remote control and setup, connected with a QR code and encrypted
 - **English and Danish** user interface
 
 Platform: **Raspberry Pi 4 and Pi 5** (one image for both; the Pi 5 support is new and not fully tested yet).

@@ -8,6 +8,8 @@ The one opt-in exception: apps that need a closed module to play (DRM, e.g. TV 2
 
 **Network monitor** (*Settings → Network → Network monitor*) shows live which programs on the box have connections and where they go: the internet (orange), the local network (blue), and ports the box listens on (gray).
 
+**What stays on the box:** the logs are kept on the box's SD card and never sent anywhere by themselves - you download them from the phone page when you want to. The phone page (from 1.0.25) encrypts what it sends with a key from a QR code on the TV, which never travels over the network, so logins and YouTube cookies cannot be read by others on your network; its web server runs without root.
+
 The box only contacts outside services when you use a feature. Apps only do so when they are installed:
 
 | Service | When |
@@ -30,5 +32,5 @@ The box only contacts outside services when you use a feature. Apps only do so w
 | tile.openstreetmap.org | Tesla → Map (off until you turn it on) |
 | api.opensubtitles.com | Subtitle search in the player (the title or TMDB id and your languages; your login when you download) |
 | itunes.apple.com, musicbrainz.org, coverartarchive.org | Cover art for Bluetooth music (artist and album or track; can be turned off) |
-| api.github.com, github.com | Updates and the App Store |
+| api.github.com, github.com | Updates, the App Store and its tools (yt-dlp and Node.js for YouTube) |
 | pool.ntp.org | Setting the clock at startup |

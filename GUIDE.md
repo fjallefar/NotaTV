@@ -46,7 +46,11 @@ The TV's own remote works over HDMI-CEC. Everything can be done with **the arrow
 
 **Home screen:** the apps are a grid of seven per row (the default) or a **carousel**: one row where the app in focus is the biggest. Choose under *Settings → Home screen → Layout*. In the grid, a banner at the top shows what you can continue in the app in focus. *Edit home screen* is in the control center: the tile in focus shakes a little, and OK picks it up.
 
-**Control center:** the button by the clock (↑ from the first row of apps), 🔴 Red on the home screen or the Power key. It shows the time, the box's name and address, a **sleep timer** (OK steps through off, 15, 30, 60, 90 and 120 minutes; a message one minute before, then the box goes to sleep), shortcuts to Bluetooth, Picture and sound, Network, *Edit home screen* and All settings, and Sleep, Restart and Power off.
+**Control center:** the button by the clock (↑ from the first row of apps), 🔴 Red on the home screen or the Power key. It shows the time, the box's name and address, a **sleep timer** (OK steps through off, 15, 30, 60, 90 and 120 minutes; a message one minute before, then the box goes to sleep), shortcuts to Bluetooth, Picture, Network, *Edit home screen* and All settings, and Sleep, Restart and Power off.
+
+**Sleep** (from 1.0.26): the Raspberry Pi cannot suspend, so sleep stops what is playing and turns the TV off over HDMI-CEC; the box itself stays on. A key on the remote, *Turn on* on the phone page or switching the TV to the box's input wakes it again. Turning the TV off with its own remote puts the box to sleep (*Settings → Remotes and devices → Sleep when the TV turns off*), and *Automatic sleep* (*Settings → System*) does it after a few hours without a key press.
+
+**Settings** has ten sections, the everyday ones first: Home screen, Network, Picture, Sound, Language and subtitles, Remotes and devices (HDMI-CEC and Bluetooth), Cast and sharing, Apps, System and Advanced (overclock, HDR metadata, beta updates, troubleshooting log, developer mode).
 
 ### Phone page
 
@@ -187,12 +191,17 @@ The user interface is in **English** (the default) and **Danish**. Change it und
 - **An app that crashes** NotaTV twice in a row right after start is turned off, and the box says which one. It stays installed: a new version from the App Store is loaded again, and *Install* in the App Store tries it once more.
 - **Update reminders:** the box looks for a new release twice a day and shows a reminder on the home screen at most every other day. Turn it off under *Settings → System → Update reminders*; then the box never contacts GitHub by itself.
 - The update card shows a short summary of what is new (from [CHANGELOG.md](CHANGELOG.md)).
+- **A new kernel is tried once** (from 1.0.25): if it does not start, the box goes back to the previous version by itself at the next start - no new flash.
+- **Beta updates** (*Settings → Advanced*): get new versions and apps before everyone else, to test them. They can have errors.
+- **yt-dlp and Node.js** (for YouTube) are not part of the system from 1.0.25: the box fetches them from the App Store into `/data`, so they can be updated without a system update. Right after updating to 1.0.25, YouTube says so while they are downloaded.
 
 ---
 
 ## Troubleshooting
 
 **Get the logs without SSH:** *Settings → System → Get the logs* shows the box's address and code. Open it on a phone or computer and press *Download logs*: one `.tar.gz` with all logs, system info and settings, with passwords, tokens and logins removed. Nothing is sent anywhere by itself. For more detail, turn on *Settings → Advanced → Troubleshooting log* first: every network request is logged, and the logs are kept across restarts until you turn it off.
+
+**The box restarted by itself?** From 1.0.25 the log is kept on the SD card (only new lines, every 15 minutes - a few KB a day), and at every start the box notes whether the last run ended normally, when it was last alive, whether it had lost power, and any crash message from the kernel. Get the logs as above and look at `kept/notatv.log` and `kept/crash-*`. A start nobody asked for does not turn the TV on.
 
 **A box stuck on an update** ("Restart the box to finish the (previous) update" again and again): the updater in 1.0.0-1.0.2 could not finish an update that changes the kernel. Turn on *Settings → Advanced → Developer mode (SSH)*, log in with `ssh root@<ip>` (password `notatv` on those versions) and run the fixed updater once. It finishes the update and restarts the box:
 ```

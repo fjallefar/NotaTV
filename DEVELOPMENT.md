@@ -40,8 +40,8 @@ Code and comments are in English, and user-facing text goes through `T("…")` a
 
 **Sanitizer test (A6):** `scripts/ci-uitest.sh [outdir]` builds the UI and all apps with AddressSanitizer and UBSan and
 walks the home screen, every app and every Settings section headless (about 2 minutes). It fails on the first memory
-error or undefined behaviour. GitHub runs it on every push to main (`.github/workflows/test.yml`), and Release/Apps
-wait for it. It rebuilds `src/shell` and `src/apps` with the sanitizers: run `make clean && make` there afterwards.
+error or undefined behaviour. On GitHub it only runs by hand (Actions > Test, `.github/workflows/test.yml`): since
+11/11 Release and Apps no longer wait for it. It rebuilds `src/shell` and `src/apps` with the sanitizers: run `make clean && make` there afterwards.
 
 **Debug inbox:** `echo ok > /tmp/notatv-inbox/_key` sends a key (up/down/left/right/ok/back/home/menu/playpause), and `echo /tmp/x.bmp > /tmp/notatv-inbox/_shot` takes a screenshot.
 
@@ -62,7 +62,7 @@ external/                       Buildroot BR2_EXTERNAL tree
     rootfs-overlay/usr/share/notatv/mpv/ player OSD (Lua)
     rootfs-overlay/usr/share/notatv/www/ phone page
   board/rpi4/                   Pi: config.txt, kernel/mpv/ffmpeg patches, overclock, updater
-  package/                      tvshell, tvmoon, libgamestream, yt-dlp (+ Node.js), uxplay, rpi-tools
+  package/                      tvshell, tvmoon, libgamestream, yt-dlp (config only - yt-dlp and Node.js are App Store tools, see src/tools), uxplay, rpi-tools
 src/shell/                      the user interface (C11 + SDL3)
   main.c         screen stack, main loop, inbox
   gfx.c          drawing, text, images, icons, HDR conversion
