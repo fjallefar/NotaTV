@@ -33,6 +33,10 @@ jobs:
         # Ubuntu's mirrors are sometimes unreachable from GitHub's runners: fail after a few minutes, not 28
         timeout-minutes: 8
         run: |
+          # GitHub's runners use Azure's own mirror (azure.archive.ubuntu.com), which is sometimes unreachable
+          # (11/11: an hour without DNS for it): use Ubuntu's main archive instead
+          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#; s#http://azure.archive.ubuntu.com/ubuntu/#http://archive.ubuntu.com/ubuntu/#' \
+            /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 update -qq
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y -qq build-essential cmake ninja-build pkg-config python3-pil \
             libcurl4-openssl-dev libdrm-dev libegl-dev libgles-dev libgbm-dev libdbus-1-dev libupnp-dev zlib1g-dev
