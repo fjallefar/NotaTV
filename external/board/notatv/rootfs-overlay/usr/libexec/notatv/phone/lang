@@ -1,0 +1,5 @@
+#!/bin/sh
+# Phone page: the TV's language (en/da), so the page can be shown in the same language. No code needed.
+l=$(sed -n 's/^language=//p' /data/notatv/notatv.conf 2>/dev/null | head -1)
+case "$l" in [a-z][a-z]) ;; *) l=en ;; esac
+printf 'Content-Type: text/plain; charset=utf-8\r\n\r\n%s\n' "$l"

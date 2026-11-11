@@ -749,7 +749,7 @@ static void tw_draw(Screen *s) {
             text_draw(F_REG, 26, cx, 540, C_TEXT2, AL_CENTER, v->msg);
         } else {
             text_draw(F_BOLD, 42, cx, 330, C_TEXT, AL_CENTER, v->state == S_ERROR ? T("Something went wrong") : T("Sign in to Twitch"));
-            text_draw_wrap(F_REG, 28, cx - 520, 400, 1040, 6, 40, C_TEXT2,
+            text_wrap_centered(F_REG, 28, cx - 520, 400, 1040, 6, 40, C_TEXT2,
                            v->msg[0] ? v->msg : T("Watch the channels you follow, popular streams and categories.\n\nChoose Sign in - the box then shows a code that you enter at twitch.tv/activate on your phone."));
             const char *b[1] = {v->state == S_ERROR ? T("Try again") : T("Sign in")};
             draw_buttons(cx, 780, b, 1, v->side.open ? -1 : 0);

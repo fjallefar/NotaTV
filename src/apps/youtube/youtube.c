@@ -283,7 +283,7 @@ static void subs_load(void) {
         added = n_subs - before;
         if (added) app_toast(T("%d channels imported"), added);
     }
-    qsort(subs, n_subs, sizeof(Sub), sub_cmp);
+    if (n_subs > 1) qsort(subs, n_subs, sizeof(Sub), sub_cmp); /* never with NULL (UBSan, A6) */
     subs_save();
 }
 
@@ -830,6 +830,7 @@ static void draw_hint_bar(float x0) {
     draw_hint(x0 + text_width(F_SEMI, 20, "OK") + 30 + text_width(F_REG, 22, T("Play, info, channel")) + 44, UI_H - 62, "←", T("Menu and search"));
 }
 
+static bool all_failed(const Yt *y);
 static void yt_draw(Screen *s) {
     Yt *y = s->st;
     draw_background();
@@ -862,6 +863,12 @@ static void yt_draw(Screen *s) {
             if (iy > UI_H || iy + 360 < 0) continue;
             draw_video(&r->v[i], x, iy, content_focus && y->row == gr && y->col == gc);
         }
+    } else if (all_failed(y)) {
+        float cx = x0 + (UI_W - x0) / 2;
+        draw_icon(ICON_YOUTUBE, cx, UI_H / 2 - 90, 90, RGB(229, 45, 39));
+        text_wrap_centered(F_REG, 28, cx - 480, UI_H / 2, 960, 4, 40, C_TEXT2, T("No connection to YouTube - check the network"));
+        const char *b[1] = {T("Try again")};
+        draw_buttons(cx, UI_H / 2 + 180, b, 1, content_focus ? 0 : -1);
     } else {
         float ry = 120 - y->sy;
         if (y->chan_id[0]) { /* channel header with Subscribe */
@@ -1079,11 +1086,24 @@ bool youtube_cast_play(const char *id, double start) {
     return ended;
 }
 
+/* every row on the page failed and none has videos: one message for the page instead of one per row (U2) */
+static bool all_failed(const Yt *y) {
+    if (y->page == PAGE_GRID || y->chan_id[0] || !y->n_rows) return false;
+    for (int r = 0; r < y->n_rows; r++)
+        if (!y->rows[r].failed || y->rows[r].n) return false;
+    return true;
+}
+
 static bool yt_input(Screen *s, const InputEvent *ev) {
     Yt *y = s->st;
     int act;
     if (side_input(&y->side, ev, &act)) {
         if (act >= 0) side_activate(y, act);
+        return true;
+    }
+    if (all_failed(y) && (ev->a == A_OK || ev->a == A_LEFT)) { /* Try again / the menu */
+        if (ev->a == A_LEFT) side_open(&y->side);
+        else if (!ev->repeat) side_activate(y, y->side.active);
         return true;
     }
     YRow *gr = y->page == PAGE_GRID && y->n_rows ? &y->rows[0] : NULL;

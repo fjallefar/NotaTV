@@ -284,7 +284,7 @@ static void add_row(Fl *v, const char *title, const char *base, bool foryou) {
     row_fetch(r);
 }
 
-/* the country from the setup guide (Settings → Date and time), for "popular on Netflix" */
+/* the country from the setup guide (Settings → System), for "popular on Netflix" */
 static const char *region(void) {
     const char *c = cfg_get("tz_country", "");
     return *c ? c : "DK";
@@ -761,14 +761,14 @@ static void fl_draw(Screen *s) {
         draw_icon(ICON_FILM, cx, 300, 120, ACCENT);
         if (v->state == 0) {
             text_draw(F_BOLD, 42, cx, 430, C_TEXT, AL_CENTER, T("Connect to Flimmertv"));
-            text_draw_wrap(F_REG, 28, cx - 520, 500, 1040, 6, 40, C_TEXT2,
+            text_wrap_centered(F_REG, 28, cx - 520, 500, 1040, 6, 40, C_TEXT2,
                            T("Find and request movies and series on your Flimmertv server.\n\nFind it on the network, or enter its address, e.g. 192.168.1.10:7676. Then sign in with your Flimmertv email and password."));
         } else if (v->state == 1) {
             draw_spinner(cx, 520, 30, C_TEXT);
             text_draw(F_REG, 26, cx, 580, C_TEXT2, AL_CENTER, v->msg);
         } else {
             text_draw(F_BOLD, 42, cx, 430, C_TEXT, AL_CENTER, T("Could not sign in"));
-            text_draw_wrap(F_REG, 28, cx - 520, 500, 1040, 4, 40, C_TEXT2, v->msg);
+            text_wrap_centered(F_REG, 28, cx - 520, 500, 1040, 4, 40, C_TEXT2, v->msg);
         }
         if (v->state != 1) {
             const char *b[3];

@@ -70,6 +70,7 @@ static void jreq_done(void *arg) {
     if (r->done && (r->token == jf_gen || r->token < 0)) r->done(r->ud, r->json, r->status);
     cJSON_Delete(r->json);
     free(r->path);
+    if (r->body) memset(r->body, 0, strlen(r->body)); /* may hold a password (PV3) */
     free(r->body);
     free(r);
 }
@@ -678,6 +679,7 @@ static void auth_done(void *ud, cJSON *json, long status) {
             cfg_set("jf_token", tok);
             cfg_set("jf_uid", uid);
             cfg_set("jf_name", name ? name : login_user);
+            memset(login_user, 0, sizeof login_user); /* not needed any more (PV3) */
             app_toast(T("Signed in to Jellyfin"));
             jf_connect(v);
         } else { v->state = 3; snprintf(v->msg, sizeof v->msg, T("Unexpected response from the server")); }
@@ -701,6 +703,7 @@ static void pw_done(void *ud, const char *pw) {
     v->state = 1;
     snprintf(v->msg, sizeof v->msg, T("Signing in…"));
     jf_call("POST", "/Users/AuthenticateByName", b, auth_done, v);
+    memset(b, 0, strlen(b)); /* the password (PV3) */
     free(b);
 }
 static void user_done(void *ud, const char *u) {
@@ -760,12 +763,25 @@ static void start_login(Jf *v) {
 /* ---------- find servers on the network ---------- */
 static DiscServer found[16];
 static int n_found;
+static int found_sel;
+static void found_ok(void *ud, bool yes) {
+    Jf *v = ud;
+    if (v != live || !yes || found_sel < 0 || found_sel >= n_found) return;
+    cfg_set("jf_url", found[found_sel].url);
+    keyboard_open(T("Jellyfin: username"), cfg_get("jf_name", ""), false, user_done, v);
+}
 static void found_pick(void *ud, int idx) {
     Jf *v = ud;
     if (v != live || idx < 0) return;
     if (idx >= n_found) { start_login(v); return; } /* "Enter address" */
-    cfg_set("jf_url", found[idx].url);
-    keyboard_open(T("Jellyfin: username"), cfg_get("jf_name", ""), false, user_done, v);
+    /* S17 (audit 9/11): your username and password go to whatever answered on the network - say where, and ask */
+    found_sel = idx;
+    char title[220];
+    const char *a = strstr(found[idx].url, "://");
+    snprintf(title, sizeof title, T("Sign in to %s?"), a ? a + 3 : found[idx].url);
+    confirm_open(title, strncmp(found[idx].url, "http://", 7) ? T("Your username and password are sent to this server. Only choose a server you know.")
+                 : T("Your username and password are sent to this server. Only choose a server you know. The connection on your network is not encrypted (http)."),
+                 T("Sign in"), T("Cancel"), found_ok, v);
 }
 static void disc_done(void *ud, const DiscServer *srv, int n) {
     Jf *v = ud;
@@ -890,6 +906,7 @@ static void jellyfin_row_open(const HomeItem *it, int idx) {
 }
 
 void jellyfin_forget(void) {
+    memset(login_user, 0, sizeof login_user);
     if (*jf_token()) cJSON_Delete(jf_get_sync("POST", "/Sessions/Logout", "", 4));
     cfg_set("jf_token", "");
     cfg_set("jf_uid", "");
@@ -1267,7 +1284,7 @@ static void jf_draw(Screen *s) {
         draw_icon(ICON_FILM, cx, 300, 120, JF_ACCENT);
         if (v->state == 0) {
             text_draw(F_BOLD, 42, cx, 430, C_TEXT, AL_CENTER, T("Connect to Jellyfin"));
-            text_draw_wrap(F_REG, 28, cx - 520, 500, 1040, 6, 40, C_TEXT2,
+            text_wrap_centered(F_REG, 28, cx - 520, 500, 1040, 6, 40, C_TEXT2,
                            v->msg[0] ? v->msg
                                      : T("Watch movies and shows from your Jellyfin server.\n\nFind the server on the network, or enter the address yourself (e.g. 192.168.1.10:8096). Then your username and password - you can also type from your phone."));
         } else if (v->state == 1) {
@@ -2211,7 +2228,7 @@ static void act_jf_logout(void) { app_ask_signout("Jellyfin", jellyfin_forget); 
 static const char *jf_signed_out(void) { return *jf_token() ? NULL : ITEM_HIDDEN; }
 static const Item jf_items[] = {
     {N_("Jellyfin subtitles"), IT_CYCLE, "jf_subs", "jellyfin", jfsub_o, jfsub_l,
-     .help = N_("Follow Jellyfin: the audio and subtitles your Jellyfin user settings pick (language, smart, forced only). Language setting: the player picks by Subtitle language under Picture and sound. Off: never")},
+     .help = N_("Follow Jellyfin: the audio and subtitles your Jellyfin user settings pick (language, smart, forced only). Language setting: the player picks by Subtitle language under Language and subtitles. Off: never")},
     {N_("Jellyfin: play from phone"), IT_TOGGLE, "jf_cast", "1", set_onoff, .help = N_("NotaTV appears under \"Play On\" in the Jellyfin app when you are signed in to Jellyfin here")},
     {N_("Home screen (Plex and Jellyfin)"), IT_CYCLE, "plex_home_style", "hero", plexst_o, plexst_l, .help = N_("Hero: a featured title at the top. Focus: background and info follow the selected title")},
     {N_("Sign out of Jellyfin"), IT_ACTION, .action = act_jf_logout, .help = N_("Invalidates the login at the server and deletes it from this box"),

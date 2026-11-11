@@ -1376,13 +1376,22 @@ static void login_run(Blk *bb) {
     t = oidc_token(form, &ts);
     free(form);
     if (!t) { login_fail(j, T("DR's login did not answer as expected")); goto out; }
+    /* signed out or Back pressed meanwhile (F16, audit 9/11): the new tokens are never used or saved */
     SDL_LockMutex(tok_mu);
-    bool ok = tokens_exchange(t);
+    bool gone = j->signout != SDL_GetAtomicInt(&signout_a);
+    bool ok = !gone && tokens_exchange(t);
     SDL_UnlockMutex(tok_mu);
+    if (gone) goto out;
     const char *rt = jv(t, "refresh_token");
     if (!ok) { login_fail(j, T("DR's login did not answer as expected")); goto out; }
-    if (j->signout != SDL_GetAtomicInt(&signout_a)) goto out; /* signed out meanwhile */
     if (rt && *rt) login_write(rt);
+    if (j->signout != SDL_GetAtomicInt(&signout_a)) { /* Back in the moment between: undo it */
+        char *lp = app_file("login");
+        wipe_file(lp);
+        free(lp);
+        tokens_clear();
+        goto out;
+    }
     j->ok = true;
 out:
     memset(j->pw, 0, sizeof j->pw);
@@ -1408,7 +1417,12 @@ static void login_pw_done(void *ud, const char *pw) {
     snprintf(j->pw, sizeof j->pw, "%s", pw);
     j->signout = SDL_GetAtomicInt(&signout_a);
     free(a);
-    if (!blk_wait(&j->b, T("Signing in to DR…"))) return;
+    if (!blk_wait(&j->b, T("Signing in to DR…"))) {
+        /* Back: the login still running must not finish in the background (signed in while the menu says not) */
+        SDL_AddAtomicInt(&signout_a, 1);
+        app_toast("%s", T("Sign-in cancelled"));
+        return;
+    }
     if (j->ok) {
         cfg_set("drtv_user", j->email);
         SDL_SetAtomicInt(&login_lost, 0);
@@ -1726,8 +1740,11 @@ static void dr_draw(Screen *s) {
     clip_pop();
     if (v->loading && !v->nrows && !(v->view == V_DETAIL && v->d_title)) draw_spinner(cx, UI_H / 2, 30, C_TEXT);
     else if (!v->nrows && !v->d_nbtn && v->msg[0]) {
+        /* U2: centered under the icon, and Try again (OK) */
         draw_icon(ICON_TV, cx, UI_H / 2 - 90, 90, DR_RED);
-        text_draw_wrap(F_REG, 28, cx - 480, UI_H / 2, 960, 4, 40, C_TEXT2, v->msg);
+        text_wrap_centered(F_REG, 28, cx - 480, UI_H / 2, 960, 4, 40, C_TEXT2, v->msg);
+        const char *b[1] = {T("Try again")};
+        draw_buttons(cx, UI_H / 2 + 180, b, 1, cf ? 0 : -1);
     }
     bool chan = v->nrows && v->row < v->nrows && v->col < v->rows[v->row].n && v->rows[v->row].it[v->col].kind == K_CHANNEL;
     { /* help line instead of a button bar (STATUS 104): OK, and ← for the side menu */
@@ -1756,6 +1773,12 @@ static bool dr_input(Screen *s, const InputEvent *ev) {
         if (go_back(v)) return true;
         if (v->view != V_HOME) { v->side.active = 0; go(v, V_HOME, "/", "", false); return true; }
         return false;
+    }
+    /* an empty screen with a message: OK = Try again (loads the side menu's section again) */
+    if (!v->nrows && !v->d_nbtn && v->msg[0] && !v->loading && (ev->a == A_OK || ev->a == A_LEFT)) {
+        if (ev->a == A_LEFT) side_open(&v->side);
+        else if (!ev->repeat) side_activate(v, v->side.active);
+        return true;
     }
     /* the buttons on the detail page */
     if (v->view == V_DETAIL && v->d_focus) {

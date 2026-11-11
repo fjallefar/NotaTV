@@ -1,6 +1,6 @@
 {
   "id": "jellyfin",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "api": 2,
   "name": "Jellyfin",
   "desc": "Movies and shows from your Jellyfin server",
@@ -11,10 +11,12 @@
   "order": 30,
   "default": false,
   "changes": {
-    "summary": "Mark episodes and seasons as watched without colored keys",
+    "summary": "Safer sign-in",
     "points": [
-      "OK on an episode: Play, mark as watched or unwatched",
-      "OK on a season: Episodes, mark the season as watched"
+      "The subtitle help text points to Settings → Language and subtitles",
+      "Asks before your login is sent to a server found on the network",
+      "Passwords are cleared from memory after sign-in",
+      "Messages on empty screens are centered under their heading"
     ]
   }
 }

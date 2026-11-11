@@ -3,6 +3,10 @@
 # - a tag push uses the repository variable BUILD_ON (Settings > Secrets and variables > Actions > Variables):
 #   "github" = GitHub's own runner, "build-machine" (or not set) = the build machine
 # - "Run workflow" (Actions tab) builds any existing tag, on the runner picked in the form
+# Channel (P1): "beta" publishes the release as a pre-release (only boxes with Settings > Advanced > Beta updates
+# take it) and its apps in the release "apps-beta". When it has been tested on the TV, run the workflow "Promote"
+# with the tag: then it becomes the latest release and its apps go to "apps" for everyone. A tag push uses the
+# repository variable RELEASE_CHANNEL ("beta" or "stable"; not set = stable).
 #
 # Build machine (self-hosted runner with the label "notatv"): builds in /opt/notatv, kept between releases, so
 # normally only NotaTV's own packages are rebuilt. If configs, patches or packages changed since the last
@@ -25,6 +29,11 @@ on:
         type: choice
         options: [github, build-machine]
         default: github
+      channel:
+        description: "stable = every box gets it now; beta = only boxes with Beta updates (Promote it after the TV test)"
+        type: choice
+        options: [stable, beta]
+        default: beta
 
 permissions:
   contents: write
@@ -37,11 +46,18 @@ env:
   # where to build: the form for "Run workflow", otherwise the variable BUILD_ON (default: the build machine)
   ON: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine' }}
   TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || vars.RELEASE_CHANNEL || 'stable' }}
   TREE: ${{ (github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine') == 'github' && '/home/runner/notatv' || '/opt/notatv' }}
   REPO_URL: https://github.com/${{ github.repository }}.git
 
 jobs:
+  # A6: every screen with ASan/UBSan first (test.yml); nothing is built or published when it fails
+  test:
+    uses: ./.github/workflows/test.yml
+    with:
+      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   build:
+    needs: test
     # (the same choice as ON above: runs-on cannot read env)
     runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine') == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","notatv"]') }}
     timeout-minutes: 720 # GitHub's runner stops a job after 6 hours anyway; a full build there takes about 1.5
@@ -187,6 +203,8 @@ jobs:
               with urllib.request.urlopen(req) as r:
                   return json.load(r)
           api = f"https://api.github.com/repos/{repo}/releases"
+          beta = os.environ.get("CHANNEL") == "beta"
+          store_tag = "apps-beta" if beta else "apps"
           # release notes: the section "## <version>" of CHANGELOG.md (GitHub adds its "Full Changelog" link below)
           notes, ver, sec = [], tag.lstrip("v"), False
           if os.path.exists("CHANGELOG.md"):
@@ -221,18 +239,20 @@ jobs:
                        data=f.read(), ctype="application/octet-stream")
               print("uploaded", n)
           if rel.get("draft"):
-              rel = call(f"{api}/{rel['id']}", json.dumps({"draft": False, "make_latest": "true"}).encode(), method="PATCH")
+              # beta: a pre-release, never "latest" (boxes without Beta updates do not see it)
+              pub = {"draft": False, "prerelease": True, "make_latest": "false"} if beta else {"draft": False, "make_latest": "true"}
+              rel = call(f"{api}/{rel['id']}", json.dumps(pub).encode(), method="PATCH")
           print(rel["html_url"])
 
           # the App Store: the release "apps" (a pre-release, so it never counts as the latest NotaTV) holds every
           # app package and one catalog per app API version. Files with the same name are replaced; packages for
           # older app API versions stay, so boxes that are not updated yet keep finding their apps.
           try:
-              store = call(f"{api}/tags/apps")
+              store = call(f"{api}/tags/{store_tag}")
           except urllib.error.HTTPError as e:
               if e.code != 404: raise
-              store = call(api, json.dumps({"tag_name": "apps", "target_commitish": os.environ["GITHUB_SHA"],
-                                            "name": "NotaTV App Store", "prerelease": True, "make_latest": "false",
+              store = call(api, json.dumps({"tag_name": store_tag, "target_commitish": os.environ["GITHUB_SHA"],
+                                            "name": "NotaTV App Store" + (" (beta)" if beta else ""), "prerelease": True, "make_latest": "false",
                                             "body": "App packages for the NotaTV App Store. Boxes download them from here - do not delete."}).encode())
           # the release text: every app with its version and what is new (made by apps-catalog.py --notes)
           if os.path.exists("apps-notes.md"):

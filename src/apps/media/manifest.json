@@ -1,6 +1,6 @@
 {
   "id": "media",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": 2,
   "name": "Media",
   "desc": "Movies, music and pictures from USB and network",
@@ -11,9 +11,9 @@
   "order": 90,
   "default": true,
   "changes": {
-    "summary": "Easier to use without colored keys",
+    "summary": "A small fix",
     "points": [
-      "Refresh is a button at the bottom - press down to reach it"
+      "An empty folder is read without an error in the background"
     ]
   }
 }

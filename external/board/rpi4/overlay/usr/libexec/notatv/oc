@@ -81,6 +81,7 @@ apply)
 		echo "$want" > $PENDING
 		sync; umount $BOOT
 		log "overclock: prøver $want MHz (tryboot)"
+		mark_clean "overclock test" # tryboot restarts without rcK
 		tryboot
 	fi
 	;;

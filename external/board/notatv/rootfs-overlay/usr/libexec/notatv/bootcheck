@@ -1,0 +1,43 @@
+#!/bin/sh
+# bootcheck (S05notatv, right after /data is mounted and the clock restored): why did the box start?
+# Writes it to the log, which logkeep then keeps on the SD card, so a box that restarts by itself leaves a trace.
+# - the previous run ended cleanly (mark_clean in lib.sh: restart, power off, update, overclock test) or not
+# - the last sign of life: the time saved every 15 minutes (clock)
+# - the board lost its power: the Pi 5's own clock (rtc0) keeps running while it has power, also through a crash,
+#   a restart or "off" - back at 1970 means the power was gone
+# - what the kernel left from a crash (pstore/ramoops, dtoverlay=ramoops in config.txt) is saved in logs/
+# A start nobody asked for (the box stopped by itself) does not turn the TV on (cec, $RUN/boot-unrequested).
+. /usr/libexec/notatv/lib.sh
+OK=/data/notatv/.shutdown-ok
+KEEP=/data/notatv/logs
+mkdir -p $KEEP && chmod 700 $KEEP
+num() { case "$1" in ''|*[!0-9]*) echo 0 ;; *) echo "$1" ;; esac; }
+build=$(num "$(sed -n 's/^BUILD_EPOCH=//p' /etc/notatv-release)")
+
+if [ -f $OK ]; then
+	log "boot: the last run ended normally ($(head -c 40 $OK | tr -cd 'a-z -'))"
+	rm -f $OK
+	sync
+elif [ -f /data/notatv/clock ]; then
+	last=$(num "$(cat /data/notatv/clock)")
+	when=$(date -d "@$last" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "?")
+	log "boot: the box stopped by itself last time (crash, freeze or no power) - last sign of life $when (within 15 min)"
+	: > $RUN/boot-unrequested
+fi
+# Pi 5: the board's clock reset = no power at all (a crash or a restart keeps it)
+if [ -r /sys/class/rtc/rtc0/since_epoch ]; then
+	rtc=$(num "$(cat /sys/class/rtc/rtc0/since_epoch)")
+	[ "$build" -gt 0 ] && [ "$rtc" -lt "$build" ] && [ -f /data/notatv/clock ] && log "boot: the board's clock was reset - the box had no power (cable, power supply or socket)"
+fi
+# Pi 5 reset reason from the firmware (raw; 0 = power on)
+pr=/proc/device-tree/chosen/power/power_reset
+[ -r $pr ] && log "boot: firmware reset reason $(od -An -tx1 $pr | tr -d ' \n')"
+# a crash message from the kernel's last run
+mountpoint -q /sys/fs/pstore || mount -t pstore pstore /sys/fs/pstore 2>/dev/null
+if [ -n "$(ls /sys/fs/pstore 2>/dev/null)" ]; then
+	d=$KEEP/crash-$(date +%Y%m%d-%H%M%S)
+	mkdir -p $d && cp /sys/fs/pstore/* $d/ 2>/dev/null && rm -f /sys/fs/pstore/*
+	log "boot: the kernel left a crash message from the last run (logs/${d##*/})"
+	ls -d $KEEP/crash-* 2>/dev/null | sort | head -n -5 | xargs rm -rf 2>/dev/null # the 5 newest
+fi
+exit 0

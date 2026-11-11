@@ -25,6 +25,10 @@
 #   included from config.txt). An update fills the set that is not in use and then switches with one write of
 #   that small file (same size, one sector). A power cut leaves either the old or the new set complete, and
 #   "Undo last update" switches back. Firmware files (start4.elf, fixup4.dat) are replaced as before.
+# - a new kernel set is first started once with tryboot (F3, audit 9/11): tryboot.txt loads notatv-slot-try.txt
+#   (the new set) instead of notatv-slot.txt. Only when the box has run for a minute with the user interface up is
+#   notatv-slot.txt switched. A kernel that does not start: a power cycle starts the old set, and the boot step
+#   puts the old files back ("Undo last update") - no new flash. State in /.notatv-kernel-try.
 . /usr/libexec/notatv/lib.sh
 
 ASSET=notatv-rpi4-update.tar.gz
@@ -36,9 +40,11 @@ BST=.notatv-new                 # staged files on the boot partition ($BOOT/$BST
 LIST=/usr/share/notatv/files.list
 VERIFY=/data/notatv/update-verify
 STATE=/tmp/notatv-update-state  # progress for the user interface: "<percent>" or "dl <bytes total> <file>"
-KEEP_BOOT='config.txt cmdline.txt tryboot.txt notatv-slot.txt'
+KEEP_BOOT='config.txt cmdline.txt tryboot.txt notatv-slot.txt notatv-slot-try.txt'
 SLOTF=notatv-slot.txt           # on the boot partition: which kernel set the firmware loads
 SLOTB=nota-b/                   # the second kernel set (the first is in the root)
+SLOTT=notatv-slot-try.txt       # on the boot partition: the new kernel set while it is tried once (tryboot.txt)
+KTRY=/.notatv-kernel-try        # "ready <set>" (to be tried) or "tried <set>" (the box restarted into it)
 
 die() { log "update: $*"; echo "$*"; exit 1; }
 state() { echo "$*" > $STATE; }
@@ -85,6 +91,27 @@ size_kb() { du -sk "$1" 2>/dev/null | awk '{ print $1 }'; }
 latest() { # -> TAG (vX.Y.Z), VER (X.Y.Z)
 	R=$(repo)
 	[ -n "$R" ] || die "No GitHub repository set up yet"
+	# P1 (beta channel): with "Beta updates" on, the newest vX.Y.Z also among pre-releases (a beta comes out as a
+	# pre-release and is made the latest release when it has been tested). "apps"/"apps-beta" are not versions.
+	if [ "$(cfg_get update_beta 0)" = 1 ]; then
+		L=$(curl -fsSL -m 20 --retry 2 -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$R/releases?per_page=20") \
+			|| die "Could not reach GitHub"
+		best=
+		for t in $(echo "$L" | tr ',' '\n' | awk '
+			/"tag_name": *"/ { t = $0; sub(/.*"tag_name": *"/, "", t); sub(/".*/, "", t) }
+			/"draft": *true/ { d = 1 } /"draft": *false/ { d = 0 }
+			/"prerelease": *(true|false)/ { if (t != "" && !d) print t; t = ""; d = 0 }'); do
+			v=${t#v}
+			[ "$t" != "$v" ] && valid_ver "$v" || continue
+			{ [ -z "$best" ] || newer "$v" "${best#v}"; } && best=$t
+		done
+		if [ -n "$best" ]; then
+			J=$(curl -fsSL -m 20 --retry 2 -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$R/releases/tags/$best") \
+				|| die "Could not reach GitHub"
+			TAG=$best VER=${best#v}
+			return 0
+		fi
+	fi
 	J=$(curl -fsSL -m 20 --retry 2 -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$R/releases/latest") \
 		|| die "Could not reach GitHub"
 	TAG=$(echo "$J" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
@@ -185,6 +212,77 @@ slot_migrate() {
 	fi
 	sync
 }
+# ---------------------------------------------------------------- trying a new kernel set once (F3)
+tryboot_active() { [ "$(od -An -tx1 /proc/device-tree/chosen/bootloader/tryboot 2>/dev/null | tr -d ' \n')" = 00000001 ]; }
+# tryboot.txt = config.txt, but with the new set: the next "tryboot" restart loads it once ($1 = the new set)
+kernel_try_prepare() {
+	slot_text "$1" > "$BOOT/$SLOTT.new" && mv -f "$BOOT/$SLOTT.new" "$BOOT/$SLOTT" || return 1
+	sed "s/^include $SLOTF\$/include $SLOTT/" "$BOOT/config.txt" > "$BOOT/tryboot.txt.new" || return 1
+	grep -q "^include $SLOTT\$" "$BOOT/tryboot.txt.new" || { rm -f "$BOOT/tryboot.txt.new"; return 1; }
+	# an overclock test waiting for its tryboot (libexec/notatv/oc) is given up: the kernel goes first
+	[ -f /data/notatv/oc-pending ] && { rm -f /data/notatv/oc-pending; log "update: overclock test dropped for the new kernel"; }
+	mv -f "$BOOT/tryboot.txt.new" "$BOOT/tryboot.txt" || return 1
+	printf 'ready %s\n' "$1" > $KTRY.new && mv -f $KTRY.new $KTRY || return 1
+	sync
+}
+# no trial (any more): the try files go (tryboot.txt only when it is ours, not an overclock test)
+kernel_try_clear() {
+	mount_boot || { rm -f $KTRY; return 1; }
+	grep -q "^include $SLOTT\$" "$BOOT/tryboot.txt" 2>/dev/null && rm -f "$BOOT/tryboot.txt"
+	rm -f "$BOOT/$SLOTT" $KTRY
+	sync; umount_boot
+}
+# restart: into the new kernel set once (tryboot) when one waits, otherwise as usual
+kernel_reboot() {
+	if [ -f $KTRY ] && read -r st set < $KTRY && [ "$st" = ready ]; then
+		printf 'tried %s\n' "$set" > $KTRY.new && mv -f $KTRY.new $KTRY && sync
+		log "update: starting the new kernel set once (tryboot)"
+		mark_clean "update" # tryboot restarts without rcK
+		tryboot
+	else
+		reboot
+	fi
+}
+# at boot (resume): finish a trial
+kernel_boot() {
+	[ -f $KTRY ] || return 0
+	read -r st set < $KTRY
+	if tryboot_active; then
+		# the new set started: make it the set in use when the box has run for a minute with the user interface up
+		(
+			exec 9>&- # not holding the update lock while waiting
+			sleep 60
+			pidof tvshell >/dev/null || { log "update: the new kernel started, but the user interface did not - not made permanent"; exit 0; }
+			lock
+			[ -f $KTRY ] || exit 0 # "Undo last update" was chosen meanwhile
+			mount_boot || exit 0
+			set_slot "$set" || exit 0
+			grep -q "^include $SLOTT\$" "$BOOT/tryboot.txt" 2>/dev/null && rm -f "$BOOT/tryboot.txt"
+			rm -f "$BOOT/$SLOTT" $KTRY
+			sync; umount_boot
+			log "update: the new kernel set (/$set) works - made permanent"
+		) >/dev/null 2>&1 &
+	elif [ "$st" = ready ]; then
+		# restarted another way (e.g. the power plug) before the new set was tried: try it now
+		kernel_reboot; sleep 30
+	else
+		# the new set was tried and the box came back on the old one: it did not start. Old kernel, new files:
+		# put the old files back, like "Undo last update", and start again
+		log "update: the new kernel did not start - going back to the previous version"
+		printf "%s\n" "NotaTV: the new kernel did not start - going back" > /dev/console
+		kernel_try_clear
+		if (rollback) >/dev/null 2>&1; then sync; reboot; sleep 30; fi
+		log "update: could not go back by itself - choose Undo last update"
+	fi
+}
+
+# a box from before 1.0.25: the kernel may keep its last messages through a crash (ramoops, read by bootcheck).
+# config.txt is never replaced by an update, so the two lines are added once, after the kernel-set include
+ramoops_migrate() {
+	grep -q '^dtoverlay=ramoops' "$BOOT/config.txt" 2>/dev/null && return 0
+	{ cat "$BOOT/config.txt"; printf '\n# the kernel'"'"'s last messages survive a crash (pstore, see bootcheck)\n[pi4]\ndtoverlay=ramoops-pi4\n[pi5]\ndtoverlay=ramoops\n[all]\n'; } > "$BOOT/config.txt.new" &&
+		sync && mv -f "$BOOT/config.txt.new" "$BOOT/config.txt" && sync
+}
 # remove the kernel set at prefix $1 (never the one in use)
 kset_clear() {
 	if [ -n "$1" ]; then rm -rf "$BOOT/$1"
@@ -221,7 +319,9 @@ apply() { # finish a committed change; can be run again any number of times
 	# the kernel set first: one small write
 	if [ -f "$ST/slot" ]; then
 		want=$(cat "$ST/slot")
-		[ "$(active_slot)" = "$want" ] || set_slot "$want" || return 1
+		if [ "$(active_slot)" = "$want" ]; then :
+		elif [ -f "$ST/slot-try" ]; then kernel_try_prepare "$want" || return 1 # an update: try the new set first (F3)
+		else set_slot "$want" || return 1; fi # "Undo": back to the set that worked
 	fi
 	while IFS= read -r f; do
 		[ -e "$ST/new/$f" ] || [ -L "$ST/new/$f" ] || continue # already in place
@@ -364,6 +464,7 @@ install() {
 	fi
 	bneed=0
 	slot_migrate || { discard 1; die "The update could not be installed - nothing was changed"; }
+	ramoops_migrate || log "update: could not add ramoops to config.txt (not needed)"
 	CURSLOT=$(active_slot); NEWSLOT=$(other_slot "$CURSLOT")
 	(cd $N/boot && find . ! -type d) | sed 's,^\./,,' | while IFS= read -r f; do
 		case " $KEEP_BOOT " in *" $f "*) continue ;; esac
@@ -416,6 +517,7 @@ install() {
 		[ -n "$NEWSLOT" ] && { cp "$BOOT/cmdline.txt" "$BOOT/${NEWSLOT}cmdline.txt" || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }; }
 		sync
 		printf '%s' "$NEWSLOT" > "$ST/slot"
+		: > "$ST/slot-try"
 	fi
 	stage $N || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }
 	sync
@@ -432,6 +534,7 @@ install() {
 # ---------------------------------------------------------------- rollback
 rollback() {
 	data_ok
+	kernel_try_clear # a new kernel set waiting to be tried is not used
 	[ -f $BK/version ] && [ -d $BK/root ] || die "No earlier version saved"
 	unnest $BK/boot # a backup made by 1.0.0/1.0.1 has the kernel as Image/Image
 	[ -e "$ST/COMMIT" ] && { apply || die "Restart the box to finish the previous update"; }
@@ -471,13 +574,14 @@ resume() {
 		kernel=; { [ -s "$ST/boot.list" ] || [ -f "$ST/slot" ]; } && kernel=1
 		if apply; then
 			# the kernel/firmware changed: start once more, so the box runs the new one (not the old one with new files)
-			[ -n "$kernel" ] && { log "update: boot files changed - restarting"; sync; reboot; sleep 30; }
+			[ -n "$kernel" ] && { log "update: boot files changed - restarting"; sync; kernel_reboot; sleep 30; }
 		else
 			log "update: could not finish the update at boot"
 		fi
 	elif [ -d "$ST" ]; then
 		discard
 	fi
+	kernel_boot
 	# leftovers from the first updater (1.0.0/1.0.1): it left "*.tvnew" symlinks inside folders that
 	# symlinks point to, a full copy of the system as backup, and half-copied files after a power cut
 	if [ -d $BK ] && [ ! -f $BK/version ]; then rm -rf $BK; fi
@@ -502,5 +606,6 @@ check)
 install) lock; install ;;
 rollback) lock; rollback ;;
 resume) lock; resume ;;
+reboot) kernel_reboot ;; # power reboot: into a new kernel set once, when one waits
 *) exit 1 ;;
 esac

@@ -1,6 +1,6 @@
 {
   "id": "twitch",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "api": 2,
   "name": "Twitch",
   "desc": "Live streams from the channels you follow and all of Twitch",
@@ -11,9 +11,9 @@
   "order": 50,
   "default": true,
   "changes": {
-    "summary": "Help line at the bottom instead of the button bar",
+    "summary": "Easier to read",
     "points": [
-      "OK watches, Left opens the menu with Search"
+      "Messages on empty screens are centered under their heading"
     ]
   }
 }

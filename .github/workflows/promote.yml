@@ -1,0 +1,79 @@
+# Promote (P1, beta channel): a beta release that has been tested on the TV becomes the version every box gets.
+# Actions tab > Promote > Run workflow, with the tag (e.g. v1.0.25):
+# - the release stops being a pre-release and becomes the latest release (boxes without Beta updates now find it)
+# - every file of the release "apps-beta" is copied to "apps" (packages first, the catalogs last, so a box never
+#   sees a catalog entry before its file is there). Files "apps" already has with the same SHA256 are left alone.
+# Nothing is built: the files are exactly the ones that were tested.
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The beta release to make the latest, e.g. v1.0.25"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Make the release the latest and copy its apps
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          python3 - <<'EOF'
+          import hashlib, json, os, re, urllib.error, urllib.request
+          repo, tag, tok = os.environ["GITHUB_REPOSITORY"], os.environ["TAG"].strip(), os.environ["GH_TOKEN"]
+          if not re.fullmatch(r"v[0-9]+(\.[0-9]+){0,3}", tag): raise SystemExit(f"not a version tag: {tag}")
+          hdr = {"Authorization": "Bearer " + tok, "Accept": "application/vnd.github+json"}
+          def call(url, data=None, method=None, ctype="application/json"):
+              req = urllib.request.Request(url, data=data, method=method, headers=dict(hdr, **{"Content-Type": ctype}))
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+          def download(asset):
+              req = urllib.request.Request(asset["url"], headers=dict(hdr, Accept="application/octet-stream"))
+              with urllib.request.urlopen(req) as r:
+                  return r.read()
+          api = f"https://api.github.com/repos/{repo}/releases"
+          rel = call(f"{api}/tags/{tag}")
+          if rel.get("draft"): raise SystemExit(f"{tag} is still a draft - the release run did not finish")
+          names = {a["name"] for a in rel.get("assets", [])}
+          need = {"notatv-rpi4.img.xz", "notatv-rpi4-update.tar.gz", "notatv-rpi4-update.tar.gz.sha256"}
+          if not need <= names: raise SystemExit(f"{tag} is missing files: {sorted(need - names)}")
+
+          # the apps first: when the release becomes the latest, the store already has what it needs
+          try:
+              beta = call(f"{api}/tags/apps-beta")
+          except urllib.error.HTTPError as e:
+              if e.code != 404: raise
+              beta = None
+              print("no release apps-beta: only the system release is promoted")
+          if beta:
+              store = call(f"{api}/tags/apps")
+              have = {a["name"]: a for a in store.get("assets", [])}
+              files = sorted(beta.get("assets", []), key=lambda a: a["name"].endswith(".json"))
+              for a in files:
+                  data = download(a)
+                  digest = "sha256:" + hashlib.sha256(data).hexdigest()
+                  if have.get(a["name"], {}).get("digest") == digest:
+                      continue
+                  if a["name"] in have:
+                      urllib.request.urlopen(urllib.request.Request(f"{api}/assets/{have[a['name']]['id']}", method="DELETE", headers=hdr))
+                  call(f"https://uploads.github.com/repos/{repo}/releases/{store['id']}/assets?name={a['name']}",
+                       data=data, ctype="application/octet-stream")
+                  print("app store:", a["name"])
+              if beta.get("body"):
+                  call(f"{api}/{store['id']}", json.dumps({"body": beta["body"]}).encode(), method="PATCH")
+
+          rel = call(f"{api}/{rel['id']}", json.dumps({"prerelease": False, "make_latest": "true"}).encode(), method="PATCH")
+          print("promoted:", rel["html_url"])
+          EOF

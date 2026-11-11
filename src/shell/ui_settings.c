@@ -1,16 +1,20 @@
 /* NotaTV shell - settings */
 #include "tv.h"
+#include "settings.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define MAX_ITEMS 32 /* the most items in one section (Picture and sound has 17) */
+#define MAX_ITEMS 32 /* the most items in one section (System has 20) */
 #include <time.h>
 #include <unistd.h>
 
 
 typedef struct Section { const char *name; IconId icon; const Item *items; int n; const struct Section *subs; } Section;
+
+void home_begin_edit(void); /* ui_home.c */
+void phone_qr_open(void); /* ui_setup.c */
 
 /* ---------- handlinger ---------- */
 static void helper_bg(const char *args) { run_cmd("%s/%s >/dev/null 2>&1 &", helper_path(), args); }
@@ -466,15 +470,18 @@ static const char *const as_o[] = {"0", "2", "4", "8", NULL}, *const as_l[] = {N
 static const char *const delay_o[] = {"-300", "-200", "-150", "-100", "-50", "0", "50", "100", "150", "200", "300", NULL};
 static const char *const delay_l[] = {"-300 ms", "-200 ms", "-150 ms", "-100 ms", "-50 ms", "0 ms", "+50 ms", "+100 ms", "+150 ms", "+200 ms", "+300 ms", NULL};
 
+/* STATUS 106: the everyday things first, the technical ones last (Advanced). Each section holds one subject, so a
+   setting is where a non-technical user would look for it. The order is SetSec in settings.h. */
 static const Item net_items[] = {
     {N_("Connection"), IT_INFO, .info_cmd = "net status"},
     {N_("IP address"), IT_INFO, .info_cmd = "net ip"},
     {N_("Wi-Fi network"), IT_ACTION, .action = act_wifi, .help = N_("Search for and connect to a wireless network")},
     {N_("Forget Wi-Fi"), IT_ACTION, .action = act_wifi_forget},
     {N_("Phone page"), IT_TOGGLE, "phone_enabled", "1", onoff, .help = N_("Control the box and type text from your phone's browser (http://<box IP>). Locked with the code below")},
+    {N_("Connect a phone"), IT_ACTION, .action = phone_qr_open,
+     .help = N_("A QR code for the phone's camera: the phone page then sends everything encrypted, also logins")},
     {N_("Phone page code"), IT_ACTION, .action = act_phone_pin, .value = phone_pin, .help = N_("Logins and server addresses sent from the phone must still be approved on the TV")},
     {N_("Network monitor"), IT_ACTION, .action = act_netwatch, .help = N_("See live which programs on the box talk to the internet, and to whom")},
-    {N_("Device name"), IT_TEXT, "device_name", "NotaTV", .changed = apply_name, .help = N_("The name shown in AirPlay, Plex and on the TV")},
 };
 static void apply_hdr_always(void) { if (app_video_suspend()) app_video_resume(); }
 const char *set_hdr_locked(void) { return display_hdr_ok() ? NULL : T("Not supported by the display"); }
@@ -487,59 +494,30 @@ static const char *hd_locked(void) { return display_audio_ok(DA_HD) ? NULL : T("
 /* Home screen: the layout of the apps (STATUS 105). Chosen here, in the setup guide or on the card after an update */
 static const char *const layout_o[] = {"grid", "carousel", NULL}, *const layout_l[] = {N_("Grid"), N_("Carousel"), NULL};
 static void layout_changed(void) { cfg_set_int("home_layout_offered", 1); } /* chosen: the home screen no longer asks */
+/* to the home screen in edit mode (as from the control center); the input handler returns right after an action */
+static void act_home_edit(void) { app_home(); home_begin_edit(); }
 static const Item home_items[] = {
     {N_("Layout"), IT_CYCLE, "home_layout", "grid", layout_o, layout_l, .changed = layout_changed,
-     .help = N_("Grid: the apps in rows of seven. Carousel: one row where the app in focus is the biggest. Move apps with Edit home screen above the apps")},
+     .help = N_("Grid: the apps in rows of seven. Carousel: one row where the app in focus is the biggest")},
+    {N_("Edit home screen"), IT_ACTION, .action = act_home_edit,
+     .help = N_("Move apps or remove them from the home screen. Also from ↑ above the apps")},
 };
 static const char *const hdrm_o[] = {"apple", "film", NULL}, *const hdrm_l[] = {N_("Like Apple TV"), N_("From the movie"), NULL};
-static const Item av_items[] = {
+static const Item pic_items[] = {
     {N_("Display"), IT_INFO, .info_cmd = "display info"},
     {"HDR", IT_TOGGLE, "hdr", "1", onoff, .help = N_("Send an HDR signal to the TV for HDR content"), .locked = hdr_locked},
-    {N_("Match frame rate"), IT_TOGGLE, "match_rate", "1", onoff, .help = N_("Switch the TV to the movie's frame rate (e.g. 23.976 Hz) - avoids judder")},
-    {N_("Frame rate for live TV"), IT_CYCLE, "iptv_rate", "50", rate_o, rate_l},
     {N_("Always HDR"), IT_TOGGLE, "hdr_always", "0", onoff, .changed = apply_hdr_always,
      .help = N_("The TV stays in HDR all the time - menus too - so it never switches. Menus are converted to HDR"), .locked = hdr_locked},
-    {N_("HDR brightness metadata"), IT_CYCLE, "hdr_meta", "apple", hdrm_o, hdrm_l,
-     .help = N_("Like Apple TV: fixed values (MaxCLL 4000) - brighter on many TVs. From the movie: exactly as the movie was mastered"),
-     .locked = hdr_locked},
+    {N_("Match frame rate"), IT_TOGGLE, "match_rate", "1", onoff, .help = N_("Switch the TV to the movie's frame rate (e.g. 23.976 Hz) - avoids judder")},
+    {N_("Frame rate for live TV"), IT_CYCLE, "iptv_rate", "50", rate_o, rate_l},
+};
+static const Item sound_items[] = {
     {N_("Audio output"), IT_ACTION, .action = act_audio_dev},
     {N_("Surround passthrough"), IT_TOGGLE, "audio_passthrough", "0", onoff, .help = N_("Send Dolby/DTS unchanged to a receiver or soundbar"), .locked = ac3_locked},
     {N_("DTS passthrough"), IT_TOGGLE, "pt_dts", "1", onoff, .locked = dts_locked},
     {"TrueHD / DTS-HD (Atmos)", IT_TOGGLE, "pt_hd", "0", onoff, .help = N_("Requires a receiver or soundbar that supports HD audio"), .locked = hd_locked},
-    {N_("Audio delay (lip sync)"), IT_CYCLE, "audio_delay_ms", "0", delay_o, delay_l},
-    {N_("Subtitle language"), IT_CYCLE, "sub_lang", "da,dan,dk,en,eng", lang_o, lang_l},
-    {N_("Audio language"), IT_CYCLE, "audio_lang", "da,dan,en,eng", alang_o, alang_l},
+    {N_("Audio delay (lip sync)"), IT_CYCLE, "audio_delay_ms", "0", delay_o, delay_l, .help = N_("If voices come before or after the lips move")},
     {N_("Play test sound"), IT_ACTION, .action = act_audio_test},
-    {N_("OpenSubtitles API key"), IT_TEXT, "os_apikey", "", .help = N_("Free: create an account on opensubtitles.com → Consumers → new API key")},
-    {N_("OpenSubtitles username"), IT_TEXT, "os_user", ""},
-    {N_("OpenSubtitles password"), IT_TEXT, "os_pass", ""},
-    {N_("Sign out of OpenSubtitles"), IT_ACTION, .action = act_os_logout, .locked = os_signed_out},
-};
-static const Item bt_items[] = {
-    {"Bluetooth", IT_TOGGLE, "bt_enabled", "1", onoff, .changed = bt_apply, .help = N_("Use the TV as a Bluetooth speaker for phones")},
-    {N_("Only visible while Music is open"), IT_TOGGLE, "bt_ondemand", "1", onoff, .changed = bt_apply,
-     .help = N_("Phones can only find and connect to the TV while Music or \"Pair a phone\" is open (and for 2 min. after). Paired controllers and keyboards can always connect. Turn off if phones should be able to connect on their own")},
-    {N_("Pair a phone"), IT_ACTION, .action = act_bt_pair, .help = N_("Makes the TV visible for 3 minutes. The code is confirmed here on the TV")},
-    {N_("Pair a controller or keyboard"), IT_ACTION, .action = act_bt_pad, .help = N_("Put the controller, keyboard or mouse in pairing mode - the TV finds it and pairs it")},
-    {N_("Forget paired devices"), IT_ACTION, .action = act_bt_forget, .help = N_("Choose a phone, controller or keyboard to forget - or all of them")},
-    {N_("Cover art for Bluetooth music"), IT_TOGGLE, "music_cover_lookup", "1", onoff, .help = N_("Looks up cover art at Apple (iTunes) and in MusicBrainz (open music database). Sends artist and album there")},
-    {N_("AirPlay (music from phone)"), IT_TOGGLE, "airplay_enabled", "1", onoff, .changed = restart_music, .help = N_("iPhone, iPad and Mac can play music on the TV. Local network only")},
-};
-static const Item cec_items[] = {
-    {"Status", IT_INFO, .info_cmd = "cec status"},
-    {N_("Turn on TV when the box turns on"), IT_TOGGLE, "cec_wake_tv", "1", onoff, .changed = apply_cec},
-    {N_("Switch TV to the box's input"), IT_TOGGLE, "cec_active_source", "1", onoff, .changed = apply_cec},
-    {N_("Sleep when the TV turns off"), IT_TOGGLE, "cec_standby", "1", onoff, .changed = apply_cec},
-    {N_("Turn off TV when the box goes to sleep"), IT_TOGGLE, "cec_tv_off", "1", onoff},
-    {N_("Turn on TV now (test)"), IT_ACTION, .action = act_cec_on},
-    {N_("Turn off TV now (test)"), IT_ACTION, .action = act_cec_off},
-};
-static const Item cast_items[] = {
-    {N_("DLNA (send from apps)"), IT_TOGGLE, "dlna_enabled", "1", onoff, .changed = dlna_apply, .help = N_("Apps like BubbleUPnP and \"Cast to Device\" in Windows can send video, music and pictures. Local network only")},
-    {N_("AirPlay screen mirroring"), IT_TOGGLE, "airplay_mirror", "1", onoff, .changed = mirror_apply, .help = N_("iPhone/iPad/Mac can mirror the screen to the TV (shown as \"<name> (screen)\"). The first time, the phone asks for the code below")},
-    {N_("AirPlay code"), IT_INFO, .value = airplay_pin, .locked = airplay_off},
-    {N_("Network drive"), IT_TEXT, "media_share", "", .changed = share_changed, .help = N_("smb://user:password@server/share or nfs://server/path")},
-    {N_("Network drive login"), IT_ACTION, .action = act_share_login, .locked = share_login_off},
 };
 static const char *time_now(void) {
     static char b[96];
@@ -560,6 +538,7 @@ static const char *dst_note(void) {
     const char *z = cfg_get("tz_zone", "");
     return *z && !tz_zone_has_dst(z) ? T("This region has no daylight saving time") : "";
 }
+static const char *dst_note_off(void) { return *dst_note() ? NULL : ITEM_HIDDEN; } /* no empty row in the list */
 static void act_tz(void) { tz_pick(NULL, NULL); }
 static void act_setup(void) { app_push(setup_screen()); }
 /* language: saved and the user interface is restarted (init starts it again), so all texts change */
@@ -582,65 +561,110 @@ static void act_language(void) {
     }
     choice_open(T("Language"), names, n, sel, lang_pick, NULL);
 }
-static const Item time_items[] = {
+static const Item lang_items[] = {
+    {N_("Language"), IT_ACTION, .action = act_language, .value = lang_value, .help = N_("The language of the menus. The user interface restarts when you change it")},
+    {N_("Subtitle language"), IT_CYCLE, "sub_lang", "da,dan,dk,en,eng", lang_o, lang_l, .help = N_("The subtitles the player picks when a movie has several")},
+    {N_("Audio language"), IT_CYCLE, "audio_lang", "da,dan,en,eng", alang_o, alang_l, .help = N_("The audio track the player picks when a movie has several")},
+    {N_("OpenSubtitles API key"), IT_TEXT, "os_apikey", "", .help = N_("Free: create an account on opensubtitles.com → Consumers → new API key. Needed for \"Search for subtitles\" in the player")},
+    {N_("OpenSubtitles username"), IT_TEXT, "os_user", ""},
+    {N_("OpenSubtitles password"), IT_TEXT, "os_pass", ""},
+    {N_("Sign out of OpenSubtitles"), IT_ACTION, .action = act_os_logout, .locked = os_signed_out},
+};
+/* the TV's remote over HDMI-CEC first, then Bluetooth devices */
+static const Item dev_items[] = {
+    {N_("TV remote (HDMI-CEC)"), IT_INFO, .info_cmd = "cec status"},
+    {N_("Turn on TV when the box turns on"), IT_TOGGLE, "cec_wake_tv", "1", onoff, .changed = apply_cec},
+    {N_("Switch TV to the box's input"), IT_TOGGLE, "cec_active_source", "1", onoff, .changed = apply_cec},
+    {N_("Sleep when the TV turns off"), IT_TOGGLE, "cec_standby", "1", onoff, .changed = apply_cec},
+    {N_("Turn off TV when the box goes to sleep"), IT_TOGGLE, "cec_tv_off", "1", onoff},
+    {N_("Turn on TV now (test)"), IT_ACTION, .action = act_cec_on},
+    {N_("Turn off TV now (test)"), IT_ACTION, .action = act_cec_off},
+    {"Bluetooth", IT_TOGGLE, "bt_enabled", "1", onoff, .changed = bt_apply, .help = N_("Controllers, keyboards, and phones that play music on the TV")},
+    {N_("Pair a controller or keyboard"), IT_ACTION, .action = act_bt_pad, .help = N_("Put the controller, keyboard or mouse in pairing mode - the TV finds it and pairs it")},
+    {N_("Pair a phone"), IT_ACTION, .action = act_bt_pair, .help = N_("Makes the TV visible for 3 minutes. The code is confirmed here on the TV")},
+    {N_("Forget paired devices"), IT_ACTION, .action = act_bt_forget, .help = N_("Choose a phone, controller or keyboard to forget - or all of them")},
+    {N_("Only visible while Music is open"), IT_TOGGLE, "bt_ondemand", "1", onoff, .changed = bt_apply,
+     .help = N_("Phones can only find and connect to the TV while Music or \"Pair a phone\" is open (and for 2 min. after). Paired controllers and keyboards can always connect. Turn off if phones should be able to connect on their own")},
+    {N_("Cover art for Bluetooth music"), IT_TOGGLE, "music_cover_lookup", "1", onoff, .help = N_("Looks up cover art at Apple (iTunes) and in MusicBrainz (open music database). Sends artist and album there")},
+};
+static const Item cast_items[] = {
+    {N_("AirPlay (music from phone)"), IT_TOGGLE, "airplay_enabled", "1", onoff, .changed = restart_music, .help = N_("iPhone, iPad and Mac can play music on the TV. Local network only")},
+    {N_("AirPlay screen mirroring"), IT_TOGGLE, "airplay_mirror", "1", onoff, .changed = mirror_apply, .help = N_("iPhone/iPad/Mac can mirror the screen to the TV (shown as \"<name> (screen)\"). The first time, the phone asks for the code below")},
+    {N_("AirPlay code"), IT_INFO, .value = airplay_pin, .locked = airplay_off},
+    {N_("DLNA (send from apps)"), IT_TOGGLE, "dlna_enabled", "1", onoff, .changed = dlna_apply, .help = N_("Apps like BubbleUPnP and \"Cast to Device\" in Windows can send video, music and pictures. Local network only")},
+    {N_("Network drive"), IT_TEXT, "media_share", "", .changed = share_changed, .help = N_("For the Media app: smb://user:password@server/share or nfs://server/path")},
+    {N_("Network drive login"), IT_ACTION, .action = act_share_login, .locked = share_login_off},
+};
+/* NotaTV is updated from GitHub releases */
+static const Item sys_items[] = {
+    {N_("Device name"), IT_TEXT, "device_name", "NotaTV", .changed = apply_name, .help = N_("The name shown in AirPlay, Plex and on the TV")},
     {N_("Current time"), IT_INFO, .value = time_now},
     {N_("Country and region"), IT_ACTION, .action = act_tz, .value = tz_label, .help = N_("Chosen here on the box - nothing is looked up online")},
     {N_("Daylight saving time"), IT_TOGGLE, "tz_dst", "1", onoff, .changed = tz_apply,
      .help = N_("On: the clock switches between summer and winter time by the region's rules. Off: standard time all year")},
-    {"", IT_INFO, .value = dst_note},
-};
-/* NotaTV is updated from GitHub releases */
-static const Item sys_items[] = {
-    {N_("Language"), IT_ACTION, .action = act_language, .value = lang_value, .help = N_("The language of the menus. The user interface restarts when you change it")},
-    {N_("Version"), IT_INFO, .info_cmd = "sys version"},
-    {N_("Boot time"), IT_INFO, .info_cmd = "sys boottime"},
-    {N_("Uptime"), IT_INFO, .info_cmd = "sys uptime"},
-    {N_("Hardware"), IT_INFO, .info_cmd = "sys hw"},
-    {N_("Run the setup guide again"), IT_ACTION, .action = act_setup, .help = N_("Language, country, time, network, name and apps - like the first start")},
+    {"", IT_INFO, .value = dst_note, .locked = dst_note_off},
     {N_("Screensaver"), IT_CYCLE, "screensaver_min", "10", ss_o, ss_l},
     {N_("Automatic sleep"), IT_CYCLE, "auto_sleep", "4", as_o, as_l,
      .help = N_("When no key has been pressed for this long, the box and the TV go to sleep (after a warning). Not while music or radio plays")},
-    {N_("Show FPS"), IT_TOGGLE, "show_fps", "0", onoff, .help = N_("Frames per second and slowest frame (ms) in the top right - for troubleshooting")},
-    {N_("Troubleshooting log"), IT_TOGGLE, "debug_log", "0", onoff, .changed = debug_log_apply,
-     .help = N_("Saves more details about playback and the network, also across restarts. Turn it off again when the problem is found")},
-    {N_("Get the logs"), IT_ACTION, .action = act_logs, .help = N_("Download them on a phone or computer to send to whoever helps you")},
-    {N_("Developer mode (SSH)"), IT_TOGGLE, "ssh_enabled", "0", onoff, .changed = apply_ssh,
-     .help = N_("SSH login as root with the password shown below. Every box has its own password")},
-    {N_("SSH password"), IT_INFO, .info_cmd = "ssh password", .locked = ssh_off, .help = N_("Log in with ssh root@<the box's address>")},
     {N_("Update NotaTV"), IT_ACTION, .action = act_update_gh, .help = N_("Looks for a new version on GitHub and installs it")},
     {N_("Update reminders"), IT_TOGGLE, "update_notify", "1", onoff,
      .help = N_("Looks for a new version on GitHub twice a day and reminds you every other day. Off: NotaTV never checks by itself")},
     {N_("Undo last update"), IT_ACTION, .action = act_rollback, .help = N_("Goes back to the version from before the last update")},
+    {N_("Version"), IT_INFO, .info_cmd = "sys version"},
+    {N_("Hardware"), IT_INFO, .info_cmd = "sys hw"},
+    {N_("Boot time"), IT_INFO, .info_cmd = "sys boottime"},
+    {N_("Uptime"), IT_INFO, .info_cmd = "sys uptime"},
+    {N_("Get the logs"), IT_ACTION, .action = act_logs, .help = N_("Download them on a phone or computer to send to whoever helps you")},
+    {N_("Run the setup guide again"), IT_ACTION, .action = act_setup, .help = N_("Language, country, time, network, name and apps - like the first start")},
     {N_("Sleep"), IT_ACTION, .action = act_sleep},
     {N_("Restart"), IT_ACTION, .action = act_reboot},
     {N_("Power off"), IT_ACTION, .action = act_poweroff},
     {N_("Reset to factory settings"), IT_ACTION, .action = act_reset},
 };
+/* Advanced: rarely needed, for troubleshooting and tinkering. The overclock line is set for the board we run on
+   (an SD card can move between a Pi 4 and a Pi 5): Pi 4 cpu_mhz (1500), Pi 5 cpu_mhz5 (2400, over_voltage_delta above
+   that - see libexec/notatv/oc) */
 static const char *const cpu_o[] = {"1500", "1600", "1700", "1800", "1900", "2000", "2100", "2147", NULL};
 static const char *const cpu_l[] = {N_("1500 MHz (default)"), "1600 MHz", "1700 MHz", "1800 MHz", "1900 MHz", "2000 MHz", "2100 MHz", N_("2147 MHz (max - often unstable)"), NULL};
-static const Item oc_items[] = {
-    {N_("Now"), IT_INFO, .info_cmd = "oc status"},
+static const char *const cpu5_o[] = {"2400", "2600", "2800", "3000", NULL};
+static const char *const cpu5_l[] = {N_("2400 MHz (default)"), "2600 MHz", "2800 MHz", N_("3000 MHz (max - often unstable)"), NULL};
+/* P1: beta channel (update looks among pre-releases, the App Store at apps-beta); fetch the catalog again now */
+static void beta_changed(void) { appcat_refresh(); }
+#define ADV_CPU 1 /* the index of "CPU frequency" in adv_items */
+static Item adv_items[] = { /* not const: ADV_CPU is set for the board in rebuild_apps */
+    {N_("Overclock"), IT_INFO, .info_cmd = "oc status"},
     {N_("CPU frequency"), IT_CYCLE, "cpu_mhz", "1500", cpu_o, cpu_l,
      .help = N_("Above 1500 MHz the voltage is raised (over_voltage=6). Requires good cooling and a 5.1 V/3 A power supply")},
     {N_("Apply and restart"), IT_ACTION, .action = act_oc_apply,
      .help = N_("The new frequency is tried once first and saved after the box has run fine for a minute")},
+    {N_("HDR brightness metadata"), IT_CYCLE, "hdr_meta", "apple", hdrm_o, hdrm_l,
+     .help = N_("Like Apple TV: fixed values (MaxCLL 4000) - brighter on many TVs. From the movie: exactly as the movie was mastered"),
+     .locked = hdr_locked},
+    {N_("Beta updates"), IT_TOGGLE, "update_beta", "0", onoff, .changed = beta_changed,
+     .help = N_("Get new versions and apps before everyone else, to test them. They can have errors. Off: only versions that have been tested")},
+    {N_("Show FPS"), IT_TOGGLE, "show_fps", "0", onoff, .help = N_("Frames per second and slowest frame (ms) in the top right - for troubleshooting")},
+    {N_("Troubleshooting log"), IT_TOGGLE, "debug_log", "0", onoff, .changed = debug_log_apply,
+     .help = N_("Saves more details about playback and the network, also across restarts. Turn it off again when the problem is found")},
+    {N_("Developer mode (SSH)"), IT_TOGGLE, "ssh_enabled", "0", onoff, .changed = apply_ssh,
+     .help = N_("SSH login as root with the password shown below. Every box has its own password")},
+    {N_("SSH password"), IT_INFO, .info_cmd = "ssh password", .locked = ssh_off, .help = N_("Log in with ssh root@<the box's address>")},
 };
-/* Pi 5: 2400 MHz as standard; above that over_voltage_delta raises the voltage (see libexec/notatv/oc) */
-static const char *const cpu5_o[] = {"2400", "2600", "2800", "3000", NULL};
-static const char *const cpu5_l[] = {N_("2400 MHz (default)"), "2600 MHz", "2800 MHz", N_("3000 MHz (max - often unstable)"), NULL};
-static const Item oc5_items[] = {
-    {N_("Now"), IT_INFO, .info_cmd = "oc status"},
-    {N_("CPU frequency"), IT_CYCLE, "cpu_mhz5", "2400", cpu5_o, cpu5_l,
-     .help = N_("Above 2400 MHz the voltage is raised a little. Requires the active cooler and a 5 V/5 A power supply")},
-    {N_("Apply and restart"), IT_ACTION, .action = act_oc_apply,
-     .help = N_("The new frequency is tried once first and saved after the box has run fine for a minute")},
-};
+static void set_cpu_item(void) {
+    Item *it = &adv_items[ADV_CPU];
+    bool p5 = board_pi() == 5;
+    it->key = p5 ? "cpu_mhz5" : "cpu_mhz";
+    it->def = p5 ? "2400" : "1500";
+    it->opts = p5 ? cpu5_o : cpu_o;
+    it->labels = p5 ? cpu5_l : cpu_l;
+    it->help = p5 ? N_("Above 2400 MHz the voltage is raised a little. Requires the active cooler and a 5 V/5 A power supply")
+                  : N_("Above 1500 MHz the voltage is raised (over_voltage=6). Requires good cooling and a 5.1 V/3 A power supply");
+}
 #define NI(a) (int)(sizeof(a) / sizeof(a[0]))
-/* Settings → Apps: the installed apps that have settings (from the app register), and Cast and sharing.
+/* Settings → Apps: the installed apps that have settings (from the app register).
    Built when Settings opens (apps can be installed and uninstalled meanwhile). */
-#define MAX_APP_SECS 31
-static Item apps_links[MAX_APP_SECS + 1];
-static Section app_subs[MAX_APP_SECS + 1];
+#define MAX_APP_SECS 32
+static Item apps_links[MAX_APP_SECS];
+static Section app_subs[MAX_APP_SECS];
 static int n_app_links;
 static bool item_hidden(const Item *it) {
     const char *l = it->locked ? it->locked() : NULL;
@@ -664,35 +688,32 @@ static void build_app_sections(void) {
         app_subs[n] = (Section){a->name, a->icon, a->settings, ni};
         n++;
     }
-    apps_links[n] = (Item){N_("Cast and sharing"), IT_SUB, .sub = n};
-    app_subs[n] = (Section){N_("Cast and sharing"), ICON_PLAY, cast_items, NI(cast_items)};
-    n_app_links = n + 1;
+    if (!n) apps_links[n++] = (Item){N_("None of the installed apps have settings"), IT_INFO}; /* never an empty list */
+    n_app_links = n;
 }
-static Section sections[] = { /* not const: the number of Apps items is set when Settings opens */
-    {N_("Home screen"), ICON_TV, home_items, NI(home_items)},
-    {N_("Network"), ICON_WIFI, net_items, NI(net_items)},
-    {N_("Picture and sound"), ICON_FILM, av_items, NI(av_items)},
-    {"HDMI-CEC", ICON_TV, cec_items, NI(cec_items)},
-    {"Bluetooth", ICON_MUSIC, bt_items, NI(bt_items)},
-    {N_("Apps"), ICON_PLAY, apps_links, 1, app_subs}, /* n is set by build_app_sections */
-    {N_("Date and time"), ICON_CLOCK, time_items, NI(time_items)},
-    {N_("System"), ICON_GEAR, sys_items, NI(sys_items)},
-    {"Overclock", ICON_POWER, oc_items, NI(oc_items)},
+static Section sections[] = { /* not const: the number of Apps items is set when Settings opens. Order = SetSec */
+    [SET_HOME] = {N_("Home screen"), ICON_TV, home_items, NI(home_items)},
+    [SET_NET] = {N_("Network"), ICON_WIFI, net_items, NI(net_items)},
+    [SET_PICTURE] = {N_("Picture"), ICON_FILM, pic_items, NI(pic_items)},
+    [SET_SOUND] = {N_("Sound"), ICON_MUSIC, sound_items, NI(sound_items)},
+    [SET_LANG] = {N_("Language and subtitles"), ICON_SEARCH, lang_items, NI(lang_items)},
+    [SET_DEVICES] = {N_("Remotes and devices"), ICON_USB, dev_items, NI(dev_items)},
+    [SET_CAST] = {N_("Cast and sharing"), ICON_PLAY, cast_items, NI(cast_items)},
+    [SET_APPS] = {N_("Apps"), ICON_STAR, apps_links, 1, app_subs}, /* n is set by build_app_sections */
+    [SET_SYSTEM] = {N_("System"), ICON_GEAR, sys_items, NI(sys_items)},
+    [SET_ADVANCED] = {N_("Advanced"), ICON_POWER, adv_items, NI(adv_items)},
 };
 #define N_SEC NI(sections)
+_Static_assert(N_SEC == SET_N, "sections[] and SetSec do not match");
 static void rebuild_apps(void) {
     build_app_sections();
-    for (int i = 0; i < N_SEC; i++) /* Overclock: the limits of the board we run on */
-        if (sections[i].items == oc_items || sections[i].items == oc5_items) {
-            sections[i].items = board_pi() == 5 ? oc5_items : oc_items;
-            sections[i].n = board_pi() == 5 ? NI(oc5_items) : NI(oc_items);
-        }
-    for (int i = 0; i < N_SEC; i++)
-        if (sections[i].items == apps_links) sections[i].n = n_app_links;
+    set_cpu_item();
+    sections[SET_APPS].n = n_app_links;
 }
 
-_Static_assert(NI(net_items) <= MAX_ITEMS && NI(av_items) <= MAX_ITEMS && NI(cec_items) <= MAX_ITEMS && NI(bt_items) <= MAX_ITEMS &&
-               NI(cast_items) <= MAX_ITEMS && NI(sys_items) <= MAX_ITEMS && NI(oc_items) <= MAX_ITEMS && NI(oc5_items) <= MAX_ITEMS, "øg MAX_ITEMS");
+_Static_assert(NI(net_items) <= MAX_ITEMS && NI(home_items) <= MAX_ITEMS && NI(pic_items) <= MAX_ITEMS && NI(sound_items) <= MAX_ITEMS &&
+               NI(lang_items) <= MAX_ITEMS && NI(dev_items) <= MAX_ITEMS && NI(cast_items) <= MAX_ITEMS && NI(sys_items) <= MAX_ITEMS &&
+               NI(adv_items) <= MAX_ITEMS && MAX_APP_SECS <= MAX_ITEMS, "øg MAX_ITEMS");
 
 /* ---------- screen ---------- */
 typedef struct {
@@ -1071,7 +1092,7 @@ bool app_settings_open(const char *id) {
     return false;
 }
 
-/* Settings opened on one section (0 = Home screen, 1 = Network, 2 = Picture and sound, 4 = Bluetooth ...) with the list in focus */
+/* Settings opened on one section (SetSec in settings.h) with the list in focus */
 Screen *settings_screen_at(int sec) {
     Screen *s = settings_screen();
     Settings *st = s->st;

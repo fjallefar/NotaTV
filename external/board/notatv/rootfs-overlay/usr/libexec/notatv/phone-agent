@@ -1,0 +1,49 @@
+#!/bin/sh
+# NotaTV phone page, the root side (A1 step 3, audit 9/11). httpd and its CGI run as the user phone and can only
+# put requests in /run/notatv-phone (see phone-cgi). This takes each one, checks it is a plain file from phone of a
+# sane size, and runs the handler in /usr/libexec/notatv/phone/<endpoint> (set/logs/lang) as before - with the
+# code or the encryption (S6), the lockout and the approval on the TV. The answer goes back as resp.<id>, readable
+# for phone only. Started by S60notatv-services.
+. /usr/libexec/notatv/lib.sh
+SP=/run/notatv-phone          # root:phone 1730: phone may add files, not list or remove others'
+W=/run/notatv/phone-work      # root only
+MAX=820000
+
+rm -rf $SP $W
+mkdir -p $SP $W || exit 1
+chown root:phone $SP && chmod 1730 $SP && chmod 700 $W || exit 1
+
+handle() {
+	name=$1
+	case "$name" in req.*.tmp|*/*) return ;; req.*) ;; *) return ;; esac
+	id=${name#req.}
+	case "$id" in *[!a-f0-9]*|'') return ;; esac
+	f=$SP/$name
+	# a plain file that phone made (not a link to something else), moved out of phone's reach before it is read
+	[ -n "$(find "$f" -maxdepth 0 -type f -user phone 2>/dev/null)" ] || { rm -f "$f"; return; }
+	mv -f "$f" $W/$id 2>/dev/null || return
+	[ "$(wc -c < $W/$id)" -le $MAX ] || { rm -f $W/$id; return; }
+	ep=$(head -n 1 $W/$id)
+	l2=$(sed -n 2p $W/$id)
+	case "$ep" in set|logs|lang) ;; *) rm -f $W/$id; return ;; esac
+	method=${l2%% *}
+	case "$method" in GET|POST) ;; *) method=GET ;; esac
+	addr=$(printf '%s' "${l2#* }" | tr -cd '0-9a-fA-F.:[]' | cut -c1-64)
+	hl=$((${#ep} + ${#l2} + 2))
+	tail -c +$((hl + 1)) $W/$id > $W/$id.body
+	rm -f $W/$id
+	blen=$(wc -c < $W/$id.body)
+	(
+		REQUEST_METHOD=$method REMOTE_ADDR=$addr CONTENT_LENGTH=$blen $H/phone/$ep < $W/$id.body > $W/$id.resp 2>/dev/null
+		rm -f $W/$id.body
+		chgrp phone $W/$id.resp && chmod 640 $W/$id.resp && mv -f $W/$id.resp $SP/resp.$id
+	) &
+}
+
+# requests that came while starting, then each new one as it is moved into place (phone-cgi: write .tmp, rename)
+for f in $SP/req.*; do [ -e "$f" ] && handle "${f##*/}"; done
+inotifyd - $SP:y | while read -r ev dir name; do
+	handle "$name"
+	# answers nobody fetched (the phone went away) and half-written requests
+	find $SP -maxdepth 1 \( -name 'resp.*' -o -name 'req.*.tmp' \) -mmin +2 -exec rm -f {} \; 2>/dev/null
+done

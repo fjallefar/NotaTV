@@ -773,7 +773,7 @@ local function menu_key(k)
             if sec.id == "subsearch" and meta.subnokey then
                 -- no search without a key: say where to add it (two short lines, so it fits on the screen)
                 toast(T("Searching for subtitles needs a free OpenSubtitles key.") .. "\n" ..
-                    T("Add it in Settings → Picture and sound."), 6)
+                    T("Add it in Settings → Language and subtitles."), 6)
                 close_menu()
                 return
             elseif sec.id == "subsearch" then

@@ -50,14 +50,18 @@ The TV's own remote works over HDMI-CEC. Everything can be done with **the arrow
 
 ### Phone page
 
-Open `http://<box IP>` on your phone. From there you can:
+Scan the QR code under *Settings → Network → Connect a phone* with the phone's camera (or open `http://<box IP>`). From there you can:
 - use the remote control
 - type straight into a text field on the TV
 - set up IPTV, Xtream Codes, YouTube and network drives
 
 Keys and text work right away. **Playlists, logins, network drives, names and YouTube accounts are only saved after you approve them on the TV.**
 
-The page is locked with a code. You set it in the setup guide and can change it under *Settings → Network → Phone page code* (6-8 digits). 10 wrong codes in 10 minutes lock the page, and it only accepts POST requests of at most 512 KB. The page uses plain HTTP inside your home network, so the code is sent unencrypted: it keeps others on the network out, but do not reuse a password you use elsewhere.
+**Encrypted (from 1.0.25):** the QR code holds a key in the part of the address after `#`, which the browser never sends over the network. The page encrypts everything it sends with it (XSalsa20-Poly1305), so logins, passwords and YouTube cookies cannot be read by others on the network, and the key is also the login - no code to type. A message can only be used once and only within 10 minutes. *New QR code* on the same screen makes a new key; phones with the old one must scan again. The key is kept only in that browser tab.
+
+Without the QR code the page asks for the code (set in the setup guide, *Settings → Network → Phone page code*, 6-8 digits). With the code you can use the remote and type text, but **logins, playlists, network drives and YouTube accounts are only accepted encrypted**. 10 wrong codes in 10 minutes lock the page, and it only accepts POST requests of at most 512 KB.
+
+The web server runs as its own user without access to settings or logins; it only hands requests to a small service that checks them (from 1.0.25).
 
 ---
 
@@ -133,7 +137,7 @@ USB drives are mounted automatically. SMB network drives (with a login or as a g
 
 **Finding servers** (Plex, Jellyfin, Seerr, Flimmer, TeslaMate) only searches your local network: Plex GDM, Jellyfin UDP 7359, and a scan of your own subnet for the other servers' ports.
 
-**Subtitles from OpenSubtitles** (Plex and Jellyfin): choose *Search subtitles* in the player menu. It needs a free API key: create an account on opensubtitles.com, make a key under *Consumers* and enter it in *Settings → Picture and sound*, together with your OpenSubtitles username and password (OpenSubtitles may refuse downloads without a login). Movies are found by their TMDB id, episodes by show, season and episode; the subtitle you pick is turned on at once.
+**Subtitles from OpenSubtitles** (Plex and Jellyfin): choose *Search subtitles* in the player menu. It needs a free API key: create an account on opensubtitles.com, make a key under *Consumers* and enter it in *Settings → Language and subtitles*, together with your OpenSubtitles username and password (OpenSubtitles may refuse downloads without a login). Movies are found by their TMDB id, episodes by show, season and episode; the subtitle you pick is turned on at once.
 
 ---
 
@@ -154,7 +158,7 @@ Google Cast/Chromecast cannot be built as open source, because phones require a 
 - The first time a phone or PC wants to play through DLNA or YouTube cast, the TV asks whether it may. **AirPlay screen mirroring** asks for the box's 4-digit code the first time (shown on the TV and under *Settings → Cast and sharing*).
 - **Firewall:** the box's services (phone page, AirPlay, cast, DLNA, SSH) only answer devices on the local network.
 
-**Bluetooth pairing:** *Settings → Bluetooth → Pair a phone* makes the TV visible for 3 minutes. The phone and the TV show the same code, and you confirm it on the TV, so nobody can pair without that confirmation. Otherwise the TV is only visible while Music is open. *Pair a controller or keyboard* finds controllers, keyboards and mice in pairing mode; a keyboard that needs a code shows it on the TV.
+**Bluetooth pairing:** *Settings → Remotes and devices → Pair a phone* makes the TV visible for 3 minutes. The phone and the TV show the same code, and you confirm it on the TV, so nobody can pair without that confirmation. Otherwise the TV is only visible while Music is open. *Pair a controller or keyboard* finds controllers, keyboards and mice in pairing mode; a keyboard that needs a code shows it on the TV.
 
 ---
 
@@ -170,7 +174,7 @@ Google Cast/Chromecast cannot be built as open source, because phones require a 
 
 ## Languages
 
-The user interface is in **English** (the default) and **Danish**. Change it under *Settings → System → Language* or in the first step of the setup guide. The default subtitle and audio languages, Seerr's metadata language and the country list follow it. The keyboard layout (on-screen and physical) is Danish when the language is Danish or the country is Denmark, Greenland or the Faroe Islands, otherwise US.
+The user interface is in **English** (the default) and **Danish**. Change it under *Settings → Language and subtitles → Language* or in the first step of the setup guide. The default subtitle and audio languages, Seerr's metadata language and the country list follow it. The keyboard layout (on-screen and physical) is Danish when the language is Danish or the country is Denmark, Greenland or the Faroe Islands, otherwise US.
 
 ---
 
@@ -188,9 +192,9 @@ The user interface is in **English** (the default) and **Danish**. Change it und
 
 ## Troubleshooting
 
-**Get the logs without SSH:** *Settings → System → Get the logs* shows the box's address and code. Open it on a phone or computer and press *Download logs*: one `.tar.gz` with all logs, system info and settings, with passwords, tokens and logins removed. Nothing is sent anywhere by itself. For more detail, turn on *Settings → System → Troubleshooting log* first: every network request is logged, and the logs are kept across restarts until you turn it off.
+**Get the logs without SSH:** *Settings → System → Get the logs* shows the box's address and code. Open it on a phone or computer and press *Download logs*: one `.tar.gz` with all logs, system info and settings, with passwords, tokens and logins removed. Nothing is sent anywhere by itself. For more detail, turn on *Settings → Advanced → Troubleshooting log* first: every network request is logged, and the logs are kept across restarts until you turn it off.
 
-**A box stuck on an update** ("Restart the box to finish the (previous) update" again and again): the updater in 1.0.0-1.0.2 could not finish an update that changes the kernel. Turn on *Settings → System → Developer mode (SSH)*, log in with `ssh root@<ip>` (password `notatv` on those versions) and run the fixed updater once. It finishes the update and restarts the box:
+**A box stuck on an update** ("Restart the box to finish the (previous) update" again and again): the updater in 1.0.0-1.0.2 could not finish an update that changes the kernel. Turn on *Settings → Advanced → Developer mode (SSH)*, log in with `ssh root@<ip>` (password `notatv` on those versions) and run the fixed updater once. It finishes the update and restarts the box:
 ```
 curl -fsSL https://raw.githubusercontent.com/fjallefar/NotaTV/main/external/board/rpi4/overlay/usr/libexec/notatv/update -o /tmp/update-fix && sh /tmp/update-fix resume
 ```

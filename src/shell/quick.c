@@ -1,6 +1,7 @@
 /* NotaTV shell - the control center: slides down at the top right (the button by the clock on the home screen, Red, or the Power key).
    Sleep timer, shortcuts into Settings, and sleep / restart / power off. */
 #include "tv.h"
+#include "settings.h"
 #include <glob.h>
 #include <math.h>
 #include <stdio.h>
@@ -8,7 +9,6 @@
 #include <string.h>
 #include <time.h>
 
-Screen *settings_screen_at(int sec);
 void home_begin_edit(void); /* ui_home.c */
 
 /* the sleep timer: the box goes to sleep at this time (0 = off). Checked by quick_tick every frame */
@@ -74,7 +74,7 @@ typedef enum { Q_TIMER, Q_BT, Q_AV, Q_NET, Q_EDIT, Q_ALL, Q_SLEEP, Q_RESTART, Q_
 typedef struct { int sel; bool closing, from_home; float out; } Quick;
 
 static const char *q_label(QItem i) {
-    static const char *l[Q_N] = {N_("Sleep timer"), "Bluetooth", N_("Picture and sound"), N_("Network"), N_("Edit home screen"),
+    static const char *l[Q_N] = {N_("Sleep timer"), "Bluetooth", N_("Picture"), N_("Network"), N_("Edit home screen"),
                                  N_("All settings"), N_("Sleep"), N_("Restart"), N_("Power off")};
     return T(l[i]);
 }
@@ -208,9 +208,9 @@ static bool quick_input(Screen *s, const InputEvent *ev) {
         switch ((QItem)q->sel) {
         case Q_TIMER: timer_step(1); return true;
         case Q_EDIT: app_close(s); home_begin_edit(); return true; /* after the close: going back to home resets it */
-        case Q_BT: sec = 4; break; /* the section numbers in ui_settings.c sections[] (0 = Home screen) */
-        case Q_AV: sec = 2; break;
-        case Q_NET: sec = 1; break;
+        case Q_BT: sec = SET_DEVICES; break;
+        case Q_AV: sec = SET_PICTURE; break;
+        case Q_NET: sec = SET_NET; break;
         case Q_ALL: sec = 99; break;
         case Q_SLEEP: run_cmd("%s/power sleep &", helper_path()); break;
         case Q_RESTART: run_cmd("%s/power reboot &", helper_path()); break;

@@ -558,6 +558,40 @@ static char *cfg_clean(const char *s) {
     return o;
 }
 
+/* PV3 (audit 9/11): a replaced or removed value cannot be freed at once - another thread may be reading it (see
+   cfg_lock) - so tokens and passwords stayed in memory until a restart. Now each old value is kept here and zeroed
+   a minute later (cfg_reap, from the main loop): a reader that still holds it then sees "", never freed memory. */
+#define CFG_RETIRE_MAX 64
+static struct { char *p; Uint64 t; } cfg_retired[CFG_RETIRE_MAX];
+static int n_retired;
+static void cfg_wipe(char *p) {
+    volatile char *v = p;
+    for (size_t i = 0, n = strlen(p); i < n; i++) v[i] = 0;
+}
+static void cfg_retire(char *p) { /* with cfg_lock held */
+    if (!p) return;
+    if (n_retired == CFG_RETIRE_MAX) { /* full: the oldest is zeroed now */
+        cfg_wipe(cfg_retired[0].p);
+        memmove(cfg_retired, cfg_retired + 1, sizeof cfg_retired[0] * (CFG_RETIRE_MAX - 1));
+        n_retired--;
+    }
+    cfg_retired[n_retired].p = p;
+    cfg_retired[n_retired].t = SDL_GetTicks();
+    n_retired++;
+}
+void cfg_reap(void) {
+    if (!n_retired || !cfg_lock) return; /* almost always: nothing to do, no lock */
+    Uint64 now = SDL_GetTicks();
+    SDL_LockMutex(cfg_lock);
+    int k = 0;
+    for (int i = 0; i < n_retired; i++) {
+        if (now - cfg_retired[i].t >= 60000) cfg_wipe(cfg_retired[i].p); /* the memory itself is never freed */
+        else cfg_retired[k++] = cfg_retired[i];
+    }
+    n_retired = k;
+    SDL_UnlockMutex(cfg_lock);
+}
+
 void cfg_set(const char *key_in, const char *val_in) {
     if (!val_in) val_in = "";
     char *key = cfg_clean(key_in), *val = cfg_clean(val_in);
@@ -572,7 +606,9 @@ static void cfg_set_clean(const char *key, const char *val) {
     for (int i = 0; i < n_cfg; i++)
         if (strcmp(cfg[i].k, key) == 0) {
             if (strcmp(cfg[i].v, val) != 0) {
-                cfg[i].v = xstrdup(val); /* the old value is leaked on purpose (see cfg_lock) */
+                char *old = cfg[i].v;
+                cfg[i].v = xstrdup(val); /* the old value is never freed (see cfg_lock), but zeroed in a minute */
+                cfg_retire(old);
                 cfg_save();
             }
             SDL_UnlockMutex(cfg_lock);
@@ -599,6 +635,7 @@ void cfg_unset(const char *key) {
             Kv *n = xmalloc(sizeof(Kv) * (n_cfg > 1 ? n_cfg - 1 : 1));
             int k = 0;
             for (int j = 0; j < n_cfg; j++) if (j != i) n[k++] = cfg[j];
+            cfg_retire(cfg[i].v); /* zeroed in a minute (PV3) */
             cfg = n;
             n_cfg = k;
             cfg_save();

@@ -1,6 +1,6 @@
 {
   "id": "seerr",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "api": 2,
   "name": "Seerr",
   "desc": "Find and request movies and shows for Plex",
@@ -11,10 +11,12 @@
   "order": 60,
   "default": true,
   "changes": {
-    "summary": "Finds your Seerr server on the network by itself",
+    "summary": "Says so when Plex is not signed in",
     "points": [
-      "The first time you open Seerr it searches the network (Overseerr, Jellyseerr and Seerr on port 5055), so you only have to pick the server",
-      "Find server on the network is also on the setup screen and in the Seerr menu"
+      "Without Plex sign-in, Seerr explains what to do instead of seeming to do nothing",
+      "Local login (email) is a button on that screen",
+      "Asks before your Plex login is used with a server found on the network",
+      "Messages on empty screens are centered under their heading"
     ]
   }
 }

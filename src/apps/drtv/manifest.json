@@ -1,6 +1,6 @@
 {
   "id": "drtv",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "DRTV",
   "desc": "DR's live channels and programmes - free, no account needed",
@@ -11,10 +11,10 @@
   "order": 36,
   "default": false,
   "changes": {
-    "summary": "Help line at the bottom instead of the button bar",
+    "summary": "Back during sign-in really cancels",
     "points": [
-      "OK opens or plays, Left opens the menu with Search",
-      "Nothing at the bottom covers the rows any more"
+      "Pressing Back while signing in no longer leaves the box half signed in",
+      "Errors are centered and have Try again"
     ]
   }
 }

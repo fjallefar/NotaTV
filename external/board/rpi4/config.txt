@@ -25,9 +25,12 @@ start_file=start4.elf
 fixup_file=fixup4.dat
 hdmi_enable_4kp60=1
 dtparam=audio=on
+# the kernel's last messages survive a crash and restart (pstore, saved by bootcheck in /data/notatv/logs)
+dtoverlay=ramoops-pi4
 
 [pi5]
 # 4K60 works on both HDMI ports without extra settings
+dtoverlay=ramoops
 
 [all]
 # the kernel set in use (the NotaTV updater switches it)

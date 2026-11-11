@@ -36,8 +36,8 @@ msgstr "Opdater"
 msgid "Movies, music and pictures from USB and network"
 msgstr "Film, musik og billeder fra USB og netværk"
 
-msgid "Easier to use without colored keys"
-msgstr "Nemmere at bruge uden farveknapper"
+msgid "A small fix"
+msgstr "En lille rettelse"
 
-msgid "Refresh is a button at the bottom - press down to reach it"
-msgstr "Opdatér er en knap nederst - tryk ned for at nå den"
+msgid "An empty folder is read without an error in the background"
+msgstr "En tom mappe læses uden en fejl i baggrunden"

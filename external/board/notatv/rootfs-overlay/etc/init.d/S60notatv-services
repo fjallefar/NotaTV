@@ -9,8 +9,11 @@ start)
 		$H/firewall apply
 		$H/net up
 		$H/cec daemon &
-		# phone remote / text input
-		httpd -p 80 -h /usr/share/notatv/www
+		# phone remote / text input: httpd and its CGI as the user phone, the requests handled by phone-agent (root)
+		# (A1 step 3, audit 9/11); the agent makes /run/notatv-phone first
+		$H/phone-agent >/dev/null 2>&1 &
+		usleep 300000
+		httpd -p 80 -u phone:phone -h /usr/share/notatv/www
 		[ "$(cfg_get ssh_enabled 0)" = 1 ] && $H/ssh on
 		$H/music start
 		$H/automount
@@ -29,13 +32,14 @@ start)
 			while sleep 21600; do timeout 30 ntpd -n -q -p pool.ntp.org && $H/clock save; done
 		) &
 		# remember the time every 15 minutes, so a power cut loses at most 15 minutes (one small file on /data)
-		while sleep 900; do $H/clock save; done &
+		# and the log's new lines to the SD card (logkeep: a few KB a day), so a box that stops by itself leaves a trace
+		while sleep 900; do $H/clock save; $H/logkeep; done &
 	) >/dev/null 2>&1 &
 	;;
 stop)
 	$H/music stop
 	[ -f $RUN/netwatch.pid ] && kill $(cat $RUN/netwatch.pid) 2>/dev/null
-	killall -q httpd dropbear udhcpc wpa_cli wpa_supplicant 2>/dev/null
+	killall -q phone-agent inotifyd httpd dropbear udhcpc wpa_cli wpa_supplicant 2>/dev/null
 	;;
 esac
 exit 0

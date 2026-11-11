@@ -315,11 +315,17 @@ msgstr "Afspil, info, kanal"
 msgid "Menu and search"
 msgstr "Menu og søg"
 
-msgid "OK on a video opens its choices"
-msgstr "OK på en video åbner dens valg"
+msgid "Try again"
+msgstr "Prøv igen"
 
-msgid "OK on a video: Play, Info and comments, Go to channel - OK, OK plays"
-msgstr "OK på en video: Afspil, Info og kommentarer, Gå til kanal - OK, OK afspiller"
+msgid "No connection to YouTube - check the network"
+msgstr "Ingen forbindelse til YouTube - tjek netværket"
 
-msgid "While watching: Info and comments at the top of the menu (Down), and Play goes on from the same place"
-msgstr "Mens du ser: Info og kommentarer øverst i menuen (ned), og Afspil fortsætter fra samme sted"
+msgid "One clear message when YouTube cannot be reached"
+msgstr "Én tydelig besked, når YouTube ikke kan nås"
+
+msgid "No connection: one message with Try again instead of an error in every row"
+msgstr "Ingen forbindelse: én besked med Prøv igen i stedet for en fejl i hver række"
+
+msgid "An empty subscription list is handled safely"
+msgstr "En tom abonnementsliste håndteres sikkert"

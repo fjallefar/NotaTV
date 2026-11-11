@@ -18,6 +18,9 @@ cfg_set() { # key value  (only used by scripts when tvshell is not running)
 }
 
 log() { echo "[$(date +%T)] $*" >> /tmp/notatv.log; }
+# a planned stop (S05notatv stop via rcK, tryboot - which restarts without rcK): the next start knows it was asked
+# for (bootcheck). No mark = the box stopped by itself (crash, freeze, lost power)
+mark_clean() { echo "$1" > /data/notatv/.shutdown-ok 2>/dev/null; sync; }
 progress() { echo "$*" > /tmp/notatv-progress; log "$*"; }
 # message to the user interface: English text with %s and arguments after \037 (tvshell translates, see tr_msg)
 msg() { f=$1; shift; printf '%s' "$f"; for a in "$@"; do printf '\037%s' "$a"; done; printf '\n'; }

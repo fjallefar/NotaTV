@@ -47,3 +47,38 @@ pin_check() {
 	flock -u 8
 	return 0
 }
+
+# S6 (audit 9/11): the page sends everything encrypted when it has the key from the TV's QR code (#k=, never sent
+# over the network): the body is "_box=<base64 of nonce + secretbox>" around the real form. phonebox opens it with
+# /data/notatv/phone-key; a box that opens is also the login (only the TV's screen showed the key).
+# auth_request: sets data to the real form and AUTH to "key" or "code" (the phone page code, as before).
+# A box must carry _ts (the phone's clock, within 10 minutes of the box's) and is taken only once (a box seen on
+# the network cannot be sent again).
+KEYF=/data/notatv/phone-key
+SEEN=/run/notatv/phone-seen
+auth_request() {
+	box=$(getval _box)
+	if [ -n "$box" ]; then
+		plain=$(urldecode "$box" | /usr/libexec/notatv/phonebox open $KEYF 2>/dev/null) ||
+			reply "401 Unauthorized" "The QR code is old - scan the new one on the TV (Settings → Network → Connect a phone)"
+		h=$(printf '%s' "$box" | sha256sum | cut -c1-32)
+		exec 7> $LOCK.seen
+		flock 7
+		grep -qx "$h" $SEEN 2>/dev/null && reply "409 Conflict" "Sent twice - try again"
+		{ tail -n 499 $SEEN 2>/dev/null; echo "$h"; } > $SEEN.tmp && mv $SEEN.tmp $SEEN
+		flock -u 7
+		data=$plain
+		ts=$(getval _ts)
+		case "$ts" in ''|*[!0-9]*) reply "400 Bad Request" "Missing time" ;; esac
+		d=$(( $(date +%s) - ts ))
+		[ $d -lt 0 ] && d=$((-d))
+		[ $d -le 600 ] || reply "400 Bad Request" "The phone's clock and the box's differ - check the time on both"
+		AUTH=key
+		return 0
+	fi
+	AUTH=code
+	return 1 # the caller checks the code (pin_check)
+}
+# fields that are logins or carry them (an IPTV address often has the user name and password in it): only accepted
+# encrypted. Without the QR code the page can still send keys, text and the like with the code.
+SECRET_FIELDS='_ytcookies xtream_server xtream_user xtream_pass iptv_url iptv_epg media_share'

@@ -156,8 +156,8 @@ msgstr "Kvalitet: %s"
 msgid "Menu and search"
 msgstr "Menu og søg"
 
-msgid "Help line at the bottom instead of the button bar"
-msgstr "Hjælpelinje nederst i stedet for knapbjælken"
+msgid "Easier to read"
+msgstr "Lettere at læse"
 
-msgid "OK watches, Left opens the menu with Search"
-msgstr "OK ser, venstre åbner menuen med Søg"
+msgid "Messages on empty screens are centered under their heading"
+msgstr "Beskeder på tomme skærme står centreret under overskriften"

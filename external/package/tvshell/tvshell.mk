@@ -38,6 +38,7 @@ define TVSHELL_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0755 $(@D)/notasplash $(TARGET_DIR)/usr/bin/notasplash
 	$(INSTALL) -D -m 0755 $(@D)/mediarun $(TARGET_DIR)/usr/libexec/notatv/mediarun
 	$(INSTALL) -D -m 0755 $(@D)/cecd $(TARGET_DIR)/usr/libexec/notatv/cecd
+	$(INSTALL) -D -m 0700 $(@D)/phonebox $(TARGET_DIR)/usr/libexec/notatv/phonebox
 	mkdir -p $(TARGET_DIR)/usr/share/tvshell
 	cp -a $(@D)/assets/. $(TARGET_DIR)/usr/share/tvshell/
 	rm -rf $(TARGET_DIR)/usr/lib/notatv/apps

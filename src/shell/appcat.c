@@ -51,7 +51,13 @@ int version_cmp(const char *a, const char *b) {
     return 0;
 }
 
-static const char *base_url(char *buf, size_t n) {
+/* P1 (beta channel): a box with "Beta updates" on takes the App Store from the release "apps-beta" (the apps of a
+   beta release, before everyone gets them) - when it exists; otherwise the normal one. cat_beta = the last catalog
+   came from apps-beta, so installs fetch from the same place. */
+static bool cat_beta;
+static const char *store_url(char *buf, size_t n, bool beta);
+static const char *base_url(char *buf, size_t n) { return store_url(buf, n, cat_beta); }
+static const char *store_url(char *buf, size_t n, bool beta) {
     const char *e = getenv("TVSHELL_APPCAT_URL");
     if (e && *e) { snprintf(buf, n, "%s", e); return buf; }
     /* from the settings only over https (the packages are code that runs in tvshell); file:// etc. only via the
@@ -69,7 +75,7 @@ static const char *base_url(char *buf, size_t n) {
     for (const char *p = repo; *p; p++) /* owner/name only */
         if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || strchr("._-/", *p))) repo[0] = 0;
     if (!repo[0] || !strchr(repo, '/')) return NULL;
-    snprintf(buf, n, "https://github.com/%s/releases/download/apps", repo);
+    snprintf(buf, n, "https://github.com/%s/releases/download/%s", repo, beta ? "apps-beta" : "apps");
     return buf;
 }
 
@@ -145,9 +151,11 @@ static void icons_fetch(void) {
 }
 
 /* ---------- tools (src/tools): programs from the catalog's "tools", never shown in the store ----------
- * Today only yt-dlp: YouTube changes often and an old yt-dlp stops working, so a newer one comes with the catalog
- * instead of with a system release. It is installed in <data>/tools/<id> (apppkg tool-install, SHA256 from the
- * catalog like a package) when it is newer than both the image's and the one already installed; mediarun runs it. */
+ * yt-dlp (YouTube changes often and an old yt-dlp stops working) and Node.js (yt-dlp's fast JavaScript runtime).
+ * Since F1 step 1 (audit 9/11) neither is in the image: they took 165 MB of the rootfs, which left too little room
+ * for updates. They are installed in <data>/tools/<id> (apppkg tool-install, SHA256 from the catalog like a package)
+ * when the one installed is missing or older (an image from before 1.0.25 still has its own yt-dlp: newer only);
+ * mediarun runs yt-dlp, and /etc/yt-dlp.conf points yt-dlp at <data>/tools/node/node. */
 #define MAX_TOOLS 4
 typedef struct { char id[40], version[24], file[128], sha[72]; } CatTool;
 static CatTool tools[MAX_TOOLS];
@@ -202,7 +210,7 @@ static void tools_check(void) {
     if (tool_running || getenv("TVSHELL_SCRIPT")) return;
     for (int i = 0; i < n_tools; i++) {
         const CatTool *t = &tools[i];
-        if (strcmp(t->id, "yt-dlp")) continue; /* mediarun only knows yt-dlp */
+        if (strcmp(t->id, "yt-dlp") && strcmp(t->id, "node")) continue; /* the tools this NotaTV uses */
         char built[32], have[32];
         tool_version(t->id, true, built, sizeof built);
         tool_version(t->id, false, have, sizeof have);
@@ -237,16 +245,26 @@ static void tools_parse(cJSON *arr) {
     }
 }
 
-typedef struct { char *out; } CatJob;
+typedef struct { char *out; bool beta; } CatJob;
+static char *cat_fetch(const char *url);
 static void cat_work(void *arg) {
     CatJob *j = arg;
     char url[400];
-    if (!base_url(url, sizeof url)) { j->out = str_dup("No App Store is set up"); return; }
+    if (cfg_int("update_beta", 0) && store_url(url, sizeof url, true) && strstr(url, "/apps-beta")) {
+        j->out = cat_fetch(url);
+        if (j->out && j->out[0] == '{') { j->beta = true; return; }
+        free(j->out); /* no beta store (yet): the normal one */
+        j->out = NULL;
+    }
+    if (!store_url(url, sizeof url, false)) { j->out = str_dup("No App Store is set up"); return; }
+    j->out = cat_fetch(url);
+}
+static char *cat_fetch(const char *url) {
     char prog[300], api[16];
     snprintf(prog, sizeof prog, "%s/apppkg", helper_path());
     snprintf(api, sizeof api, "%d", NOTA_API);
     const char *argv[] = {prog, "catalog", url, api, NULL}; /* no shell in between */
-    j->out = run_capture_argv(argv);
+    return run_capture_argv(argv);
 }
 static void cat_done(void *arg) {
     CatJob *j = arg;
@@ -257,6 +275,7 @@ static void cat_done(void *arg) {
         str_trim(cat_err);
         state = CAT_ERROR;
     } else {
+        cat_beta = j->beta; /* installs and icons come from the same store as the catalog */
         n_cat = 0;
         cat_gen++;
         cJSON *a;

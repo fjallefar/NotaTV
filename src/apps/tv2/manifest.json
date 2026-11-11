@@ -1,6 +1,6 @@
 {
   "id": "tv2",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "api": 2,
   "name": "TV 2 Play",
   "desc": "Streaming from TV 2 Play (Widevine)",
@@ -15,10 +15,10 @@
     "wvserve"
   ],
   "changes": {
-    "summary": "Search and filter without colored keys",
+    "summary": "A reserve address for the Widevine download",
     "points": [
-      "The search page has buttons: Search, earlier searches and Clear history",
-      "Search results: the filter (All, Movies, Series) is reached with Up"
+      "If Raspberry Pi's main archive is down, Widevine is fetched from their other archive",
+      "Messages on empty screens are centered under their heading"
     ]
   }
 }

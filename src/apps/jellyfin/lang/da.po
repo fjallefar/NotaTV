@@ -186,8 +186,8 @@ msgstr "Fra"
 msgid "Jellyfin subtitles"
 msgstr "Jellyfin-undertekster"
 
-msgid "Follow Jellyfin: the audio and subtitles your Jellyfin user settings pick (language, smart, forced only). Language setting: the player picks by Subtitle language under Picture and sound. Off: never"
-msgstr "Følg Jellyfin: lyd og undertekster som dine Jellyfin-brugerindstillinger vælger (sprog, smart, kun tvungne). Sprogindstilling: afspilleren vælger efter Undertekstsprog under Billede og lyd. Fra: aldrig"
+msgid "Follow Jellyfin: the audio and subtitles your Jellyfin user settings pick (language, smart, forced only). Language setting: the player picks by Subtitle language under Language and subtitles. Off: never"
+msgstr "Følg Jellyfin: lyd og undertekster som dine Jellyfin-brugerindstillinger vælger (sprog, smart, kun tvungne). Sprogindstilling: afspilleren vælger efter Undertekstsprog under Sprog og undertekster. Fra: aldrig"
 
 msgid "Jellyfin: play from phone"
 msgstr "Jellyfin: afspil fra telefonen"
@@ -264,11 +264,29 @@ msgstr "Afspil, markér som set"
 msgid "Episodes"
 msgstr "Afsnit"
 
-msgid "Mark episodes and seasons as watched without colored keys"
-msgstr "Markér afsnit og sæsoner som set uden farveknapper"
+msgid "The subtitle help text points to Settings → Language and subtitles"
+msgstr "Hjælpeteksten om undertekster peger på Indstillinger → Sprog og undertekster"
 
-msgid "OK on an episode: Play, mark as watched or unwatched"
-msgstr "OK på et afsnit: Afspil, markér som set eller uset"
+msgid "Sign in to %s?"
+msgstr "Log ind på %s?"
 
-msgid "OK on a season: Episodes, mark the season as watched"
-msgstr "OK på en sæson: Afsnit, markér sæsonen som set"
+msgid "Sign in"
+msgstr "Log ind"
+
+msgid "Your username and password are sent to this server. Only choose a server you know."
+msgstr "Dit brugernavn og din adgangskode sendes til denne server. Vælg kun en server, du kender."
+
+msgid "Your username and password are sent to this server. Only choose a server you know. The connection on your network is not encrypted (http)."
+msgstr "Dit brugernavn og din adgangskode sendes til denne server. Vælg kun en server, du kender. Forbindelsen på dit netværk er ikke krypteret (http)."
+
+msgid "Passwords are cleared from memory after sign-in"
+msgstr "Adgangskoder slettes fra hukommelsen efter login"
+
+msgid "Asks before your login is sent to a server found on the network"
+msgstr "Spørger, før dit login sendes til en server fundet på netværket"
+
+msgid "Safer sign-in"
+msgstr "Sikrere login"
+
+msgid "Messages on empty screens are centered under their heading"
+msgstr "Beskeder på tomme skærme står centreret under overskriften"

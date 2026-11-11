@@ -201,11 +201,17 @@ msgstr "FORTSÆT I DRTV"
 msgid "Menu and search"
 msgstr "Menu og søg"
 
-msgid "Help line at the bottom instead of the button bar"
-msgstr "Hjælpelinje nederst i stedet for knapbjælken"
+msgid "Sign-in cancelled"
+msgstr "Login afbrudt"
 
-msgid "OK opens or plays, Left opens the menu with Search"
-msgstr "OK åbner eller afspiller, venstre åbner menuen med Søg"
+msgid "Back during sign-in really cancels"
+msgstr "Tilbage under login afbryder helt"
 
-msgid "Nothing at the bottom covers the rows any more"
-msgstr "Intet nederst dækker rækkerne længere"
+msgid "Pressing Back while signing in no longer leaves the box half signed in"
+msgstr "Trykker du Tilbage under login, er boksen ikke længere halvt logget ind"
+
+msgid "Try again"
+msgstr "Prøv igen"
+
+msgid "Errors are centered and have Try again"
+msgstr "Fejl står centreret og har Prøv igen"

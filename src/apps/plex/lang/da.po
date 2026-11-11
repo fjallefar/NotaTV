@@ -282,8 +282,8 @@ msgstr "Fra"
 msgid "Plex subtitles"
 msgstr "Plex-undertekster"
 
-msgid "Follow Plex: the subtitle track chosen in Plex, otherwise none. Language setting: the player picks by Subtitle language under Picture and sound. Off: never"
-msgstr "Følg Plex: undertekstsporet valgt i Plex, ellers ingen. Sprogindstilling: afspilleren vælger efter Undertekstsprog under Billede og lyd. Fra: aldrig"
+msgid "Follow Plex: the subtitle track chosen in Plex, otherwise none. Language setting: the player picks by Subtitle language under Language and subtitles. Off: never"
+msgstr "Følg Plex: undertekstsporet valgt i Plex, ellers ingen. Sprogindstilling: afspilleren vælger efter Undertekstsprog under Sprog og undertekster. Fra: aldrig"
 
 msgid "Home screen (Plex and Jellyfin)"
 msgstr "Forside (Plex og Jellyfin)"
@@ -363,11 +363,11 @@ msgstr "Afsnit, markér sæsonen som set"
 msgid "Play, mark as watched"
 msgstr "Afspil, markér som set"
 
-msgid "Mark episodes and seasons as watched without colored keys"
-msgstr "Markér afsnit og sæsoner som set uden farveknapper"
+msgid "The subtitle help text points to Settings → Language and subtitles"
+msgstr "Hjælpeteksten om undertekster peger på Indstillinger → Sprog og undertekster"
 
-msgid "OK on an episode: Play, mark as watched or unwatched"
-msgstr "OK på et afsnit: Afspil, markér som set eller uset"
+msgid "A server address found on the network is only used when plex.tv lists it for your server"
+msgstr "En serveradresse fundet på netværket bruges kun, når plex.tv har den på listen for din server"
 
-msgid "OK on a season: Episodes, mark the season as watched"
-msgstr "OK på en sæson: Afsnit, markér sæsonen som set"
+msgid "Safer with servers on your network"
+msgstr "Sikrere med servere på dit netværk"

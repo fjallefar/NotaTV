@@ -7,6 +7,7 @@ src/shell/tvshell
 src/shell/notasplash
 src/shell/mediarun
 src/shell/cecd
+src/shell/phonebox
 src/shell/*.o
 output-rpi4/
 *.img
@@ -26,4 +27,4 @@ src/apps/out/
 compile_commands.json
 .cache/
 .serena/
-tools/
+/tools/

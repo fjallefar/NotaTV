@@ -14,7 +14,7 @@ static const char *seerr_url(void) { return cfg_get("seerr_url", ""); }
 static void jar_path(char *p, size_t n) { snprintf(p, n, "%s/seerr.cookies", data_dir()); }
 
 /* mediaInfo.status: 2 pending, 3 processing, 4 partially available, 5 available */
-/* Netflix top 10: the country from the setup guide (Settings → Date and time) */
+/* Netflix top 10: the country from the setup guide (Settings → System) */
 static const char *seerr_region_def(void) {
     const char *c = cfg_get("tz_country", "");
     return *c ? c : "US";
@@ -93,6 +93,7 @@ static void sreq_done(void *arg) {
     if ((r->keep || r->token == seerr_token) && r->done) r->done(r->ud, r->json, r->status);
     cJSON_Delete(r->json);
     free(r->path);
+    if (r->body) memset(r->body, 0, strlen(r->body)); /* may hold a password (PV3) */
     free(r->body);
     free(r);
 }
@@ -184,6 +185,7 @@ enum { SM_DISCOVER, SM_SEARCH, SM_RECENT, SM_MOVIES, SM_TV, SM_NETFLIX, SM_UPCOM
 typedef struct {
     int state; /* 0 setup, 1 signing in, 2 ready, 3 login failed */
     bool relogin; /* a 401/403 has already triggered one re-login */
+    bool need_plex; /* state 3 because nobody is signed in to Plex here (STATUS 101): say so and what to do */
     char msg[200], user[128];
     SRow rows[SROWS];
     int n_rows, row, col, view;
@@ -495,13 +497,15 @@ static void login(Seerr *v) {
     v->state = 1;
     snprintf(v->msg, sizeof v->msg, T("Signing in…"));
     const char *pt = cfg_get("plex_token", "");
+    v->need_plex = !*pt;
     if (*pt) {
         char *body = auth_body(pt);
         seerr_call("POST", "/api/v1/auth/plex", body, login_done, v);
         free(body);
     } else {
         v->state = 3;
-        snprintf(v->msg, sizeof v->msg, T("Sign in to Plex first, or use local login in the menu"));
+        v->btn = 0;
+        snprintf(v->msg, sizeof v->msg, "%s", T("Sign in to Plex first"));
     }
 }
 
@@ -582,8 +586,11 @@ static void pw_done(void *ud, const char *pw) {
     cJSON_AddStringToObject(o, "password", pw);
     char *body = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
+    memset(local_email, 0, sizeof local_email); /* PV3: not kept after the login is sent */
     v->state = 1;
+    v->need_plex = false;
     seerr_call("POST", "/api/v1/auth/local", body, login_done, v);
+    memset(body, 0, strlen(body)); /* the password */
     free(body);
 }
 static void email_done(void *ud, const char *e) {
@@ -600,11 +607,21 @@ static int disc_prev_state; /* the state to go back to when nothing is chosen */
 static void enter_address(Seerr *v) {
     keyboard_open(T("Seerr address (e.g. 192.168.1.10:5055)"), seerr_url(), false, url_done, v);
 }
+static int found_sel;
+static void found_ok(void *ud, bool yes) {
+    Seerr *v = ud;
+    if (v == live && yes && found_sel >= 0 && found_sel < n_found) url_done(v, found[found_sel].url);
+}
 static void found_pick(void *ud, int idx) {
     Seerr *v = ud;
     if (v != live || idx < 0) return;
     if (idx >= n_found) { enter_address(v); return; } /* "Enter address manually" */
-    url_done(v, found[idx].url);
+    /* S17 (audit 9/11): anything on port 5055 can answer, and signing in sends your Plex login to it - ask first */
+    found_sel = idx;
+    char title[200];
+    snprintf(title, sizeof title, T("Sign in to %s?"), found[idx].url + 7);
+    confirm_open(title, T("Seerr is signed in with your Plex account, so this server gets access to it. Only choose a server you know. The connection on your network is not encrypted (http)."),
+                 T("Sign in"), T("Cancel"), found_ok, v);
 }
 static void disc_done(void *ud, const SeerrFound *f, int n) {
     Seerr *v = ud;
@@ -629,12 +646,14 @@ static void find_servers(Seerr *v) {
     seerr_discover(disc_done, v);
 }
 
+static void local_login(Seerr *v) { keyboard_open(T("Seerr: email"), "", false, email_done, v); }
+
 static void settings_cb(void *ud, int idx) {
     Seerr *v = ud;
     if (v != live) return;
     if (idx == 0) enter_address(v);
     else if (idx == 1) find_servers(v);
-    else if (idx == 2) keyboard_open(T("Seerr: email"), "", false, email_done, v);
+    else if (idx == 2) local_login(v);
     else if (idx == 3) login(v);
 }
 static void open_settings(Seerr *v) {
@@ -756,6 +775,7 @@ static void draw_poster(SItem *it, float x, float y, float w, float h, bool f) {
 
 /* the setup/error screen's buttons */
 static int setup_buttons(Seerr *v, const char **b) {
+    if (v->state == 3 && v->need_plex) { b[0] = T("Try again"); b[1] = T("Local login (email)"); b[2] = T("Change address"); return 3; }
     if (v->state == 3 && *seerr_url()) { b[0] = T("Try again"); b[1] = T("Change address"); b[2] = T("Find server on the network"); return 3; }
     b[0] = T("Find server on the network"); b[1] = T("Enter address"); return 2;
 }
@@ -769,11 +789,15 @@ static void seerr_draw(Screen *s) {
         draw_icon(ICON_STAR, cx, 300, 120, RGB(129, 140, 248));
         if (v->state == 0) {
             text_draw(F_BOLD, 42, cx, 430, C_TEXT, AL_CENTER, T("Connect to Seerr"));
-            text_draw_wrap(F_REG, 28, cx - 520, 500, 1040, 6, 40, C_TEXT2,
+            text_wrap_centered(F_REG, 28, cx - 520, 500, 1040, 6, 40, C_TEXT2,
                            T("Find and request movies and shows for your Plex server.\n\nFind your Overseerr/Jellyseerr/Seerr server on the network, or enter its address, e.g. 192.168.1.10:5055. You are signed in with your Plex account."));
         } else if (v->state == 1) {
             draw_spinner(cx, 520, 30, C_TEXT);
             text_draw(F_REG, 26, cx, 580, C_TEXT2, AL_CENTER, v->msg);
+        } else if (v->need_plex) { /* not an error: tell what to do */
+            text_draw(F_BOLD, 42, cx, 430, C_TEXT, AL_CENTER, T("Sign in to Plex first"));
+            text_wrap_centered(F_REG, 28, cx - 520, 500, 1040, 6, 40, C_TEXT2,
+                           T("Seerr signs you in with your Plex account, and the box is not signed in to Plex.\n\nOpen Plex from the home screen and sign in, then come back and choose Try again. Or sign in with a local Seerr user (email and password)."));
         } else {
             text_draw(F_BOLD, 42, cx, 430, C_TEXT, AL_CENTER, T("Could not sign in"));
             text_draw(F_REG, 28, cx, 500, C_TEXT2, AL_CENTER, v->msg);
@@ -886,7 +910,12 @@ static bool seerr_input(Screen *s, const InputEvent *ev) {
         if (ev->a == A_OK) {
             if (ev->repeat) return true;
             const char *l = b[v->btn < nb ? v->btn : 0];
-            if (!strcmp(l, T("Try again"))) { v->relogin = false; login(v); }
+            if (!strcmp(l, T("Try again"))) {
+                v->relogin = false;
+                login(v);
+                if (v->need_plex) app_toast("%s", T("The box is still not signed in to Plex")); /* else it looks like nothing happened */
+            }
+            else if (!strcmp(l, T("Local login (email)"))) local_login(v);
             else if (!strcmp(l, T("Find server on the network"))) find_servers(v);
             else enter_address(v);
             return true;
@@ -1444,6 +1473,7 @@ static Screen *seerr_detail(SItem *src) {
 
 /* sign out: the session is closed at Seerr, and the session cookie and the address are deleted here */
 void seerr_forget(void) {
+    memset(local_email, 0, sizeof local_email);
     char jar[512];
     jar_path(jar, sizeof jar);
     if (*seerr_url()) {

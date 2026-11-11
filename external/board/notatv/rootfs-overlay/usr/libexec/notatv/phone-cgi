@@ -1,0 +1,27 @@
+#!/bin/sh
+# NotaTV phone page, the CGI side (A1 step 3, audit 9/11). Runs as the user phone (httpd -u phone): it cannot read
+# the settings, the phone page code or the key, and cannot run anything as root. It only hands the request to
+# phone-agent (root) through /run/notatv-phone and passes the answer back:
+#   req.<id>   line 1: the endpoint (set/logs/lang), line 2: "<method> <sender address>", then the body as it came
+#   resp.<id>  the whole CGI answer (headers + body), written by phone-agent; it removes old answers itself
+# The checks of the request (code or encryption, sizes, what may be saved) all happen in phone-agent's handlers.
+SP=/run/notatv-phone
+MAX=819200 # 512 KB of form data, encrypted and base64-coded
+fail() { printf 'Status: %s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\n' "$1" "$2"; exit 0; }
+case "$1" in set|logs|lang) ;; *) fail "404 Not Found" "No such page" ;; esac
+len=${CONTENT_LENGTH:-0}
+case "$len" in ''|*[!0-9]*) len=0 ;; esac
+[ "$len" -le $MAX ] || fail "413 Payload Too Large" "Too large (max. 512 KB)"
+[ -d $SP ] && [ -w $SP ] || fail "503 Service Unavailable" "The box is starting - try again in a moment"
+id=$(tr -dc 'a-f0-9' < /proc/sys/kernel/random/uuid)
+umask 077
+{ printf '%s\n%s %s\n' "$1" "${REQUEST_METHOD:-GET}" "$REMOTE_ADDR"; [ "$len" -gt 0 ] && head -c "$len"; } > $SP/req.$id.tmp || fail "500 Internal Server Error" "Could not hand on the request"
+mv $SP/req.$id.tmp $SP/req.$id
+# the logs bundle can take a while on a Pi 4; everything else is answered at once
+i=0
+while [ ! -f $SP/resp.$id ]; do
+	i=$((i + 1))
+	[ $i -gt 600 ] && fail "504 Gateway Timeout" "The box did not answer"
+	usleep 100000
+done
+cat $SP/resp.$id

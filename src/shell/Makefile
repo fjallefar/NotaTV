@@ -18,7 +18,7 @@ SRCS = main.c i18n.c drm_util.c kms_present.c subs.c gfx.c input.c util.c player
        ui_net.c bt.c dlna.c mirror.c moon.c ui_settings.c netdisc.c apps.c ui_appstore.c appcat.c update_notice.c tz.c ui_setup.c quick.c stb_impl.c vendor/cJSON.c vendor/qrcodegen.c
 OBJS = $(SRCS:.c=.o)
 
-all: tvshell notasplash mediarun cecd
+all: tvshell notasplash mediarun cecd phonebox
 
 tvshell: $(OBJS)
 	$(CC) $(LDFLAGS) -rdynamic -o $@ $(OBJS) $(LIBS) -ldl
@@ -41,7 +41,11 @@ mediarun: mediarun.c
 cecd: cecd.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ cecd.c
 
+# opens what the phone page sends encrypted (S6), see phonebox.c; tweetnacl is public domain
+phonebox: phonebox.c vendor/tweetnacl.c vendor/tweetnacl.h
+	$(CC) $(CFLAGS) -Wno-sign-compare -Wno-unused-parameter -Wno-unterminated-string-initialization $(LDFLAGS) -o $@ phonebox.c vendor/tweetnacl.c
+
 clean:
-	rm -f tvshell notasplash mediarun cecd $(OBJS)
+	rm -f tvshell notasplash mediarun cecd phonebox $(OBJS)
 
 .PHONY: all clean

@@ -308,11 +308,11 @@ msgstr "Søg…"
 msgid "Clear history"
 msgstr "Ryd historik"
 
-msgid "Search and filter without colored keys"
-msgstr "Søg og filtrér uden farveknapper"
+msgid "A reserve address for the Widevine download"
+msgstr "En reserveadresse til Widevine"
 
-msgid "The search page has buttons: Search, earlier searches and Clear history"
-msgstr "Søgesiden har knapper: Søg, tidligere søgninger og Ryd historik"
+msgid "If Raspberry Pi's main archive is down, Widevine is fetched from their other archive"
+msgstr "Er Raspberry Pis hovedarkiv nede, hentes Widevine fra deres andet arkiv"
 
-msgid "Search results: the filter (All, Movies, Series) is reached with Up"
-msgstr "Søgeresultater: filteret (Alle, Film, Serier) nås med op"
+msgid "Messages on empty screens are centered under their heading"
+msgstr "Beskeder på tomme skærme står centreret under overskriften"

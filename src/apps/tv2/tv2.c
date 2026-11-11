@@ -1577,6 +1577,8 @@ static void play_error_toast(const char *log) {
  * Debian, pinned by SHA256 (the same files as tested), unpacked with busybox ar/xz/tar into <data>/apps/tv2/lib.
  * Runs in the background; the UI waits with a frame loop (Back cancels the wait, not the download). */
 #define CDM_DEB "https://archive.raspberrypi.com/debian/pool/main/w/widevine/libwidevinecdm0_4.10.2662.3+1_arm64.deb"
+/* a reserve (F17, audit 9/11): Raspberry Pi's other archive (own servers, same pool, checked 11/11) - the SHA256 decides */
+#define CDM_DEB2 "https://archive.raspberrypi.org/debian/pool/main/w/widevine/libwidevinecdm0_4.10.2662.3+1_arm64.deb"
 #define CDM_SHA "0e87823a228246f4f1c7c90ac48c5f888d0607d028ac0ffd17fe610d548f5bb3"
 #define NSPR_DEB "https://deb.debian.org/debian/pool/main/n/nspr/libnspr4_4.36-1_arm64.deb"
 #define NSPR_DEB2 "https://snapshot.debian.org/archive/debian/20251101T000000Z/pool/main/n/nspr/libnspr4_4.36-1_arm64.deb"
@@ -1592,12 +1594,12 @@ static bool cdm_fetch(const char *dir) {
             "get() { h=$1; shift; for u in \"$@\"; do curl -fsSL -m 300 --retry 2 -o p.deb \"$u\" && "
             "[ \"$(sha256sum p.deb | cut -d' ' -f1)\" = \"$h\" ] && ar x p.deb data.tar.xz && "
             "xz -dc data.tar.xz | tar -x -f - && rm -f p.deb data.tar.xz && return 0; done; return 1; }; "
-            "get %s '%s' && get %s '%s' '%s' && "
+            "get %s '%s' '%s' && get %s '%s' '%s' && "
             "cp opt/WidevineCdm/gmp-widevinecdm/latest/libwidevinecdm.so usr/lib/aarch64-linux-gnu/libnspr4.so "
             "usr/lib/aarch64-linux-gnu/libplc4.so usr/lib/aarch64-linux-gnu/libplds4.so \"$d/lib.new/\" && "
             "rm -rf \"$d/lib\" && mv \"$d/lib.new\" \"$d/lib\" && touch %s || touch %s; "
             "cd /; rm -rf \"$t\" \"$d/lib.new\" ) >/dev/null 2>&1 &",
-            qd, CDM_SHA, CDM_DEB, NSPR_SHA, NSPR_DEB, NSPR_DEB2, qdone, qfail);
+            qd, CDM_SHA, CDM_DEB, CDM_DEB2, NSPR_SHA, NSPR_DEB, NSPR_DEB2, qdone, qfail);
     free(qd); free(qdone); free(qfail);
     bool ok = false;
     for (;;) {
@@ -2278,7 +2280,7 @@ static void tv2_draw(Screen *s) {
         } else {
             text_draw(F_BOLD, 42, cx, 330, TV2_TEXT, AL_CENTER,
                       v->state == S_ERROR ? T("Something went wrong") : T("Sign in to TV 2 Play"));
-            text_draw_wrap(F_REG, 28, cx - 520, 400, 1040, 6, 40, TV2_TEXT2,
+            text_wrap_centered(F_REG, 28, cx - 520, 400, 1040, 6, 40, TV2_TEXT2,
                            v->msg[0] ? v->msg : T("Watch TV 2 Play on your TV.\n\nPress OK to sign in with a code on the screen."));
             const char *b[1] = {v->state == S_ERROR ? T("Try again") : T("Sign in")};
             draw_buttons(cx, 780, b, 1, 0);

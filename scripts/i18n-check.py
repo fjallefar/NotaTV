@@ -57,8 +57,11 @@ def source_ids():
     # helper scripts: messages shown on the TV / phone page
     scripts = glob.glob(os.path.join(OVERLAY, '*/rootfs-overlay/usr/libexec/notatv/*')) + \
               glob.glob(os.path.join(OVERLAY, '*/overlay/usr/libexec/notatv/*')) + \
+              glob.glob(os.path.join(OVERLAY, '*/rootfs-overlay/usr/libexec/notatv/phone/*')) + \
               glob.glob(os.path.join(OVERLAY, '*/rootfs-overlay/usr/share/notatv/www/cgi-bin/*'))
     for f in scripts:
+        if not os.path.isfile(f):
+            continue
         rel = os.path.relpath(f, ROOT)
         for line in open(f, encoding='utf-8', errors='replace'):
             for m in re.finditer(r'(?:\bmsg|\bprogress|\becho|\bdie|\breply\s+"[^"]*")\s+"([A-Z%][^"$]*)"', line):

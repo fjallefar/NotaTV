@@ -27,7 +27,8 @@ small{color:var(--dim)}
 
 <section id="login" style="display:none">
 <h2 data-t>Code</h2>
-<small id="loginmsg" data-t>Enter the code shown on the TV (Settings → Network → Phone page).</small>
+<small id="loginmsg" data-t>Scan the QR code on the TV with the phone's camera (Settings → Network → Connect a phone). Then everything is sent encrypted.</small>
+<small data-t style="display:block;margin:10px 0 6px">Or enter the phone page code (keys and text only - logins need the QR code):</small>
 <input id="pin" inputmode="numeric" autocomplete="off" placeholder="Code from the TV" data-tp>
 <button onclick="login()" data-t>Connect</button>
 </section>
@@ -98,12 +99,13 @@ small{color:var(--dim)}
 
 <section>
 <h2 data-t>Troubleshooting</h2>
-<small data-t style="display:block;margin-bottom:10px">The box's logs as one file, to send to whoever helps you. Passwords and logins are removed. For more details: turn on Settings → System → Troubleshooting log on the TV, make the problem happen, then download.</small>
+<small data-t style="display:block;margin-bottom:10px">The box's logs as one file, to send to whoever helps you. Passwords and logins are removed. For more details: turn on Settings → Advanced → Troubleshooting log on the TV, make the problem happen, then download.</small>
 <button onclick="getLogs()" data-t>Download logs</button>
 </section>
 
 </div>
 <div id="msg"></div>
+<script src="/nacl-fast.min.js"></script>
 <script>
 /* translation: the TV's language (cgi-bin/lang) and the same .po file as the TV (lang/<code>.po); the source text is English */
 var TR={};
@@ -135,30 +137,51 @@ fetch('/cgi-bin/lang').then(function(r){return r.text()}).then(function(l){
 <script>
 function v(id){return document.getElementById(id).value.trim()}
 function toast(t){var m=document.getElementById('msg');m.textContent=t;m.style.opacity=1;setTimeout(function(){m.style.opacity=0},1800)}
-/* the code is remembered in the browser; every call sends it along */
-var PIN='';
-try{PIN=localStorage.getItem('notatv_pin')||''}catch(e){}
+/* S6: the key from the TV's QR code (http://<box>/#k=...). The part after # never leaves the phone; it is kept for
+   this tab only (sessionStorage) and taken out of the address. With it, every request is encrypted
+   (XSalsa20-Poly1305, tweetnacl - crypto.subtle needs https) and the key is also the login. Without it: the code,
+   which can send keys and text, but not logins. The code is kept for this tab only too (it used to stay forever). */
+var KEY=null,PIN='';
+function ub64(s){s=s.replace(/-/g,'+').replace(/_/g,'/');var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
+function b64u(a){var s='';for(var i=0;i<a.length;i+=8192)s+=String.fromCharCode.apply(null,a.subarray(i,i+8192));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+try{
+  var hm=location.hash.match(/[#&]k=([A-Za-z0-9_-]{43})/);
+  if(hm){sessionStorage.setItem('notatv_key',hm[1]);history.replaceState(null,'',location.pathname)}
+  var ks=sessionStorage.getItem('notatv_key');if(ks&&window.nacl)KEY=ub64(ks);
+  PIN=sessionStorage.getItem('notatv_pin')||'';
+  localStorage.removeItem('notatv_pin');
+}catch(e){}
+/* the body to send: encrypted with the key, or with the code in front */
+function wrap(body){
+  if(!KEY)return '_pin='+encodeURIComponent(PIN)+'&'+body;
+  var n=nacl.randomBytes(24),m=new TextEncoder().encode(body+'&_ts='+Math.floor(Date.now()/1000));
+  var b=nacl.secretbox(m,n,KEY),all=new Uint8Array(24+b.length);all.set(n);all.set(b,24);
+  return '_box='+b64u(all);
+}
+function forgetKey(){KEY=null;try{sessionStorage.removeItem('notatv_key')}catch(e){}}
 function show(ok,msg){
   document.getElementById('login').style.display=ok?'none':'block';
   document.getElementById('main').style.display=ok?'block':'none';
   if(msg)document.getElementById('loginmsg').textContent=msg;
 }
 function post(body){
-  return fetch('/cgi-bin/set',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'_pin='+encodeURIComponent(PIN)+'&'+body})
+  return fetch('/cgi-bin/set',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:wrap(body)})
     .then(function(r){return r.text().then(function(t){
+      if(r.status==401&&KEY)forgetKey(); /* an old QR code: scan the new one */
       if(r.status==401||r.status==403||r.status==429){show(false,tr(t.trim()));throw new Error('auth')}
       return {ok:r.ok,text:t.trim()};
     })});
 }
 function login(){
   PIN=v('pin');
-  post('_ping=1').then(function(){try{localStorage.setItem('notatv_pin',PIN)}catch(e){}show(true)}).catch(function(e){if(e.message!='auth')toast(T('No connection'))});
+  forgetKey();
+  post('_ping=1').then(function(){try{sessionStorage.setItem('notatv_pin',PIN)}catch(e){}show(true)}).catch(function(e){if(e.message!='auth')toast(T('No connection'))});
 }
 function send(o){
   var b=Object.keys(o).filter(function(k){return o[k]!==undefined}).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(o[k])}).join('&');
-  post(b).then(function(r){toast(!r.ok?T('Error'):r.text=='OK'?T('Sent to TV'):tr(r.text))}).catch(function(e){if(e.message!='auth')toast(T('No connection'))});
+  post(b).then(function(r){toast(!r.ok?(r.text?tr(r.text):T('Error')):r.text=='OK'?T('Sent to TV'):tr(r.text))}).catch(function(e){if(e.message!='auth')toast(T('No connection'))});
 }
-if(PIN)post('_ping=1').then(function(){show(true)}).catch(function(e){if(e.message!='auth')show(false,T('No connection to the TV'))});
+if(KEY||PIN)post('_ping=1').then(function(){show(true)}).catch(function(e){if(e.message!='auth')show(false,T('No connection to the TV'))});
 else show(false);
 function key(k){send({_key:k})}
 function power(p){
@@ -168,7 +191,7 @@ function power(p){
 }
 function getLogs(){
   toast(T('Collecting logs…'));
-  fetch('/cgi-bin/logs',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'_pin='+encodeURIComponent(PIN)})
+  fetch('/cgi-bin/logs',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:wrap('_logs=1')})
     .then(function(r){
       if(!r.ok)return r.text().then(function(t){if(r.status==401||r.status==403||r.status==429)show(false,tr(t.trim()));else toast(T('Error'))});
       var m=(r.headers.get('Content-Disposition')||'').match(/filename="([^"]+)"/);

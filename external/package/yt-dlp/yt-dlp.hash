@@ -1,5 +1,0 @@
-# Fra https://nodejs.org/dist/v26.13.0/SHASUMS256.txt
-# yt-dlp-zip: beregnet lokalt for 2026.10.26 (opdatér ved versionsskift)
-sha256  406fe3fbde1c054adff8b297c16fdb5af6659db327c1ac8acd46b56ef1af9a92  node-v26.13.0-linux-arm64.tar.xz
-sha256  74708e707e8fa8177c8347e58152337edf320149cd7b225defd453f7cde47822  yt-dlp_linux_aarch64.zip
-sha256  f34053415136e55073dd64ba5326d161ecc23ce0e98c081d8752867b37809450  yt-dlp_linux.zip

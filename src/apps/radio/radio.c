@@ -763,13 +763,13 @@ static void search_done(void *ud, const char *q) {
 }
 static void open_search(Rd *v, const char *init) { keyboard_open(T("Search radio stations"), init, false, search_done, v); }
 
-enum { M_POP, M_FAV, M_RECENT, M_GENRES, M_COUNTRY, M_SEARCH, M_SETTINGS };
+enum { M_FAV, M_POP, M_RECENT, M_GENRES, M_COUNTRY, M_SEARCH, M_SETTINGS };
 static void build_side(Rd *v) {
     side_clear(&v->side);
     const char *cc = radio_cc();
     copy_s(v->side.subtitle, sizeof v->side.subtitle, *cc ? cc_name(cc, NULL) : T("Whole world"));
+    side_add(&v->side, T("Favourites"), ICON_STAR, false); /* first: what you listen to (STATUS 100) */
     side_add(&v->side, T("Popular"), ICON_MUSIC, false);
-    side_add(&v->side, T("Favourites"), ICON_STAR, false);
     side_add(&v->side, T("Recently played"), ICON_CLOCK, false);
     side_add(&v->side, T("Genres"), ICON_FOLDER, false);
     side_add(&v->side, T("Change country"), ICON_TV, true);
@@ -809,7 +809,7 @@ static void rd_enter(Screen *s) {
     build_side(v);
     /* the first time: popular in your country; with favourites: them */
     if (n_fav) { v->side.active = M_FAV; show_list(v, V_FAV); }
-    else show_pop(v);
+    else { v->side.active = M_POP; show_pop(v); }
 }
 static void rd_resume(Screen *s) { live = s->st; }
 static void rd_destroy(Screen *s) {
@@ -903,7 +903,12 @@ static void rd_draw(Screen *s) {
     float top = 200 - v->sy;
     text_draw(F_BOLD, 44, x0, top - 50, C_TEXT, AL_LEFT, v->heading);
     if (v->loading && !v->n) draw_spinner(cx, UI_H / 2, 30, C_TEXT);
-    else if (!v->n) {
+    else if (!v->n && v->msg[0]) { /* an error (U2): centered, with Try again (OK) */
+        draw_icon(ICON_MUSIC, cx, UI_H / 2 - 90, 90, RD_ACCENT);
+        text_wrap_centered(F_REG, 28, cx - 480, UI_H / 2, 960, 4, 40, C_TEXT2, v->msg);
+        const char *b[1] = {T("Try again")};
+        draw_buttons(cx, UI_H / 2 + 180, b, 1, cf ? 0 : -1);
+    } else if (!v->n) {
         const char *m = v->msg[0] ? v->msg
                         : v->view == V_FAV ? T("No favourites yet. Choose a station and press Favourite at the bottom - the first nine get a number you can press on the remote.")
                         : v->view == V_RECENT ? T("The stations you listen to show up here.")
@@ -975,6 +980,10 @@ static bool rd_input(Screen *s, const InputEvent *ev) {
     int act;
     if (side_input(&v->side, ev, &act)) {
         if (act >= 0) side_activate(v, act);
+        return true;
+    }
+    if (!v->n && v->msg[0] && !v->loading && ev->a == A_OK) { /* Try again */
+        if (!ev->repeat) side_activate(v, v->side.active);
         return true;
     }
     int i = v->row * GCOLS + v->col;

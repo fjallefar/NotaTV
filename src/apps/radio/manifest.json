@@ -1,6 +1,6 @@
 {
   "id": "radio",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": 2,
   "name": "Radio",
   "desc": "Radio stations from your country and the whole world",
@@ -11,9 +11,10 @@
   "order": 75,
   "default": false,
   "changes": {
-    "summary": "The artwork fits the new home screen",
+    "summary": "Your favourites first",
     "points": [
-      "The logo or cover on the home screen no longer reaches the app icons"
+      "Favourites are at the top of the menu, before Popular",
+      "If the radio directory cannot be reached: Try again"
     ]
   }
 }

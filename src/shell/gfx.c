@@ -19,7 +19,7 @@ const Color C_SURFACE = {28, 32, 42, 255};
 const Color C_SURFACE2 = {40, 46, 60, 255};
 const Color C_TEXT = {242, 244, 248, 255};
 const Color C_TEXT2 = {160, 168, 184, 255};
-const Color C_TEXT3 = {105, 112, 128, 255};
+const Color C_TEXT3 = {140, 148, 165, 255}; /* U1: about 6:1 on the background (was 105,112,128: 4-4.5:1) */
 const Color C_ACCENT = {79, 140, 255, 255};
 const Color C_FOCUS = {255, 255, 255, 255};
 const Color C_DANGER = {235, 87, 87, 255};
@@ -500,7 +500,7 @@ void gfx_drift_end(float ox, float oy) {
 }
 
 /* ---------- Text ---------- */
-typedef struct { uint32_t cp; int16_t x, y, w, h, xoff, yoff; float adv; int glyph; bool ready; } Glyph;
+typedef struct { uint32_t cp; int16_t x, y, w, h, xoff, yoff; float adv; int glyph; bool ready, fb; } Glyph; /* fb: from the fallback font */
 /* a new glyph waits here until the start of the next frame (gfx_frame_begin): updating the atlas texture while
    this frame's draws use it makes the Pi's GPU finish the frame so far first (0.3-0.5 ms per glyph) */
 typedef struct { int slot; SDL_Rect r; uint32_t *px; } GlyphUp;
@@ -525,6 +525,28 @@ static unsigned long atlas_tick;
 
 static stbtt_fontinfo fonts[F_COUNT];
 static unsigned char *font_data[F_COUNT];
+/* F14 (audit 9/11): characters Inter does not have (Arabic, Hebrew, Georgian, Armenian, many symbols) come from
+   DejaVu Sans, which is in the image anyway - before they were left out, so channel names and titles could be empty.
+   Loaded the first time it is needed; regular for F_REG, bold for the others. */
+static unsigned char *read_file(const char *path, size_t *len);
+static stbtt_fontinfo fb_fonts[2];
+static unsigned char *fb_data[2];
+static int fb_state[2]; /* 0 = not tried, 1 = loaded, -1 = not there */
+static stbtt_fontinfo *fallback_font(FontId f) {
+    int k = f == F_REG ? 0 : 1;
+    if (!fb_state[k]) {
+        static const char *const dirs[] = {"/usr/share/fonts/dejavu", "/usr/share/fonts/TTF", "/usr/share/fonts/truetype/dejavu"};
+        fb_state[k] = -1;
+        for (size_t i = 0; i < sizeof dirs / sizeof dirs[0] && fb_state[k] < 0; i++) {
+            char path[256];
+            snprintf(path, sizeof path, "%s/%s", dirs[i], k ? "DejaVuSans-Bold.ttf" : "DejaVuSans.ttf");
+            unsigned char *d = read_file(path, NULL);
+            if (d && stbtt_InitFont(&fb_fonts[k], d, stbtt_GetFontOffsetForIndex(d, 0))) { fb_data[k] = d; fb_state[k] = 1; }
+            else free(d);
+        }
+    }
+    return fb_state[k] > 0 ? &fb_fonts[k] : NULL;
+}
 #define MAX_ATLAS 32
 static Atlas *atlases[MAX_ATLAS];
 static int n_atlas;
@@ -688,6 +710,9 @@ void gfx_idle_tick(void) {
 static Atlas *atlas_get(FontId f, float size) {
     /* body text (<= 32) a bit bigger than drawn - on the TV at a distance it was on the small side */
     if (size <= 32) size *= 1.06f;
+    /* U1 (audit 9/11): hints, names under tiles and help lines (20-22) at least 24 px, readable from the sofa; the
+       small badges and pills (16-18) keep their size - they sit in boxes of a fixed size */
+    if (size >= 20 && size < 24) size = 24;
     int px = (int)roundf(size * g_scale);
     if (px < 6) px = 6;
     return atlas_get_px(f, px);
@@ -740,15 +765,22 @@ static Glyph *glyph_get(Atlas *a, uint32_t cp) {
         if (a->used[i] && a->glyphs[i].cp == cp) return &a->glyphs[i];
         if (!a->used[i]) {
             stbtt_fontinfo *fi = &fonts[a->font];
+            float sc = a->scale;
             int gi = stbtt_FindGlyphIndex(fi, cp);
+            bool fb = false;
+            if (gi == 0 && cp > 0x7f) { /* not in Inter: DejaVu Sans, at the same pixel height (F14) */
+                stbtt_fontinfo *ff = fallback_font(a->font);
+                int fg = ff ? stbtt_FindGlyphIndex(ff, cp) : 0;
+                if (fg) { fi = ff; gi = fg; fb = true; sc = stbtt_ScaleForPixelHeight(ff, (float)a->px); }
+            }
             bool skip = gi == 0 && cp != ' '; /* e.g. emoji: leave out instead of showing '?' */
             int adv, lsb, x0, y0, x1, y1;
             stbtt_GetGlyphHMetrics(fi, gi, &adv, &lsb);
-            stbtt_GetGlyphBitmapBox(fi, gi, a->scale, a->scale, &x0, &y0, &x1, &y1);
+            stbtt_GetGlyphBitmapBox(fi, gi, sc, sc, &x0, &y0, &x1, &y1);
             int w = x1 - x0, hh = y1 - y0;
             Glyph *g = &a->glyphs[i];
             memset(g, 0, sizeof *g);
-            g->cp = cp; g->glyph = gi; g->adv = skip ? 0 : adv * a->scale;
+            g->cp = cp; g->glyph = gi; g->fb = fb; g->adv = skip ? 0 : adv * sc;
             g->w = skip ? 0 : w; g->h = skip ? 0 : hh; g->xoff = x0; g->yoff = y0;
             if (skip) { a->used[i] = true; return g; }
             if (w > 0 && hh > 0) {
@@ -770,7 +802,7 @@ static Glyph *glyph_get(Atlas *a, uint32_t cp) {
                 }
                 Uint64 gt0 = SDL_GetTicksNS();
                 unsigned char *mono = malloc(w * hh);
-                stbtt_MakeGlyphBitmap(fi, mono, w, hh, w, a->scale, a->scale, gi);
+                stbtt_MakeGlyphBitmap(fi, mono, w, hh, w, sc, sc, gi);
                 /* the glyph with a 1 px transparent border (its cell is w+2 x hh+2): the atlas is never cleared as a whole
                    (4 MB on a Pi 4 = 10 ms per new atlas), and linear filtering only ever reads the border next to it */
                 int cw = w + 2, ch = hh + 2;
@@ -833,6 +865,7 @@ static float kern_get(Atlas *a, int g1, int g2) {
 static float advance_of(Atlas *a, int *prev, uint32_t cp) {
     Glyph *g = glyph_get(a, cp);
     if (!g) return 0;
+    if (g->fb) { *prev = 0; return g->adv; } /* no kerning across two fonts */
     float w = (*prev ? kern_get(a, *prev, g->glyph) : 0) + g->adv;
     *prev = g->glyph;
     return w;
@@ -870,7 +903,7 @@ static void draw_run(Atlas *a, float x, float y, Color c, const char *s, const c
         uint32_t cp = utf8_next(&s);
         Glyph *g = glyph_get(a, cp);
         if (!g) continue;
-        if (prev) pen += kern_get(a, prev, g->glyph);
+        if (prev && !g->fb) pen += kern_get(a, prev, g->glyph); /* no kerning across two fonts (F14) */
         if (g->w > 0 && a->tex) {
             if (colored != a->tex) {
                 SDL_SetTextureColorMod(a->tex, c.r, c.g, c.b);
@@ -882,7 +915,7 @@ static void draw_run(Atlas *a, float x, float y, Color c, const char *s, const c
             SDL_RenderTexture(R, a->tex, &src, &dst);
         }
         pen += g->adv;
-        prev = g->glyph;
+        prev = g->fb ? 0 : g->glyph;
     }
 }
 
@@ -920,8 +953,18 @@ float text_draw_clip(FontId f, float size, float x, float y, float maxw, Color c
     return r;
 }
 
+static int wrap_draw(FontId f, float size, float x, float y, float w, int maxlines, float lh, Color c, const char *s,
+                     bool center);
 int text_draw_wrap(FontId f, float size, float x, float y, float w, int maxlines, float lh,
                    Color c, const char *s) {
+    return wrap_draw(f, size, x, y, w, maxlines, lh, c, s, false);
+}
+/* the same, each line centered in [x, x + w] (U2: messages under a centered title) */
+int text_draw_wrap_center(FontId f, float size, float x, float y, float w, int maxlines, float lh, Color c, const char *s) {
+    return wrap_draw(f, size, x, y, w, maxlines, lh, c, s, true);
+}
+static int wrap_draw(FontId f, float size, float x, float y, float w, int maxlines, float lh, Color c, const char *s,
+                     bool center) {
     if (!s) return 0;
     Atlas *a = atlas_get(f, size);
     int lines = 0;
@@ -948,10 +991,14 @@ int text_draw_wrap(FontId f, float size, float x, float y, float w, int maxlines
             char *tmp = malloc(n + 1);
             memcpy(tmp, line, n + 1);
             for (char *nl = tmp; *nl; nl++) if (*nl == '\n') *nl = ' ';
-            text_draw_clip(f, size, x, y + lines * lh, w, c, AL_LEFT, tmp);
+            if (center) text_draw_clip(f, size, x + w / 2, y + lines * lh, w, c, AL_CENTER, tmp);
+            else text_draw_clip(f, size, x, y + lines * lh, w, c, AL_LEFT, tmp);
             free(tmp);
         } else {
-            draw_run(a, snap(x), snap(y + lines * lh), c, line, end);
+            const char *e = end;
+            while (center && e > line && e[-1] == ' ') e--; /* a trailing space does not count */
+            float off = center ? (w - measure_n(a, line, e)) / 2 : 0;
+            draw_run(a, snap(x + (off > 0 ? off : 0)), snap(y + lines * lh), c, line, end);
         }
         lines++;
         p = end;

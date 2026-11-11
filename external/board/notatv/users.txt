@@ -2,3 +2,6 @@
 # media: mpv, ffprobe, yt-dlp and UxPlay run as this user when media_user=1 (see src/shell/mediarun.c). Fixed ids,
 # because media's home on the data partition (/data/notatv/media) keeps its owner across updates. No login.
 media 1990 media 1990 * - - video,audio NotaTV media playback
+# phone: the phone page's web server (busybox httpd -u) and its CGI scripts (A1 step 3, audit 9/11). It can only put a
+# request in /run/notatv-phone; phone-agent (root) checks and handles it. Fixed ids like media. No login.
+phone 1991 phone 1991 * - - - NotaTV phone page

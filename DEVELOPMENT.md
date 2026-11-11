@@ -34,9 +34,14 @@ On the build machine the build folder is kept between releases, so normally only
 
 Code and comments are in English, and user-facing text goes through `T("…")` and the language files. **Making an app:** see [src/apps/README.md](src/apps/README.md).
 
-**Live updates on a running Pi:** turn on *Settings → System → Developer mode (SSH)* and log in with `ssh root@<ip>` (the password is shown right below the setting). Copy a new `tvshell` to `/usr/bin/tvshell.new`, check that it is not empty, `mv` it into place and run `killall tvshell`; it restarts by itself. Before you replace a shared library, compare its dependencies (`readelf -d … | grep NEEDED`) with what is on the box.
+**Live updates on a running Pi:** turn on *Settings → Advanced → Developer mode (SSH)* and log in with `ssh root@<ip>` (the password is shown right below the setting). Copy a new `tvshell` to `/usr/bin/tvshell.new`, check that it is not empty, `mv` it into place and run `killall tvshell`; it restarts by itself. Before you replace a shared library, compare its dependencies (`readelf -d … | grep NEEDED`) with what is on the box.
 
 **UI tests without a TV:** `scripts/uitest.sh <dir> "<script>"` runs the UI headless with the app packages from `src/apps/out` and saves screenshots. Example: `w:60;s:home;k:right;k:ok;w:30;s:app;q`.
+
+**Sanitizer test (A6):** `scripts/ci-uitest.sh [outdir]` builds the UI and all apps with AddressSanitizer and UBSan and
+walks the home screen, every app and every Settings section headless (about 2 minutes). It fails on the first memory
+error or undefined behaviour. GitHub runs it on every push to main (`.github/workflows/test.yml`), and Release/Apps
+wait for it. It rebuilds `src/shell` and `src/apps` with the sanitizers: run `make clean && make` there afterwards.
 
 **Debug inbox:** `echo ok > /tmp/notatv-inbox/_key` sends a key (up/down/left/right/ok/back/home/menu/playpause), and `echo /tmp/x.bmp > /tmp/notatv-inbox/_shot` takes a screenshot.
 

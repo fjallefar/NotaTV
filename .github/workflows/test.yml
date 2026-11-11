@@ -1,0 +1,62 @@
+# A6 (audit 9/11): the user interface and every app run headless with AddressSanitizer and UBSan
+# (scripts/ci-uitest.sh, about 2 minutes). Runs on every push to main and on pull requests, and the Release and
+# Apps workflows wait for it: a release is not built when it finds a memory error or undefined behaviour.
+# The screenshots and logs are kept as an artifact for a week.
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        description: "The tag or commit to test (from Release/Apps)"
+        type: string
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  uitest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SDL3_VERSION: "3.4.12" # the same as the image (buildroot/package/sdl3)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential cmake ninja-build pkg-config python3-pil \
+            libcurl4-openssl-dev libdrm-dev libegl-dev libgles-dev libgbm-dev libdbus-1-dev libupnp-dev zlib1g-dev
+      - name: SDL3 from the cache
+        id: sdl
+        uses: actions/cache@v4
+        with:
+          path: ~/sdl3
+          key: sdl3-${{ env.SDL3_VERSION }}-ubuntu-24.04
+      - name: Build SDL3 (Ubuntu 24.04 has none)
+        if: steps.sdl.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL "https://www.libsdl.org/release/SDL3-$SDL3_VERSION.tar.gz" | tar -xz # where Buildroot fetches it
+          cmake -S "SDL3-$SDL3_VERSION" -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/sdl3" \
+            -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+          cmake --build sdl-build
+          cmake --install sdl-build
+      - name: Run every screen with ASan and UBSan
+        run: |
+          export PKG_CONFIG_PATH="$HOME/sdl3/lib/pkgconfig:$HOME/sdl3/lib64/pkgconfig"
+          export LD_LIBRARY_PATH="$HOME/sdl3/lib:$HOME/sdl3/lib64"
+          scripts/ci-uitest.sh "$RUNNER_TEMP/uitest"
+      - name: Keep the screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uitest
+          path: ${{ runner.temp }}/uitest
+          retention-days: 7

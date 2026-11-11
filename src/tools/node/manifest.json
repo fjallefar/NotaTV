@@ -1,0 +1,13 @@
+{
+  "id": "node",
+  "version": "26.13.0",
+  "kind": "tool",
+  "bin": "node",
+  "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0-linux-arm64.tar.xz",
+  "sha256": "406fe3fbde1c054adff8b297c16fdb5af6659db327c1ac8acd46b56ef1af9a92",
+  "files": {
+    "node-v26.13.0-linux-arm64/bin/node": "node",
+    "node-v26.13.0-linux-arm64/LICENSE": "LICENSE"
+  },
+  "strip": true
+}

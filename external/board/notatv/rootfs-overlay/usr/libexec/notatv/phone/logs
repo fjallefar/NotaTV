@@ -1,0 +1,17 @@
+#!/bin/sh
+# Phone page: download the logs for troubleshooting (a .tar.gz with secrets masked, see libexec/notatv/logs).
+# Same protection as cgi-bin/set: POST only, the phone page code, lockout after 10 wrong codes in 10 min.
+. /usr/libexec/notatv/cgi.sh
+
+[ "$REQUEST_METHOD" = POST ] || reply "405 Method Not Allowed" "Only POST"
+len=${CONTENT_LENGTH:-0}
+case "$len" in ''|*[!0-9]*) reply "411 Length Required" "Missing length" ;; esac
+[ "$len" -le 8192 ] || reply "413 Payload Too Large" "Too large"
+[ "$(cfg phone_enabled)" = 0 ] && reply "403 Forbidden" "The phone page is turned off on the TV"
+data=$(head -c "$len")
+getval() { echo "$data" | tr '&' '\n' | grep "^$1=" | head -1 | cut -d= -f2-; }
+auth_request || pin_check "$(urldecode "$(getval _pin)")" || reply "401 Unauthorized" "Wrong code"
+
+name="notatv-logs-$(date +%Y%m%d-%H%M).tar.gz"
+printf 'Content-Type: application/gzip\r\nContent-Disposition: attachment; filename="%s"\r\nCache-Control: no-store\r\n\r\n' "$name"
+exec /usr/libexec/notatv/logs bundle

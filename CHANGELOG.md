@@ -1,5 +1,60 @@
 # Changelog
 
+## 1.0.25
+
+> **In short:** New Settings, an encrypted phone page, a beta channel and many fixes.
+> - Settings in ten clear sections, the everyday ones first
+> - The phone page connects with a QR code and sends everything encrypted
+> - The Samsung TV remote works (CEC), and the box no longer turns the TV on after an unplanned restart
+
+<!-- tldr:da
+Kort: Nye Indstillinger, en krypteret telefonside, en beta-kanal og mange rettelser.
+- Indstillinger i ti tydelige afsnit, det almindelige først
+- Telefonsiden forbindes med en QR-kode og sender alt krypteret
+- Samsung-fjernbetjeningen virker (CEC), og boksen tænder ikke tv'et efter en uplanlagt genstart
+-->
+
+Not tested on a TV yet. Includes pull request #2 from czingenberg (CEC) - thank you!
+
+### System
+
+- **Settings** in ten sections: Home screen, Network, Picture, Sound, Language and subtitles, Remotes and devices,
+  Cast and sharing, Apps, System, Advanced. *Edit home screen* is under Home screen; rarely used things are in Advanced.
+- **Phone page:** *Settings → Network → Connect a phone* shows a QR code with a key in the part of the address after
+  `#` (never sent over the network). The page encrypts every request with it (XSalsa20-Poly1305, tweetnacl), and the
+  key is also the login. With the code alone, keys and text still work, but logins, playlists, network drives and
+  YouTube accounts are only accepted encrypted. The code is no longer kept in the browser for good.
+- **Phone page without root:** the web server runs as its own user and only hands requests to a small service that
+  checks them.
+- **CEC (PR #2):** `cecd` opens the device non-blocking. Before, it hung waiting for the next event and never answered
+  the TV, so a Samsung (Anynet+) remote did nothing. `cec status` checks every HDMI port.
+- **Unplanned restarts:** the log's new lines are kept on the SD card (every 15 minutes, a few KB a day), the box
+  logs why it started (a clean stop or not, no power, the kernel's crash message via ramoops), and a start nobody
+  asked for no longer turns the TV on.
+- **More room for updates:** yt-dlp and Node.js are no longer in the system (165 MB); the box fetches them from the
+  App Store into `/data`. YouTube says so while they are downloaded the first time.
+- **New kernels are tried once** with `tryboot`; if one does not start, the box goes back to the previous version
+  by itself - no new flash.
+- **Beta updates** (*Settings → Advanced*): get versions and apps before everyone else. Releases can be published as
+  beta and promoted to everyone once tested.
+- **Easier to read:** small text is at least 24 px, grey text has more contrast, and characters the main font lacks
+  (Arabic, Hebrew, Greek, Georgian ...) come from DejaVu Sans instead of being left out.
+- Empty screens and errors look the same everywhere, centered under their heading.
+- Old passwords and tokens are cleared from memory a minute after they are replaced.
+- Every screen is run with AddressSanitizer and UBSan before a release (GitHub Actions).
+
+### Apps
+
+- **Radio:** favourites at the top; *Try again* when the radio directory cannot be reached.
+- **Seerr:** says so when the box is not signed in to Plex, with *Local login*; asks before your Plex login is used
+  with a server found on the network.
+- **Jellyfin:** asks before your login is sent to a server found on the network.
+- **Plex:** a server address found on the network is only used when plex.tv lists it for your server.
+- **DRTV:** Back during sign-in really cancels it; errors have *Try again*.
+- **TV 2 Play:** a reserve address for the Widevine download.
+- **YouTube:** one message with *Try again* when YouTube cannot be reached.
+- **Twitch, Flimmer, Media:** centered messages; Media reads an empty folder without an error.
+
 ## 1.0.24
 
 > **In short:** Security and stability fixes from a code audit.

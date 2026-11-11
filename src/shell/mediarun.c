@@ -2,7 +2,7 @@
  *
  * /usr/bin/mpv, /usr/bin/ffprobe, /usr/bin/yt-dlp and /usr/bin/uxplay are symlinks to this program (post-build.sh),
  * so every caller - tvshell, the apps, mpv's own yt-dlp hook - goes through it. The real programs live in
- * /usr/libexec/notatv/media/ (yt-dlp in /usr/lib/yt-dlp, or a newer one from the App Store in <data>/tools/yt-dlp).
+ * /usr/libexec/notatv/media/ (yt-dlp is a tool from the App Store in <data>/tools/yt-dlp, not in the image).
  *
  * By default (media_user=1; media_user=0 turns it off for troubleshooting) a program started by root runs as the user "media" with
  * only the groups video and audio: a bug in a decoder (ffmpeg), in yt-dlp or in YouTube's JavaScript that yt-dlp runs
@@ -33,8 +33,6 @@
 #define HOME_DIR DATA "/media"
 #define TOOLS DATA "/tools"
 #define REAL "/usr/libexec/notatv/media/"
-#define YTDLP_BUILTIN "/usr/lib/yt-dlp/yt-dlp_linux_aarch64"
-#define YTDLP_BUILTIN_VER "/usr/lib/yt-dlp/notatv-version"
 
 static void warn(const char *fmt, const char *a) {
     fprintf(stderr, "mediarun: ");
@@ -54,18 +52,6 @@ static int cfg_on(const char *key, int def) {
     free(line);
     fclose(f);
     return on;
-}
-
-/* 2026.10.26 > 2026.9.30 (numbers per part) */
-static int version_cmp(const char *a, const char *b) {
-    while (*a || *b) {
-        long x = strtol(a, (char **)&a, 10), y = strtol(b, (char **)&b, 10);
-        if (x != y) return x < y ? -1 : 1;
-        if (*a == '.') a++;
-        if (*b == '.') b++;
-        if ((*a && (*a < '0' || *a > '9')) || (*b && (*b < '0' || *b > '9'))) break;
-    }
-    return 0;
 }
 
 static void read_small(const char *path, char *out, size_t n) {
@@ -91,20 +77,16 @@ static int json_str(const char *txt, const char *key, char *out, size_t n) {
     return 1;
 }
 
-/* yt-dlp: the newer of the one in the image and the one from the App Store (<data>/tools/yt-dlp) */
-static void ytdlp_path(char *out, size_t n) {
-    snprintf(out, n, "%s", YTDLP_BUILTIN);
-    char man[2048], ver[32], bin[64], built[32];
+/* yt-dlp: the tool from the App Store (<data>/tools/yt-dlp, see src/tools). Since F1 step 1 (audit 9/11) the image
+   has none; the box installs it with the first catalog after start. 0 = not there (yet) */
+static int ytdlp_path(char *out, size_t n) {
+    char man[2048], bin[64];
     read_small(TOOLS "/yt-dlp/manifest.json", man, sizeof man);
-    if (!json_str(man, "version", ver, sizeof ver) || !json_str(man, "bin", bin, sizeof bin)) return;
+    if (!json_str(man, "bin", bin, sizeof bin) || bin[0] == '.') return 0;
     for (const char *c = bin; *c; c++)
-        if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || strchr("._-", *c))) return;
-    if (bin[0] == '.') return;
-    read_small(YTDLP_BUILTIN_VER, built, sizeof built);
-    built[strcspn(built, "\r\n")] = 0;
-    char p[256];
-    snprintf(p, sizeof p, TOOLS "/yt-dlp/%s", bin);
-    if (access(p, X_OK) == 0 && (!built[0] || version_cmp(ver, built) > 0)) snprintf(out, n, "%s", p);
+        if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || strchr("._-", *c))) return 0;
+    snprintf(out, n, TOOLS "/yt-dlp/%s", bin);
+    return access(out, X_OK) == 0;
 }
 
 /* a copy of src that only media can read, in media's home (dst gets the name tag) */
@@ -158,7 +140,13 @@ int main(int argc, char **argv) {
     const char *name = strrchr(argv[0], '/');
     name = name ? name + 1 : argv[0];
     char real[300];
-    if (!strcmp(name, "yt-dlp")) ytdlp_path(real, sizeof real);
+    if (!strcmp(name, "yt-dlp")) {
+        if (!ytdlp_path(real, sizeof real)) {
+            /* the line the apps show: the box fetches it by itself when it is online */
+            fprintf(stderr, "ERROR: yt-dlp is still being downloaded - try again in a minute\n");
+            return 127;
+        }
+    }
     else if (!strcmp(name, "mpv") || !strcmp(name, "ffprobe") || !strcmp(name, "uxplay")) snprintf(real, sizeof real, REAL "%s", name);
     else { warn("unknown program %s", name); return 127; }
 

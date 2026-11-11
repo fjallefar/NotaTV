@@ -1,6 +1,6 @@
 {
   "id": "youtube",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "api": 2,
   "name": "YouTube",
   "desc": "Search and watch videos on YouTube",
@@ -11,10 +11,10 @@
   "order": 40,
   "default": true,
   "changes": {
-    "summary": "OK on a video opens its choices",
+    "summary": "One clear message when YouTube cannot be reached",
     "points": [
-      "OK on a video: Play, Info and comments, Go to channel - OK, OK plays",
-      "While watching: Info and comments at the top of the menu (Down), and Play goes on from the same place"
+      "No connection: one message with Try again instead of an error in every row",
+      "An empty subscription list is handled safely"
     ]
   }
 }

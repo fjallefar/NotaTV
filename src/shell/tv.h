@@ -144,6 +144,14 @@ float text_draw(FontId f, float size, float x, float y, Color c, Align al, const
 float text_draw_clip(FontId f, float size, float x, float y, float maxw, Color c, Align al, const char *s);
 int text_draw_wrap(FontId f, float size, float x, float y, float w, int maxlines,
                    float lh, Color c, const char *s);
+NOTA_NEW int text_draw_wrap_center(FontId f, float size, float x, float y, float w, int maxlines, float lh, Color c,
+                                   const char *s); /* each line centered in [x, x + w] (NotaTV 1.0.25+) */
+/* for apps: centered where the box has it, otherwise as before (an older NotaTV) */
+static inline int text_wrap_centered(FontId f, float size, float x, float y, float w, int maxlines, float lh, Color c,
+                                     const char *s) {
+    return text_draw_wrap_center ? text_draw_wrap_center(f, size, x, y, w, maxlines, lh, c, s)
+                                 : text_draw_wrap(f, size, x, y, w, maxlines, lh, c, s);
+}
 float text_width(FontId f, float size, const char *s);
 void clip_push(float x, float y, float w, float h);
 void clip_pop(void);
@@ -222,6 +230,7 @@ void cfg_set_int(const char *key, int v);
 int cfg_gen(void);   /* changes whenever a setting changes - for values read every frame */
 void cfg_flush(void); /* fsync the settings now (shutdown); cfg_set leaves that to a thread */
 void cfg_unset(const char *key); /* the default applies again */
+void cfg_reap(void); /* main loop: zero replaced values a minute after (PV3) */
 const char *data_dir(void);
 /* troubleshooting log (Settings → System, cfg debug_log): more details (every network request), and the logs of
    the user interface and playback are kept in <data>/logs, so they survive a restart. The phone page offers
@@ -539,7 +548,10 @@ void draw_hint(float x, float y, const char *keys, const char *label);
 float draw_keybar(float x, float y, const char *ok, const char *green, const char *yellow, const char *blue, const char *red);
 bool keybar_focused(void); /* the key bar has focus (the screen can dim its own focus) */
 void draw_spinner(float cx, float cy, float r, Color c);
-void draw_empty(const char *title, const char *msg);
+void draw_empty(const char *title, const char *msg); /* title and message centered (left-aligned message before 1.0.25) */
+/* the same with an icon above and buttons below (sel = the focused one, -1 = none) - one look for empty screens and
+   errors in every app (U2). Move between the buttons with buttons_nav. NotaTV 1.0.25+: check it is not NULL */
+NOTA_NEW void draw_empty_ex(IconId icon, Color icon_c, const char *title, const char *msg, const char *const *btns, int nb, int sel);
 /* one frame while the main thread waits for something (e.g. ffprobe): draws the screen + spinner; true = Back pressed */
 bool app_wait_frame(const char *msg);
 /* button row on login/setup screens (centered on cx); sel = the button in focus, -1 = none */

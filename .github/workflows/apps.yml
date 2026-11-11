@@ -22,6 +22,11 @@ on:
         type: choice
         options: [github, build-machine]
         default: github
+      channel:
+        description: "stable = every box gets the apps now; beta = the store apps-beta (Promote with a system release)"
+        type: choice
+        options: [stable, beta]
+        default: stable
 
 permissions:
   contents: write
@@ -33,11 +38,18 @@ concurrency:
 env:
   # where to build: the form for "Run workflow", otherwise the variable BUILD_ON (default: the build machine)
   ON: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine' }}
+  CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || vars.RELEASE_CHANNEL || 'stable' }}
   TREE: ${{ (github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine') == 'github' && '/home/runner/notatv' || '/opt/notatv' }}
   REPO_URL: https://github.com/${{ github.repository }}.git
 
 jobs:
+  # A6: every screen with ASan/UBSan first (test.yml); nothing is built or published when it fails
+  test:
+    uses: ./.github/workflows/test.yml
+    with:
+      ref: ${{ github.sha }}
   apps:
+    needs: test
     # (the same choice as ON above: runs-on cannot read env)
     runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine') == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","notatv"]') }}
     timeout-minutes: 300 # GitHub's runner builds the system tree first
@@ -134,13 +146,15 @@ jobs:
               with urllib.request.urlopen(req) as r:
                   return json.load(r)
           api = f"https://api.github.com/repos/{repo}/releases"
+          beta = os.environ.get("CHANNEL") == "beta"  # P1: the beta store (see release.yml and promote.yml)
+          store_tag = "apps-beta" if beta else "apps"
           # same as in release.yml: replace files with the same name, packages first, the catalog last
           try:
-              store = call(f"{api}/tags/apps")
+              store = call(f"{api}/tags/{store_tag}")
           except urllib.error.HTTPError as e:
               if e.code != 404: raise
-              store = call(api, json.dumps({"tag_name": "apps", "target_commitish": os.environ["GITHUB_SHA"],
-                                            "name": "NotaTV App Store", "prerelease": True, "make_latest": "false",
+              store = call(api, json.dumps({"tag_name": store_tag, "target_commitish": os.environ["GITHUB_SHA"],
+                                            "name": "NotaTV App Store" + (" (beta)" if beta else ""), "prerelease": True, "make_latest": "false",
                                             "body": "App packages for the NotaTV App Store. Boxes download them from here - do not delete."}).encode())
           # the release text: every app with its version and what is new (made by apps-catalog.py --notes)
           if os.path.exists("apps-notes.md"):

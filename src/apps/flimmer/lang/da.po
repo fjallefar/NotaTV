@@ -282,14 +282,8 @@ msgstr "Afslutter login hos Flimmertv og sletter adressen og login fra boksen"
 msgid "Find and request movies and series on your Flimmertv server"
 msgstr "Find og anmod om film og serier på din Flimmertv-server"
 
-msgid "New app: Flimmer for Flimmertv"
-msgstr "Ny app: Flimmer til Flimmertv"
+msgid "Easier to read"
+msgstr "Lettere at læse"
 
-msgid "Browse Discover, search, and request movies and series (choose the seasons)"
-msgstr "Udforsk, søg, og anmod om film og serier (vælg sæsonerne)"
-
-msgid "My requests: follow them, and withdraw one that is still waiting"
-msgstr "Mine anmodninger: følg dem, og træk en tilbage, der stadig venter"
-
-msgid "Finds Flimmertv on the network by itself (port 7676)"
-msgstr "Finder selv Flimmertv på netværket (port 7676)"
+msgid "Messages on empty screens are centered under their heading"
+msgstr "Beskeder på tomme skærme står centreret under overskriften"

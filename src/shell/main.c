@@ -654,7 +654,12 @@ void draw_spinner(float cx, float cy, float r, Color c) {
 
 void draw_empty(const char *title, const char *msg) {
     text_draw(F_BOLD, 42, UI_W / 2, 430, C_TEXT, AL_CENTER, title);
-    text_draw_wrap(F_REG, 28, UI_W / 2 - 520, 500, 1040, 6, 40, C_TEXT2, msg);
+    text_draw_wrap_center(F_REG, 28, UI_W / 2 - 520, 500, 1040, 6, 40, C_TEXT2, msg); /* centered like the title (U2) */
+}
+void draw_empty_ex(IconId icon, Color icon_c, const char *title, const char *msg, const char *const *btns, int nb, int sel) {
+    draw_icon(icon, UI_W / 2, 320, 110, icon_c);
+    draw_empty(title, msg);
+    if (btns && nb > 0) draw_buttons(UI_W / 2, 780, btns, nb, sel);
 }
 
 void draw_buttons(float cx, float y, const char *const *labels, int n, int sel) {
@@ -804,6 +809,7 @@ void app_background_tick(bool playing) {
     inbox_check();
     bt_tick(); /* the Bluetooth agent answers pairing requests */
     appcat_tick(); /* finishes App Store installs; moves boxes from 1.0.x to App Store apps */
+    cfg_reap(); /* old tokens and passwords are zeroed a minute after they were replaced (PV3) */
     idle_sleep_tick(playing); /* automatic sleep - also while a video plays ("Are you still watching?") */
     if (playing) return;
     dlna_tick();
@@ -959,7 +965,7 @@ static void draw_screensaver(float a) {
     text_draw(F_REG, 36, x, y + 50, RGBA(255, 255, 255, (uint8_t)(110 * a)), AL_CENTER, date);
 }
 
-/* ---------- FPS display (Settings → System → Show FPS) ---------- */
+/* ---------- FPS display (Settings → Advanced → Show FPS) ---------- */
 static float fps_now, fps_worst_ms;
 static double draw_ms_sum; /* CPU time in draw_frame (debugging) */
 

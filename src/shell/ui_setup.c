@@ -1,7 +1,7 @@
 /* NotaTV shell - setup guide: shown on first boot (cfg setup_done) and from Settings → System
  * Five steps with a progress line at the top: language → network → region → name → apps, then a summary.
  * Left: what the step is about. Right: the choices (a list, or the app grid). Daylight saving time follows the
- * region by itself (Settings → Date and time), and the phone page code is shown in the summary.
+ * region by itself (Settings → System), and the phone page code is shown in the summary.
  * Everything is chosen here on the box; nothing is looked up online. */
 #include "tv.h"
 #include <stdio.h>
@@ -45,6 +45,92 @@ void phone_pin_change(void (*done)(void)) {
     static const char *const items[] = {N_("New random code"), N_("Choose my own")};
     static const char *tr[2]; tr[0] = T(items[0]); tr[1] = T(items[1]);
     choice_open(T("Phone page code"), tr, 2, 0, pin_choice, (void *)done);
+}
+
+/* ---------- Connect a phone (S6, audit 9/11) ----------
+ * A QR code with http://<box>/#k=<key>: the phone page takes the key from the part after # (never sent over the
+ * network) and encrypts everything it sends with it - also logins and YouTube cookies, which the code alone can no
+ * longer send. The key is <data>/phone-key (root only, made by phonebox); "New QR code" makes a new one, so a phone
+ * that had the old one must scan again. */
+static char phone_key[64];
+static void phone_key_load(bool fresh) {
+    char path[400];
+    snprintf(path, sizeof path, "%s/phone-key", data_dir());
+    phone_key[0] = 0;
+    unsigned char k[32];
+    FILE *f = fresh ? NULL : fopen(path, "rb");
+    size_t n = f ? fread(k, 1, sizeof k, f) : 0;
+    if (f) fclose(f);
+    if (n != sizeof k) { /* none yet, or a new one: phonebox writes it (0600, replaced atomically) and prints it */
+        char prog[300];
+        snprintf(prog, sizeof prog, "%s/phonebox", helper_path());
+        const char *argv[] = {prog, "newkey", path, NULL};
+        char *out = run_capture_argv(argv);
+        if (out) { str_trim(out); if (strlen(out) == 43) snprintf(phone_key, sizeof phone_key, "%s", out); free(out); }
+        return;
+    }
+    static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    unsigned v = 0;
+    int bits = 0, o = 0;
+    for (size_t i = 0; i < sizeof k; i++) {
+        v = (v << 8) | k[i];
+        bits += 8;
+        while (bits >= 6) { bits -= 6; phone_key[o++] = a[(v >> bits) & 63]; }
+    }
+    if (bits) phone_key[o++] = a[(v << (6 - bits)) & 63];
+    phone_key[o] = 0;
+    memset(k, 0, sizeof k);
+}
+typedef struct { int btn; } PhoneQr;
+static void pqr_draw(Screen *s) {
+    PhoneQr *q = s->st;
+    draw_background();
+    draw_topbar(T("Connect a phone"));
+    const char *ip = app_ip();
+    float qx = 180, qy = 220, qs = 560;
+    float tx = 860, tw = UI_W - tx - 140;
+    if (!cfg_int("phone_enabled", 1) || !ip[0] || !phone_key[0]) {
+        draw_empty(T("Connect a phone"), !cfg_int("phone_enabled", 1) ? T("Turn on the phone page first (Settings → Network → Phone page).")
+                                         : !ip[0] ? T("The box is not on a network.") : T("The key could not be made - try again."));
+        return;
+    }
+    char url[160];
+    snprintf(url, sizeof url, "http://%s/#k=%s", ip, phone_key);
+    draw_qr(url, qx, qy, qs);
+    text_draw(F_BOLD, 42, tx, 230, C_TEXT, AL_LEFT, T("Scan with the phone's camera"));
+    text_draw_wrap(F_REG, 28, tx, 300, tw, 6, 40, C_TEXT2,
+                   T("The phone page opens, and everything it sends - text, logins, YouTube cookies - is encrypted with a key only this QR code has. No code needed."));
+    char alt[200];
+    snprintf(alt, sizeof alt, T("Without the camera: open http://%s and enter the code %s (keys and text only)."), ip, phone_pin());
+    text_draw_wrap(F_REG, 24, tx, 560, tw, 3, 34, C_TEXT3, alt);
+    const char *b[2] = {T("Done"), T("New QR code")};
+    draw_buttons(tx + 300, 780, b, 2, q->btn);
+}
+static void pqr_new_cb(void *ud, bool yes) {
+    (void)ud;
+    if (!yes) return;
+    phone_key_load(true);
+    app_toast("%s", T("New QR code - phones must scan it again"));
+}
+static bool pqr_input(Screen *s, const InputEvent *ev) {
+    PhoneQr *q = s->st;
+    if (buttons_nav(&q->btn, 2, ev)) return true;
+    if (ev->a == A_BACK || (ev->a == A_OK && q->btn == 0)) { app_pop(); return true; }
+    if (ev->a == A_OK && q->btn == 1 && !ev->repeat)
+        confirm_open(T("New QR code?"), T("Phones that scanned the old one can no longer send anything until they scan the new one."),
+                     T("New QR code"), T("Cancel"), pqr_new_cb, NULL);
+    return true;
+}
+static void pqr_destroy(Screen *s) { free(s->st); free(s); }
+void phone_qr_open(void) {
+    phone_key_load(false);
+    Screen *s = xcalloc(1, sizeof *s);
+    s->name = "phone-qr";
+    s->st = xcalloc(1, sizeof(PhoneQr));
+    s->draw = pqr_draw;
+    s->input = pqr_input;
+    s->destroy = pqr_destroy;
+    app_push(s);
 }
 
 

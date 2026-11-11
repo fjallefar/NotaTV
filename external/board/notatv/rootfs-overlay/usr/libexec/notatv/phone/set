@@ -1,0 +1,109 @@
+#!/bin/sh
+# Phone page: receives forms and puts values into tvshell's inbox. Runs as root under phone-agent (the web server
+# and its CGI run as the user phone, A1 step 3); the request comes from libexec/notatv/phone-cgi.
+# Replies and messages are English (translated on the page and on the TV); arguments after \037.
+# Protection: POST only, max 512 KB, PIN (chosen on the TV in the setup guide / Settings → Network),
+# lockout after 10 wrong PINs in 10 min (libexec/notatv/cgi.sh). Server addresses, logins and cookies are only saved once they are
+# approved on the TV (tvshell shows a confirmation dialog).
+. /usr/libexec/notatv/cgi.sh
+IN=/tmp/notatv-inbox
+MAX=819200 # 512 KB of form data, plus the encryption and base64 (S6); the form itself is checked below
+
+[ "$REQUEST_METHOD" = POST ] || reply "405 Method Not Allowed" "Only POST"
+len=${CONTENT_LENGTH:-0}
+case "$len" in ''|*[!0-9]*) reply "411 Length Required" "Missing length" ;; esac
+[ "$len" -le $MAX ] || reply "413 Payload Too Large" "Too large (max. 512 KB)"
+[ "$(cfg phone_enabled)" = 0 ] && reply "403 Forbidden" "The phone page is turned off on the TV"
+
+# the sender's address for messages on the TV: "[::ffff:10.0.0.5]" -> "10.0.0.5"
+FROM=$(echo "$REMOTE_ADDR" | sed 's/^\[//; s/\]$//; s/^::ffff://')
+mkdir -p $IN
+data=$(head -c "$len")
+getval() { echo "$data" | tr '&' '\n' | grep "^$1=" | head -1 | cut -d= -f2-; }
+toast() { printf '%s\n' "$1" > $IN/.t.tmp && mv $IN/.t.tmp $IN/_toast; }
+
+# S6: encrypted with the key from the QR code, or the code (see auth_request in cgi.sh)
+if ! auth_request; then
+	if ! pin_check "$(urldecode "$(getval _pin)")"; then
+		[ "$WRONG" -ge 3 ] && toast "$(printf 'Wrong code from the phone page (%%s)\037%s' "$FROM")"
+		reply "401 Unauthorized" "Wrong code"
+	fi
+fi
+[ ${#data} -le 524288 ] || reply "413 Payload Too Large" "Too large (max. 512 KB)"
+if [ "$AUTH" = code ]; then # logins, passwords and cookies never in plain text: they need the QR code's encryption
+	for k in $SECRET_FIELDS; do
+		[ -n "$(getval $k)" ] && reply "428 Precondition Required" "Scan the QR code on the TV first (Settings → Network → Connect a phone) - logins are only sent encrypted"
+	done
+fi
+
+# only a check of the code (the page remembers it)
+[ -n "$(getval _ping)" ] && reply "200 OK" "OK"
+
+# power: turn on the TV (and wake the screen), sleep, restart. The reply goes out before the box sleeps/restarts.
+# The phone cannot wake a sleeping box: the network sleeps with it (the remote wakes it).
+H=/usr/libexec/notatv
+case "$(getval _power)" in
+on)
+	printf '1\n' > $IN/.w.tmp && mv $IN/.w.tmp $IN/_wake
+	$H/cec tv-on >/dev/null 2>&1 </dev/null &
+	reply "200 OK" "The TV is turning on" ;;
+sleep)
+	toast "$(printf 'Sleep from the phone page (%%s)\037%s' "$FROM")"
+	( sleep 2; $H/power sleep ) >/dev/null 2>&1 </dev/null &
+	reply "200 OK" "The box goes to sleep - wake it with the remote" ;;
+reboot)
+	toast "$(printf 'Restarting from the phone page (%%s)\037%s' "$FROM")"
+	( sleep 2; $H/power reboot ) >/dev/null 2>&1 </dev/null &
+	reply "200 OK" "The box restarts - this page works again in about a minute" ;;
+esac
+
+# YouTube subscriptions from Google Takeout (only a channel list) - tvshell imports them the next time it opens
+yts=$(getval _ytsubs)
+if [ -n "$yts" ]; then
+	mkdir -p /data/notatv/youtube
+	urldecode "$yts" > /data/notatv/youtube/subscriptions.csv
+	n=$(grep -c '^UC' /data/notatv/youtube/subscriptions.csv)
+	toast "$(printf '%%s channels ready to import - open YouTube\037%s' "$n")"
+	reply "200 OK" "$(printf '%%s channels\037%s' "$n")"
+fi
+
+# YouTube account (cookies.txt): waits for approval on the TV
+ytc=$(getval _ytcookies)
+if [ -n "$ytc" ]; then
+	name=$(urldecode "$(getval yt_name)" | tr -cd 'A-Za-z0-9 _-' | cut -c1-30)
+	[ -z "$name" ] && name=Account
+	P=/data/notatv/youtube/pending
+	mkdir -p $P && chmod 700 $P
+	# logins nobody answered on the TV (dialog closed, YouTube not installed) do not stay on the box
+	find $P -name '*.cookies' -mmin +10 -exec rm -f {} \; 2>/dev/null
+	urldecode "$ytc" > "$P/$name.cookies"
+	grep -q "youtube.com" "$P/$name.cookies" || { rm -f "$P/$name.cookies"; reply "400 Bad Request" "The file contains no YouTube cookies"; }
+	printf '%s\n%s\n' "$name" "$FROM" > $IN/.yp.tmp && mv $IN/.yp.tmp $IN/_ytpending
+	reply "200 OK" "Approve on the TV"
+fi
+
+# text and keys: right away. Settings: collected and approved on the TV
+pend=$IN/.pending.$$
+: > "$pend"
+echo "$data" | tr '&' '\n' | while IFS='=' read -r k val; do
+	k=$(urldecode "$k")
+	case "$k" in
+	_text|_key) urldecode "$val" > "$IN/.$k.tmp" && mv "$IN/.$k.tmp" "$IN/$k" ;;
+	iptv_url|iptv_epg|xtream_server|xtream_user|xtream_pass|media_share|device_name)
+		v=$(urldecode "$val" | tr -d '\r\n')
+		# at most 2 KB per setting (the approval on the TV only shows the start of a value)
+		if [ ${#v} -gt 2048 ]; then : > "$pend.long"; continue; fi
+		printf '%s=%s\n' "$k" "$v" >> "$pend" ;;
+	esac
+done
+if [ -f "$pend.long" ]; then
+	rm -f "$pend" "$pend.long"
+	reply "413 Payload Too Large" "A field is too long (max. 2 KB)"
+fi
+if [ -s "$pend" ]; then
+	echo "_from=$FROM" >> "$pend"
+	mv "$pend" $IN/_pending
+	reply "200 OK" "Approve on the TV"
+fi
+rm -f "$pend"
+reply "200 OK" "OK"

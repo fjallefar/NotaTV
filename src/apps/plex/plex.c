@@ -1121,6 +1121,27 @@ static void disc_free(DiscJob *j) {
     free(j);
 }
 
+/* S17 (audit 9/11): an address found on the network (GDM) only counts when plex.tv lists the same host for the
+   server - anyone on the network can answer GDM with your server's id, and the test below sends your token */
+static bool listed_host(const Res *r, const char *url) {
+    const char *h = strstr(url, "://");
+    h = h ? h + 3 : url;
+    char host[64], dashed[64];
+    size_t n = strcspn(h, ":/");
+    if (!n || n >= sizeof host) return false;
+    memcpy(host, h, n);
+    host[n] = 0;
+    snprintf(dashed, sizeof dashed, "%s", host); /* plex.direct names: 192-168-1-10.<hash>.plex.direct */
+    for (char *c = dashed; *c; c++) if (*c == '.') *c = '-';
+    for (int u = 0; u < r->n_uri; u++) {
+        const char *x = strstr(r->uris[u], "://");
+        x = x ? x + 3 : r->uris[u];
+        size_t xn = strcspn(x, ":/");
+        if ((xn == n && !strncmp(x, host, n)) || (!strncmp(x, dashed, strlen(dashed)) && x[strlen(dashed)] == '.')) return true;
+    }
+    return false;
+}
+
 static char *test_uris(Res *r) {
     Hdrs H;
     HttpBuf b;
@@ -1173,7 +1194,7 @@ static void disc_work(void *arg) {
     for (int i = 0; i < j->n; i++)
         for (int k = 0; k < j->n_local; k++) {
             Res *r = &j->r[i];
-            if (!r->id || strcmp(r->id, j->local[k].id)) continue;
+            if (!r->id || strcmp(r->id, j->local[k].id) || !listed_host(r, j->local[k].url)) continue;
             if (r->n_uri == 12) free(r->uris[--r->n_uri]);
             memmove(&r->uris[1], &r->uris[0], sizeof r->uris[0] * (size_t)r->n_uri);
             r->uris[0] = str_dup(j->local[k].url);
@@ -3101,7 +3122,7 @@ static void act_plex_logout(void) { app_ask_signout("Plex", plex_forget); }
 static const char *plex_signed_out(void) { return *cfg_get("plex_token", "") ? NULL : ITEM_HIDDEN; }
 static const Item plex_items[] = {
     {N_("Plex subtitles"), IT_CYCLE, "plex_subs", "plex", plexsub_o, plexsub_l,
-     .help = N_("Follow Plex: the subtitle track chosen in Plex, otherwise none. Language setting: the player picks by Subtitle language under Picture and sound. Off: never")},
+     .help = N_("Follow Plex: the subtitle track chosen in Plex, otherwise none. Language setting: the player picks by Subtitle language under Language and subtitles. Off: never")},
     {N_("Home screen (Plex and Jellyfin)"), IT_CYCLE, "plex_home_style", "hero", plexst_o, plexst_l, .help = N_("Hero: a featured title at the top. Focus: background and info follow the selected title")},
     {N_("Server converts HDR movies"), IT_TOGGLE, "plex_hdr_server", "0", set_onoff,
      .help = N_("Only when the TV shows HDR movies without HDR: the Plex server converts them instead of the box (1080p, stereo sound). Needs a powerful server"),

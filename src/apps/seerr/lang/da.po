@@ -63,9 +63,6 @@ msgstr "Login fejlede (HTTP %ld)"
 msgid "Signing in…"
 msgstr "Logger ind…"
 
-msgid "Sign in to Plex first, or use local login in the menu"
-msgstr "Log ind på Plex først, eller brug lokalt login i menuen"
-
 msgid "Seerr: password"
 msgstr "Seerr: kodeord"
 
@@ -471,11 +468,38 @@ msgstr "Søger efter Seerr-servere på netværket…"
 msgid "No Seerr servers found - enter the address"
 msgstr "Ingen Seerr-servere fundet - indtast adressen"
 
-msgid "Finds your Seerr server on the network by itself"
-msgstr "Finder selv din Seerr-server på netværket"
+msgid "Sign in to Plex first"
+msgstr "Log ind på Plex først"
 
-msgid "The first time you open Seerr it searches the network (Overseerr, Jellyseerr and Seerr on port 5055), so you only have to pick the server"
-msgstr "Første gang du åbner Seerr, søger den på netværket (Overseerr, Jellyseerr og Seerr på port 5055), så du kun skal vælge serveren"
+msgid "Seerr signs you in with your Plex account, and the box is not signed in to Plex.\n\nOpen Plex from the home screen and sign in, then come back and choose Try again. Or sign in with a local Seerr user (email and password)."
+msgstr "Seerr logger dig ind med din Plex-konto, og boksen er ikke logget ind på Plex.\n\nÅbn Plex fra forsiden og log ind, kom så tilbage og vælg Prøv igen. Eller log ind med en lokal Seerr-bruger (e-mail og adgangskode)."
 
-msgid "Find server on the network is also on the setup screen and in the Seerr menu"
-msgstr "Find server på netværket ligger også på opsætningsskærmen og i Seerr-menuen"
+msgid "The box is still not signed in to Plex"
+msgstr "Boksen er stadig ikke logget ind på Plex"
+
+msgid "Says so when Plex is not signed in"
+msgstr "Siger det, når Plex ikke er logget ind"
+
+msgid "Without Plex sign-in, Seerr explains what to do instead of seeming to do nothing"
+msgstr "Uden Plex-login forklarer Seerr, hvad du skal gøre, i stedet for at lade til at intet sker"
+
+msgid "Local login (email) is a button on that screen"
+msgstr "Lokalt login (e-mail) er en knap på den skærm"
+
+msgid "Sign in to %s?"
+msgstr "Log ind på %s?"
+
+msgid "Sign in"
+msgstr "Log ind"
+
+msgid "Cancel"
+msgstr "Annuller"
+
+msgid "Seerr is signed in with your Plex account, so this server gets access to it. Only choose a server you know. The connection on your network is not encrypted (http)."
+msgstr "Seerr logges ind med din Plex-konto, så denne server får adgang til den. Vælg kun en server, du kender. Forbindelsen på dit netværk er ikke krypteret (http)."
+
+msgid "Asks before your Plex login is used with a server found on the network"
+msgstr "Spørger, før dit Plex-login bruges med en server fundet på netværket"
+
+msgid "Messages on empty screens are centered under their heading"
+msgstr "Beskeder på tomme skærme står centreret under overskriften"

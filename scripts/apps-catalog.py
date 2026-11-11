@@ -65,9 +65,10 @@ def write_pkg(pkg, out):
                 with open(p, 'rb') as fh: t.addfile(ti, fh)
 
 
-def build_tools(tools_dir, dl_dir, dist):
-    """Tools (src/tools/<id>/manifest.json): a program from upstream, pinned by version + SHA256 of its zip.
-    The zip is taken from Buildroot's download folder if it is there, otherwise downloaded, and always checked."""
+def build_tools(tools_dir, dl_dir, dist, strip=None):
+    """Tools (src/tools/<id>/manifest.json): a program from upstream, pinned by version + SHA256 of its zip, or of a
+    .tar.xz with "files" ({member: name}: only those files are taken, e.g. Node's bin/node and LICENSE).
+    The download is taken from Buildroot's download folder if it is there, otherwise downloaded, and always checked."""
     out = []
     for man in sorted(glob.glob(os.path.join(tools_dir, '*', 'manifest.json'))):
         m = json.load(open(man, encoding='utf-8'))
@@ -80,24 +81,36 @@ def build_tools(tools_dir, dl_dir, dist):
             zpath = os.path.join(dl_dir or '', tid, os.path.basename(url)) if dl_dir else ''
             if not (zpath and os.path.exists(zpath) and hashlib.sha256(open(zpath, 'rb').read()).hexdigest() == want):
                 import urllib.request
-                zpath = os.path.join(tmp, 'tool.zip')
+                zpath = os.path.join(tmp, os.path.basename(url))
                 with urllib.request.urlopen(url, timeout=300) as r, open(zpath, 'wb') as f: shutil.copyfileobj(r, f)
             got = hashlib.sha256(open(zpath, 'rb').read()).hexdigest()
             assert got == want, f'{tid}: SHA256 of {url} is {got}, the manifest says {want}'
             pkg = os.path.join(tmp, 'pkg')
             os.makedirs(pkg)
-            import zipfile
-            with zipfile.ZipFile(zpath) as z:
-                for zi in z.infolist():
-                    name = zi.filename
-                    assert not name.startswith('/') and '..' not in name.split('/'), f'{tid}: bad path {name}'
-                    mode = (zi.external_attr >> 16) & 0o777
-                    if (zi.external_attr >> 16) & 0o170000 == 0o120000: raise SystemExit(f'{tid}: symlink {name} in the zip')
-                    z.extract(zi, pkg)
-                    if not zi.is_dir(): os.chmod(os.path.join(pkg, name), 0o755 if mode & 0o111 else 0o644)
+            if m.get('files'):  # a .tar.xz (Node.js): only the listed members, each to its own plain name
+                import tarfile as tf
+                with tf.open(zpath, 'r:xz') as t:
+                    for member, dest in m['files'].items():
+                        assert re.fullmatch(r'[A-Za-z0-9._-]+', dest) and not dest.startswith('.'), f'{tid}: bad name {dest}'
+                        ti = t.getmember(member)
+                        assert ti.isfile(), f'{tid}: {member} is not a plain file'
+                        with t.extractfile(ti) as src, open(os.path.join(pkg, dest), 'wb') as f: shutil.copyfileobj(src, f)
+                        os.chmod(os.path.join(pkg, dest), 0o755 if ti.mode & 0o111 else 0o644)
+            else:
+                import zipfile
+                with zipfile.ZipFile(zpath) as z:
+                    for zi in z.infolist():
+                        name = zi.filename
+                        assert not name.startswith('/') and '..' not in name.split('/'), f'{tid}: bad path {name}'
+                        mode = (zi.external_attr >> 16) & 0o777
+                        if (zi.external_attr >> 16) & 0o170000 == 0o120000: raise SystemExit(f'{tid}: symlink {name} in the zip')
+                        z.extract(zi, pkg)
+                        if not zi.is_dir(): os.chmod(os.path.join(pkg, name), 0o755 if mode & 0o111 else 0o644)
             b = os.path.join(pkg, binname)
-            assert os.path.isfile(b), f'{tid}: {binname} is not in the zip'
+            assert os.path.isfile(b), f'{tid}: {binname} is not in the download'
             os.chmod(b, 0o755)
+            if m.get('strip') and strip:  # Node: 150 MB as released, about 110 MB without symbols
+                subprocess.run([strip, '--strip-unneeded', b], check=True)
             with open(os.path.join(pkg, 'manifest.json'), 'w', encoding='utf-8') as f:
                 json.dump({'id': tid, 'version': ver, 'kind': 'tool', 'bin': binname}, f, indent=1)
                 f.write('\n')
@@ -178,7 +191,7 @@ def main():
         catalogs.setdefault(api, []).append(entry)
         print(f'{name}  {len(data)} bytes')
     # tools are the same for every app API (they do not use tv.h); a tvshell without tools support ignores the key
-    tools = build_tools(tools_dir, dl_dir, dist) if tools_dir else []
+    tools = build_tools(tools_dir, dl_dir, dist, strip) if tools_dir else []
     for api, apps in catalogs.items():
         apps.sort(key=lambda a: (a.get('order', 500), a['id']))
         with open(os.path.join(dist, f'apps-api{api}.json'), 'w', encoding='utf-8') as f:

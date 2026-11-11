@@ -1,0 +1,32 @@
+#!/bin/sh
+# logkeep: the new lines of /tmp/notatv.log (in RAM, gone after a crash or power loss) appended to
+# /data/notatv/logs/notatv.log on the SD card - every 15 minutes with the clock, and at shutdown. Only new lines,
+# not the repeated "messages lost" from CEC, at most 256 KB (then one older file): a few KB a day, nothing an SD
+# card notices. Also notes once per start if the firmware saw under-voltage (a power supply that cannot keep up).
+. /usr/libexec/notatv/lib.sh
+SRC=/tmp/notatv.log
+DST=/data/notatv/logs/notatv.log
+OFF=$RUN/logkeep.off
+MAX=262144
+[ -d /data/notatv/logs ] || exit 0
+# under-voltage since the start (sticky bit 16 of the firmware's throttled value)
+if [ ! -f $RUN/logkeep.uv ]; then
+	for t in /sys/devices/platform/*/*firmware*/get_throttled /sys/devices/platform/soc/soc:firmware/get_throttled; do
+		[ -r "$t" ] || continue
+		v=$(cat "$t" 2>/dev/null)
+		case "$v" in ''|*[!0-9a-fA-Fx]*) continue ;; esac
+		[ $(( v & 0x10000 )) -ne 0 ] && { log "power: under-voltage since the start (throttled=$v) - the power supply cannot keep up"; : > $RUN/logkeep.uv; }
+		break
+	done
+fi
+[ -f $SRC ] || exit 0
+size=$(wc -c < $SRC)
+off=$(cat $OFF 2>/dev/null); case "$off" in ''|*[!0-9]*) off=0 ;; esac
+[ "$size" -lt "$off" ] && off=0 # the log in /tmp was rotated
+[ "$size" -gt "$off" ] || exit 0
+if [ "$off" = 0 ]; then echo "===== start $(date '+%Y-%m-%d %H:%M') =====" >> $DST; fi
+tail -c +$((off + 1)) $SRC | head -c $((size - off)) | grep -v 'messages lost' >> $DST
+echo "$size" > $OFF
+[ "$(wc -c < $DST)" -gt $MAX ] && mv -f $DST $DST.1
+chmod 600 $DST 2>/dev/null
+exit 0

@@ -86,7 +86,7 @@ static void scan_work(void *arg) {
         }
         closedir(d);
     }
-    qsort(s->e, s->n, sizeof(Entry), ent_cmp);
+    if (s->n > 1) qsort(s->e, s->n, sizeof(Entry), ent_cmp); /* never with NULL (UBSan, A6) */
 }
 
 static void scan_done(void *arg) {
