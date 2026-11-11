@@ -6,12 +6,22 @@
 # If src/shell/tv.h changed since the latest system release, the apps could need a tvshell the boxes do not
 # have yet - then it stops: make a system release (v*) instead, it publishes the apps too.
 # Remember to raise "version" in the manifest.json of each app that changed, or the boxes see no update.
+#
+# Where it is built: a tag push uses the repository variable BUILD_ON ("github" or "build-machine", not set =
+# the build machine); "Run workflow" asks. GitHub's runner has no build folder from earlier, so it builds the
+# whole system tree first (about 1.5 hours, dl/ and .ccache/ come from the Actions cache).
 name: Apps
 
 on:
   push:
     tags: ["apps-*"]
   workflow_dispatch:
+    inputs:
+      runner:
+        description: "Where to build"
+        type: choice
+        options: [github, build-machine]
+        default: github
 
 permissions:
   contents: write
@@ -21,20 +31,39 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TREE: /opt/notatv
+  # where to build: the form for "Run workflow", otherwise the variable BUILD_ON (default: the build machine)
+  ON: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine' }}
+  TREE: ${{ (github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine') == 'github' && '/home/runner/notatv' || '/opt/notatv' }}
   REPO_URL: https://github.com/${{ github.repository }}.git
 
 jobs:
   apps:
-    runs-on: [self-hosted, linux, notatv]
-    timeout-minutes: 120
+    # (the same choice as ON above: runs-on cannot read env)
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine') == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","notatv"]') }}
+    timeout-minutes: 300 # GitHub's runner builds the system tree first
     steps:
-      - name: Fetch the code into /opt/notatv
+      - name: Where this is built
+        run: echo "Building the apps on $ON in $TREE"
+
+      - name: Host packages (GitHub's runner only)
+        if: env.ON == 'github'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q build-essential file wget curl cpio unzip rsync bc \
+            libncurses-dev libssl-dev python3 git xz-utils bzip2 zstd
+
+      - name: Fetch the code into the build folder
         run: |
           set -e
+          mkdir -p "$TREE"
           cd "$TREE"
-          test -d output-rpi4 || { echo "No earlier build in $TREE - make a system release (v*) first"; exit 1; }
-          git remote set-url origin "$REPO_URL"
+          if [ "$ON" = github ]; then
+            [ -d .git ] || git init -q
+            git remote add origin "$REPO_URL" 2>/dev/null || git remote set-url origin "$REPO_URL"
+          else
+            test -d output-rpi4 || { echo "No earlier build in $TREE - make a system release (v*) first"; exit 1; }
+            git remote set-url origin "$REPO_URL"
+          fi
           git fetch --force --tags origin
           git checkout --force --detach "$GITHUB_SHA"
           git clean -fd
@@ -61,7 +90,24 @@ jobs:
           if [ -n "$DRTV_CLIENT_ID" ]; then printf '%s\n' "$DRTV_CLIENT_ID" > "$TREE/secrets/drtv-client-id"
           else echo "::warning::The DRTV_CLIENT_ID secret is not set - DRTV works without an account only"; fi
 
-      - name: Build the apps (log in /opt/notatv/apps-build.log)
+      - name: Restore dl/ and .ccache/ (GitHub's runner only)
+        if: env.ON == 'github'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.TREE }}/dl
+            ${{ env.TREE }}/.ccache
+          key: notatv-build-${{ github.run_id }}
+          restore-keys: notatv-build-
+
+      - name: Build the system tree (GitHub's runner only, log in build.log)
+        if: env.ON == 'github'
+        shell: bash
+        run: |
+          cd "$TREE"
+          make rpi4 > build.log 2>&1 || { tail -80 build.log; exit 1; }
+
+      - name: Build the apps (log in apps-build.log in the build folder)
         shell: bash
         run: |
           cd "$TREE"

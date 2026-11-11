@@ -1,14 +1,30 @@
-# Release: push a tag like v1.0.1 and the build machine (self-hosted runner with the label "notatv")
-# builds the Pi 4 image and publishes a GitHub release with the image and the update files.
+# Release: push a tag like v1.0.1 and the Pi 4 image is built and published as a GitHub release with the
+# image and the update files. Where it is built is chosen in two ways:
+# - a tag push uses the repository variable BUILD_ON (Settings > Secrets and variables > Actions > Variables):
+#   "github" = GitHub's own runner, "build-machine" (or not set) = the build machine
+# - "Run workflow" (Actions tab) builds any existing tag, on the runner picked in the form
 #
-# It builds in /opt/notatv (not the runner's work folder), so no home folder paths end up in
-# the image and the build folder is kept between releases: normally only NotaTV's own packages
-# are rebuilt. If configs, patches or packages changed since the last build, it builds from scratch.
+# Build machine (self-hosted runner with the label "notatv"): builds in /opt/notatv, kept between releases, so
+# normally only NotaTV's own packages are rebuilt. If configs, patches or packages changed since the last
+# build, it builds from scratch.
+# GitHub's runner: starts empty every time, so it is always a full build (about 1.5 hours); dl/ and .ccache/
+# are kept in the Actions cache between runs. It builds in /home/runner/notatv (not the work folder).
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build (it must exist), e.g. v1.0.24"
+        required: true
+        type: string
+      runner:
+        description: "Where to build"
+        type: choice
+        options: [github, build-machine]
+        default: github
 
 permissions:
   contents: write
@@ -18,15 +34,29 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TREE: /opt/notatv
+  # where to build: the form for "Run workflow", otherwise the variable BUILD_ON (default: the build machine)
+  ON: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine' }}
+  TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  TREE: ${{ (github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine') == 'github' && '/home/runner/notatv' || '/opt/notatv' }}
   REPO_URL: https://github.com/${{ github.repository }}.git
 
 jobs:
   build:
-    runs-on: [self-hosted, linux, notatv]
-    timeout-minutes: 720
+    # (the same choice as ON above: runs-on cannot read env)
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.runner || vars.BUILD_ON || 'build-machine') == 'github' && 'ubuntu-24.04' || fromJSON('["self-hosted","linux","notatv"]') }}
+    timeout-minutes: 720 # GitHub's runner stops a job after 6 hours anyway; a full build there takes about 1.5
     steps:
-      - name: Fetch the tagged code into /opt/notatv
+      - name: Where this is built
+        run: echo "Building $TAG on $ON in $TREE"
+
+      - name: Host packages (GitHub's runner only)
+        if: env.ON == 'github'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q build-essential file wget curl cpio unzip rsync bc \
+            libncurses-dev libssl-dev python3 git xz-utils bzip2 zstd
+
+      - name: Fetch the tagged code into the build folder
         run: |
           set -e
           mkdir -p "$TREE"
@@ -35,11 +65,22 @@ jobs:
           [ -d .git ] || git init -q
           git remote add origin "$REPO_URL" 2>/dev/null || git remote set-url origin "$REPO_URL"
           git fetch --force --tags origin
-          git checkout --force --detach "$GITHUB_REF_NAME"
+          git checkout --force --detach "$TAG"
           git clean -fd   # removes stray files, keeps ignored ones (buildroot/, dl/, output-rpi4/, secrets/)
-          test "v$(cat VERSION)" = "$GITHUB_REF_NAME" || { echo "VERSION is $(cat VERSION), but the tag is $GITHUB_REF_NAME"; exit 1; }
+          test "v$(cat VERSION)" = "$TAG" || { echo "VERSION is $(cat VERSION), but the tag is $TAG"; exit 1; }
           # texts in English in the code, Danish in lang/da.po - stop before building if not
           python3 scripts/i18n-check.py > i18n.log || { grep -vE ' 0 missing, 0 placeholder mismatches' i18n.log; echo 'Translations are missing or wrong (scripts/i18n-check.py)'; exit 1; }
+
+      # GitHub's runner: the downloads and the compiler cache from the last run (saved again after a good run)
+      - name: Restore dl/ and .ccache/ (GitHub's runner only)
+        if: env.ON == 'github'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.TREE }}/dl
+            ${{ env.TREE }}/.ccache
+          key: notatv-build-${{ github.run_id }}
+          restore-keys: notatv-build-
 
       - name: Twitch Client ID
         env:
@@ -104,7 +145,7 @@ jobs:
             rm -rf src/rpi-ffmpeg
           fi
 
-      - name: Build (full log in /opt/notatv/build.log)
+      - name: Build (full log in build.log in the build folder)
         shell: bash
         run: |
           cd "$TREE"
@@ -139,7 +180,7 @@ jobs:
           cd "$TREE"
           python3 - <<'EOF'
           import json, os, urllib.error, urllib.request
-          repo, tag, tok = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_REF_NAME"], os.environ["GH_TOKEN"]
+          repo, tag, tok = os.environ["GITHUB_REPOSITORY"], os.environ["TAG"], os.environ["GH_TOKEN"]
           hdr = {"Authorization": "Bearer " + tok, "Accept": "application/vnd.github+json"}
           def call(url, data=None, method=None, ctype="application/json"):
               req = urllib.request.Request(url, data=data, method=method, headers=dict(hdr, **{"Content-Type": ctype}))
