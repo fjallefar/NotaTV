@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.26
+
+> **In short:** The TV no longer turns itself back on after you turn it off.
+> - Sleep stops playback and turns the TV off; the box stays on and wakes at a key press
+> - Steadier image loading with older network libraries
+
+<!-- tldr:da
+Kort: TV'et tænder ikke længere sig selv igen, når du slukker det.
+- Dvale stopper afspilningen og slukker TV'et; boksen bliver tændt og vågner ved et tastetryk
+- Mere stabil hentning af billeder med ældre netværksbiblioteker
+-->
+
+Includes pull request #3 from czingenberg - thank you!
+
+### System
+
+- **Sleep is soft (PR #3):** the Raspberry Pi cannot suspend, so "sleep" went straight on to its wake-up part and
+  turned the TV on again (turn the TV off, and it came back 1-2 seconds later). Now sleep stops playback, turns the
+  TV off and tells it the box is in standby; the box stays on. A key on the remote, *Turn on* on the phone page or
+  the TV switching to the box's input wakes it. What happens in the first 3 seconds of going to sleep does not
+  count as a wake-up (sleep itself presses Back to stop the video).
+- Image downloads share connections between threads only with libcurl 8.10 or newer; older versions could crash
+  now and then (found by the new sanitizer test).
+
 ## 1.0.25
 
 > **In short:** New Settings, an encrypted phone page, a beta channel and many fixes.
