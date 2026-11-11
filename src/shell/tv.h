@@ -673,6 +673,7 @@ void bt_forget(const char *path);       /* forget one paired device */
 void power_menu_open(void);
 NOTA_NEW void quick_open(void); /* the quick panel from the right (sleep timer, settings shortcuts, power) */
 void quick_tick(void);
+void soft_sleep_wake(void); /* a key press while the box is softly asleep (quick.c): clears /run/notatv/sleeping */
 void idle_sleep_tick(bool playing); /* automatic sleep after cfg auto_sleep hours without a key press (quick.c) */
 
 /* Shared data for the home screen */

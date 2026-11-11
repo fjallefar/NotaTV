@@ -51,7 +51,7 @@ small{color:var(--dim)}
 <div class="row">
 <button onclick="power('on')" data-t>Turn on</button><button onclick="power('sleep')" data-t>Sleep</button><button onclick="power('reboot')" data-t>Restart</button>
 </div>
-<small data-t style="display:block;margin-top:8px">Turn on: the TV turns on and switches to the box. A box that sleeps is woken with the remote - the phone cannot reach it.</small>
+<small data-t style="display:block;margin-top:8px">Turn on: the TV turns on and switches to the box. Sleep: playback stops and the TV turns off - the box stays on, and both the remote and "Turn on" here wake it again.</small>
 </section>
 
 <section>
@@ -185,7 +185,7 @@ if(KEY||PIN)post('_ping=1').then(function(){show(true)}).catch(function(e){if(e.
 else show(false);
 function key(k){send({_key:k})}
 function power(p){
-  if(p=='sleep'&&!confirm(T('Put the box and the TV to sleep?')))return;
+  if(p=='sleep'&&!confirm(T('Stop playback and turn the TV off? (The box stays on)')))return;
   if(p=='reboot'&&!confirm(T('Restart the box?')))return;
   send({_power:p});
 }

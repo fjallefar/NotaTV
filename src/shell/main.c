@@ -810,6 +810,7 @@ void app_background_tick(bool playing) {
     bt_tick(); /* the Bluetooth agent answers pairing requests */
     appcat_tick(); /* finishes App Store installs; moves boxes from 1.0.x to App Store apps */
     cfg_reap(); /* old tokens and passwords are zeroed a minute after they were replaced (PV3) */
+    soft_sleep_wake(); /* a key press ends soft sleep - also during playback (remote key stops it) */
     idle_sleep_tick(playing); /* automatic sleep - also while a video plays ("Are you still watching?") */
     if (playing) return;
     dlna_tick();
