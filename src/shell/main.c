@@ -36,7 +36,37 @@ static bool screensaver;
 static double ss_t;
 static float ss_fade; /* 0..1: the screensaver's alpha, glides in and out */
 
-double app_time(void) { return SDL_GetTicks() / 1000.0 - t0; }
+/* Developer only: TVSHELL_RECORD=<file.mp4> pipes every frame to ffmpeg (README videos, scripts/record.sh).
+ * The clock then runs on frames (REC_FPS per second), so animations get the right speed in the video however
+ * slow encoding is, and the loop is held to at most REC_FPS real frames per second, so loading looks as it does. */
+#define REC_FPS 30
+static FILE *rec;
+static long rec_frame;
+double app_time(void) { return rec ? rec_frame / (double)REC_FPS : SDL_GetTicks() / 1000.0 - t0; }
+static void rec_start(void) {
+    const char *out = getenv("TVSHELL_RECORD");
+    if (!out || !*out || !ren) return;
+    int w, h;
+    SDL_GetRenderOutputSize(ren, &w, &h);
+    char cmd[1024];
+    snprintf(cmd, sizeof cmd, "ffmpeg -loglevel error -y -f rawvideo -pix_fmt rgba -s %dx%d -r %d -i - "
+             "-c:v libx264 -preset slow -crf 20 -pix_fmt yuv420p -movflags +faststart '%s'", w, h, REC_FPS, out);
+    rec = popen(cmd, "w");
+    SDL_Log("record: %s", rec ? out : "ffmpeg failed");
+}
+static void rec_frame_out(void) {
+    if (!rec) return;
+    static Uint64 last_ms;
+    SDL_Surface *sf = SDL_RenderReadPixels(ren, NULL);
+    SDL_Surface *c = sf ? SDL_ConvertSurface(sf, SDL_PIXELFORMAT_RGBA32) : NULL;
+    if (c) for (int y = 0; y < c->h; y++) fwrite((Uint8 *)c->pixels + (size_t)y * c->pitch, 4, c->w, rec);
+    SDL_DestroySurface(c);
+    SDL_DestroySurface(sf);
+    rec_frame++;
+    Uint64 now = SDL_GetTicks();
+    if (last_ms && now - last_ms < 1000 / REC_FPS) SDL_Delay((Uint32)(1000 / REC_FPS - (now - last_ms)));
+    last_ms = SDL_GetTicks();
+}
 /* End the process without exit(): detached threads (jobs, image fetches, app threads) can still be
  * inside an HTTPS request, and exit() runs OpenSSL's atexit cleanup under them -> SIGSEGV in
  * OPENSSL_cleanup. Settings are already saved (cfg_flush), so only stdio needs flushing. */
@@ -1115,6 +1145,7 @@ int main(int argc, char **argv) {
 
     script = getenv("TVSHELL_SCRIPT") ? str_dup(getenv("TVSHELL_SCRIPT")) : NULL;
     script_pos = script;
+    rec_start();
 
     app_push(home_screen());
     /* first boot: the setup guide (not in automatic UI tests, unless TVSHELL_SETUP=1) */
@@ -1228,6 +1259,7 @@ int main(int argc, char **argv) {
             SDL_Surface *sf = SDL_RenderReadPixels(ren, NULL);
             if (sf) { SDL_SaveBMP(sf, shot); SDL_DestroySurface(sf); SDL_Log("screenshot: %s", shot); }
         }
+        rec_frame_out();
         double ph4 = app_time();
         present();
         double ph5 = app_time();
@@ -1262,6 +1294,7 @@ int main(int argc, char **argv) {
         tx_prewarm();
     }
     cfg_flush();
+    if (rec) pclose(rec); /* ffmpeg finishes the file */
     while (depth) destroy_screen(stack[--depth]);
     video_quit();
     jobs_shutdown();

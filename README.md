@@ -1,5 +1,13 @@
 # NotaTV
 
+<p align="center">
+  <a href="#screenshots--demo"><b>📺 Screenshots & Demo</b></a> &nbsp;·&nbsp;
+  <a href="#what-it-does">Features</a> &nbsp;·&nbsp;
+  <a href="#installation">Installation</a> &nbsp;·&nbsp;
+  <a href="#documentation">Documentation</a> &nbsp;·&nbsp;
+  <a href="#license">License</a>
+</p>
+
 ## Human written notes
 
 I got tired of Google TV and Apple TV and figured a Raspberry Pi could make a good enough smart TV box, i didnt use any of the features those devices could provide. None of the existing projects fit what I wanted, so I built my own. Menus stay locked at 60 FPS, streaming is smooth, and the system is light enough that the Pi has no trouble running it. And it works. It's smooth, fast and stable.
@@ -16,6 +24,12 @@ Cheers!
 **A TV box operating system built from scratch, using only open source software.**
 
 NotaTV is its own Linux distribution (Buildroot) with its own user interface, written in C with SDL3 and drawn straight to the screen via KMS/DRM. It turns a Raspberry Pi 4 or Pi 5 into a TV box. It has no Android, no Kodi and no closed-source apps.
+
+<p align="center">
+  <img src=".github/media/hero.webp" alt="NotaTV: the home screen, Weather and Electricity price" width="800">
+  <br>
+  <a href=".github/media/demo.mp4"><b>▶ Watch the 30-second demo</b></a>
+</p>
 
 ## What it does
 
@@ -36,6 +50,19 @@ NotaTV is its own Linux distribution (Buildroot) with its own user interface, wr
 Platform: **Raspberry Pi 4 and Pi 5** (one image for both; the Pi 5 support is new and not fully tested yet).
 
 **Not supported:** Netflix, Disney+, HBO Max and other services that need closed DRM, and there is no Spotify app (play it through AirPlay or Bluetooth). See [Limitations](GUIDE.md#limitations).
+
+## Screenshots & Demo
+
+<a href=".github/media/demo.mp4"><b>▶ Watch the 30-second demo</b></a> (home screen, Weather, Electricity price, Radio, DRTV and the control center)
+
+| | |
+|:-:|:-:|
+| ![Home screen](.github/media/home.webp)<br>**Home screen** | ![Control center](.github/media/control-center.webp)<br>**Control center** |
+| ![Weather](.github/media/weather.webp)<br>**Weather** | ![Electricity price](.github/media/electricity.webp)<br>**Electricity price** |
+| ![Radio](.github/media/radio.webp)<br>**Radio** | ![DRTV](.github/media/drtv.webp)<br>**DRTV** |
+| ![App Store](.github/media/appstore.webp)<br>**App Store** | |
+
+Taken straight from the user interface (1080p) with `scripts/readme-media.sh`.
 
 ## Installation
 
