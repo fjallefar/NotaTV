@@ -48,19 +48,6 @@ static bool yt_play_at(Video *v, double start);
 static int yt_token; /* increased when the screen closes, so late replies are ignored */
 static int yt_gen;   /* increased on sign-out, so replies from before are ignored */
 
-static char *shell_quote(const char *s) {
-    size_t n = strlen(s);
-    char *o = malloc(n * 4 + 3), *w = o;
-    *w++ = '\'';
-    for (const char *p = s; *p; p++) {
-        if (*p == '\'') { memcpy(w, "'\\''", 4); w += 4; }
-        else *w++ = *p;
-    }
-    *w++ = '\'';
-    *w = 0;
-    return o;
-}
-
 /* YouTube accounts: cookies.txt per profile in <data>/youtube/<name>.cookies (uploaded via the phone page) */
 static bool cookie_file(char *buf, size_t n) {
     const char *p = cfg_get("yt_profile", "");
@@ -90,7 +77,7 @@ static void search_work(void *arg) {
     free(out);
     cJSON *entries = cJSON_GetObjectItem(root, "entries");
     int n = cJSON_GetArraySize(entries);
-    j->v = calloc(n + 1, sizeof(Video));
+    j->v = xcalloc(n + 1, sizeof(Video));
     cJSON *e;
     cJSON_ArrayForEach(e, entries) {
         cJSON *id = cJSON_GetObjectItem(e, "id"), *t = cJSON_GetObjectItem(e, "title");
@@ -214,7 +201,7 @@ static void pf_consider(const char *const *ids, int n) {
     if (pf_busy_id[0] || app_time() - pf_focus_t < 0.6) return;
     for (int i = 0; i < n; i++) {
         if (!ids[i] || pf_entry(ids[i])) continue;
-        PfJob *j = calloc(1, sizeof *j);
+        PfJob *j = xcalloc(1, sizeof *j);
         snprintf(j->id, sizeof j->id, "%s", ids[i]);
         j->q = yt_quality();
         j->gen = yt_gen;
@@ -253,9 +240,7 @@ static bool subs_has(const char *id) {
 
 static void subs_add(const char *id, const char *name) {
     if (!id || !*id || subs_has(id)) return;
-    Sub *ns = realloc(subs, sizeof(Sub) * (n_subs + 1));
-    if (!ns) return; /* out of memory: skip this subtitle */
-    subs = ns;
+    subs = xrealloc(subs, sizeof(Sub) * (n_subs + 1));
     snprintf(subs[n_subs].id, sizeof subs[0].id, "%s", id);
     snprintf(subs[n_subs].name, sizeof subs[0].name, "%s", name && *name ? name : id);
     n_subs++;
@@ -312,7 +297,7 @@ static char *xml_between(const char *s, const char *end, const char *a, const ch
     p += strlen(a);
     const char *q = strstr(p, b);
     if (!q || q > end) return NULL;
-    char *r = strndup(p, q - p);
+    char *r = xstrndup(p, q - p);
     /* simple XML entities */
     char *w = r;
     for (char *t = r; *t;) {
@@ -333,7 +318,7 @@ static void rss_work(void *arg) {
     snprintf(url, sizeof url, "https://www.youtube.com/feeds/videos.xml?channel_id=%s", j->id);
     HttpBuf b;
     if (!http_request("GET", url, NULL, NULL, &b, 10) || b.status != 200 || !b.data) { http_free(&b); return; }
-    j->v = calloc(16, sizeof(Video));
+    j->v = xcalloc(16, sizeof(Video));
     for (char *e = strstr(b.data, "<entry>"); e && j->n < 15; e = strstr(e + 7, "<entry>")) {
         char *ee = strstr(e, "</entry>");
         if (!ee) break;
@@ -369,7 +354,7 @@ static int by_published(const void *a, const void *b) {
 static void rss_done(void *arg) {
     RssJob *j = arg;
     RssAgg *g = j->agg;
-    if (g->n + j->n > g->cap) { g->cap = (g->n + j->n) * 2; g->v = realloc(g->v, sizeof(Video) * g->cap); }
+    if (g->n + j->n > g->cap) { g->cap = (g->n + j->n) * 2; g->v = xrealloc(g->v, sizeof(Video) * g->cap); }
     memcpy(g->v + g->n, j->v, sizeof(Video) * j->n);
     g->n += j->n;
     free(j->v);
@@ -393,14 +378,14 @@ static void rss_load(YRow *row) {
     row->loading = true;
     row->failed = false;
     if (n_subs == 0) { row->loading = false; row->failed = true; return; }
-    RssAgg *g = calloc(1, sizeof *g);
+    RssAgg *g = xcalloc(1, sizeof *g);
     g->row = row;
     g->seq = ++row->seq;
     g->token = yt_token;
     g->gen = yt_gen;
     g->pending = n_subs;
     for (int i = 0; i < n_subs; i++) {
-        RssJob *j = calloc(1, sizeof *j);
+        RssJob *j = xcalloc(1, sizeof *j);
         j->agg = g;
         snprintf(j->id, sizeof j->id, "%s", subs[i].id);
         snprintf(j->name, sizeof j->name, "%s", subs[i].name);
@@ -431,7 +416,7 @@ static void row_load(YRow *row, int count) {
     if (!strcmp(row->query, "@subs")) { rss_load(row); return; }
     row->loading = true;
     row->failed = false;
-    SearchJob *j = calloc(1, sizeof *j);
+    SearchJob *j = xcalloc(1, sizeof *j);
     j->query = str_dup(row->query);
     j->token = yt_token;
     j->seq = ++row->seq;
@@ -456,8 +441,8 @@ static void hist_load(Yt *y) {
     while (fgets(line, sizeof line, f) && y->n_hist < 8) {
         str_trim(line);
         if (!line[0]) continue;
-        y->hist = realloc(y->hist, sizeof(char *) * (y->n_hist + 1));
-        y->hist[y->n_hist++] = strdup(line);
+        y->hist = xrealloc(y->hist, sizeof(char *) * (y->n_hist + 1));
+        y->hist[y->n_hist++] = xstrdup(line);
     }
     fclose(f);
 }
@@ -628,7 +613,7 @@ static void side_activate(Yt *y, int idx) {
         return;
     case M_CHANNELS: {
         if (n_subs == 0) { app_toast(T("No subscriptions yet - open a channel and choose Subscribe")); return; }
-        char **names = calloc(n_subs, sizeof(char *));
+        char **names = xcalloc(n_subs, sizeof(char *));
         for (int i = 0; i < n_subs; i++) names[i] = subs[i].name;
         choice_open(T("Your channels"), (const char *const *)names, n_subs, 0, chan_pick, NULL);
         free(names);
@@ -1179,9 +1164,9 @@ static bool yt_input(Screen *s, const InputEvent *ev) {
 }
 
 Screen *youtube_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
+    Screen *s = xcalloc(1, sizeof *s);
     s->name = "youtube";
-    s->st = calloc(1, sizeof(Yt));
+    s->st = xcalloc(1, sizeof(Yt));
     s->enter = yt_enter;
     s->resume = yt_resume;
     s->update = yt_update;
@@ -1257,7 +1242,7 @@ static void info_done(void *arg) {
             in->comments_loading = false;
             cJSON *c;
             cJSON *arr = cJSON_GetObjectItem(root, "comments");
-            in->c = calloc(cJSON_GetArraySize(arr) + 1, sizeof(Comment));
+            in->c = xcalloc(cJSON_GetArraySize(arr) + 1, sizeof(Comment));
             cJSON_ArrayForEach(c, arr) {
                 cJSON *a = cJSON_GetObjectItem(c, "author"), *t = cJSON_GetObjectItem(c, "text"), *l = cJSON_GetObjectItem(c, "like_count");
                 cJSON *par = cJSON_GetObjectItem(c, "parent");
@@ -1322,13 +1307,13 @@ static void quick_done(void *arg) {
 
 static void info_fetch(Info *in, bool comments) {
     if (!comments) {
-        QuickJob *q = calloc(1, sizeof *q);
+        QuickJob *q = xcalloc(1, sizeof *q);
         q->token = in->token;
         q->gen = yt_gen;
         snprintf(q->id, sizeof q->id, "%s", in->v.id);
         job_submit_q(JQ_FAST, quick_work, quick_done, q);
     }
-    InfoJob *j = calloc(1, sizeof *j);
+    InfoJob *j = xcalloc(1, sizeof *j);
     j->token = in->token;
     j->gen = yt_gen;
     j->comments = comments;
@@ -1452,8 +1437,8 @@ static bool info_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *info_screen(Video *src) {
-    Screen *s = calloc(1, sizeof *s);
-    Info *in = calloc(1, sizeof *in);
+    Screen *s = xcalloc(1, sizeof *s);
+    Info *in = xcalloc(1, sizeof *in);
     in->v = *src;
     in->v.id = str_dup(src->id);
     in->v.title = str_dup(src->title);
@@ -1490,8 +1475,8 @@ static void login_scan(Login *l) {
     while (d && (e = readdir(d))) {
         size_t len = strlen(e->d_name);
         if (len > 8 && !strcmp(e->d_name + len - 8, ".cookies")) {
-            l->names = realloc(l->names, sizeof(char *) * (l->n + 1));
-            l->names[l->n++] = strndup(e->d_name, len - 8);
+            l->names = xrealloc(l->names, sizeof(char *) * (l->n + 1));
+            l->names[l->n++] = xstrndup(e->d_name, len - 8);
         }
     }
     if (d) closedir(d);
@@ -1639,7 +1624,7 @@ static bool login_input(Screen *s, const InputEvent *ev) {
 static Screen *login_screen(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "yt-login";
-    s->st = calloc(1, sizeof(Login));
+    s->st = xcalloc(1, sizeof(Login));
     s->enter = login_enter;
     s->update = login_update;
     s->draw = login_draw;
@@ -1666,7 +1651,7 @@ static void ytpair_done(void *a) {
 }
 static void act_ytpair(void) {
     app_toast(T("Getting code from YouTube…"));
-    job_submit(ytpair_work, ytpair_done, calloc(1, sizeof(YtPair)));
+    job_submit(ytpair_work, ytpair_done, xcalloc(1, sizeof(YtPair)));
 }
 
 /* low to high like the other number settings: Right = higher quality, Left = lower */
@@ -1729,7 +1714,7 @@ static void ytpending_cb(void *ud, bool yes) {
     free(p);
 }
 static void ytpending_show(const char *val) {
-    YtPending *p = calloc(1, sizeof *p);
+    YtPending *p = xcalloc(1, sizeof *p);
     sscanf(val, "%63[^\n]\n%63s", p->name, p->from);
     for (char *c = p->name; *c; c++) if (*c == '/' || *c == '.') *c = '_'; /* only a file name */
     char title[160], msg[256];

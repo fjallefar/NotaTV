@@ -147,7 +147,7 @@ static void disc_done(void *arg) {
 }
 
 void seerr_discover(SeerrDiscDone cb, void *ud) {
-    Disc *d = calloc(1, sizeof *d);
+    Disc *d = xcalloc(1, sizeof *d);
     d->cb = cb;
     d->ud = ud;
     job_submit_q(JQ_SLOW, disc_work, disc_done, d);

@@ -234,10 +234,10 @@ static void quick_destroy(Screen *s) {
 
 void quick_open(void) {
     if (quick_open_now) return;
-    Screen *s = calloc(1, sizeof *s);
+    Screen *s = xcalloc(1, sizeof *s);
     s->name = "quick";
     s->overlay = true;
-    Quick *q = calloc(1, sizeof(Quick));
+    Quick *q = xcalloc(1, sizeof(Quick));
     Screen *under = app_top();
     q->from_home = under && under->name && !strcmp(under->name, "home");
     s->st = q;

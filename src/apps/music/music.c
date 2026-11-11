@@ -149,7 +149,7 @@ static size_t parse_items(char *buf, size_t len) {
 static int reader_thread(void *arg) {
     (void)arg;
     size_t cap = 1 << 20, len = 0;
-    char *buf = malloc(cap + 1);
+    char *buf = xmalloc(cap + 1);
     for (;;) {
         int fd = open(META_PIPE, O_RDONLY); /* blocks until shairport-sync writes */
         if (fd < 0) { SDL_Delay(2000); continue; }
@@ -162,7 +162,7 @@ static int reader_thread(void *arg) {
             len -= used;
             if (len == cap) { /* very big cover: grow (max 16 MB) */
                 if (cap >= (16u << 20)) len = 0;
-                else { cap *= 2; buf = realloc(buf, cap + 1); }
+                else { cap *= 2; buf = xrealloc(buf, cap + 1); }
             }
         }
         close(fd);
@@ -576,7 +576,7 @@ static void mu_destroy(Screen *sc) {
 Screen *music_screen(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "music";
-    s->st = calloc(1, sizeof(MuView));
+    s->st = xcalloc(1, sizeof(MuView));
     s->update = mu_update;
     s->draw = mu_draw;
     s->input = mu_input;

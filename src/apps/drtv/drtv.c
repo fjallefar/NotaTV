@@ -5,6 +5,7 @@
  * API: production.dr-massive.com, the API DR's web player uses. Built as app.so (see src/apps/README.md). */
 #include "tv.h"
 #include "vendor/cJSON.h"
+#include "json_util.h"
 #include <curl/curl.h>
 #include <errno.h>
 #include <stdint.h>
@@ -40,17 +41,9 @@ static const char *dr_user(void) { return cfg_get("drtv_user", ""); }
 static bool signed_in(void) { return *dr_user() != 0; }
 
 /* ---------- small helpers ---------- */
-static char *js(cJSON *o, const char *k) {
-    cJSON *v = cJSON_GetObjectItem(o, k);
-    return cJSON_IsString(v) && v->valuestring[0] ? str_dup(v->valuestring) : NULL;
-}
 static const char *jv(cJSON *o, const char *k) {
     cJSON *v = cJSON_GetObjectItem(o, k);
     return cJSON_IsString(v) ? v->valuestring : NULL;
-}
-static double jnum(cJSON *o, const char *k) {
-    cJSON *v = cJSON_GetObjectItem(o, k);
-    return cJSON_IsNumber(v) ? v->valuedouble : 0;
 }
 static char *jid(cJSON *o, const char *k) { /* ids come as strings or numbers */
     cJSON *v = cJSON_GetObjectItem(o, k);
@@ -363,7 +356,7 @@ static void dreq_done(void *arg) {
     free(r);
 }
 static void dr_get_ex(char *url, int auth, void (*done)(void *, cJSON *, long), void *ud, bool own_ud) { /* takes url */
-    DReq *r = calloc(1, sizeof *r);
+    DReq *r = xcalloc(1, sizeof *r);
     r->own_ud = own_ud;
     r->url = url;
     r->auth = auth;
@@ -436,13 +429,13 @@ static void prog_save(void) {
 static double prog_pos(const char *id) {
     prog_load();
     cJSON *e = id ? cJSON_GetObjectItem(prog, id) : NULL;
-    return e ? jnum(e, "pos") : 0;
+    return e ? json_num(e, "pos") : 0;
 }
 static double prog_frac(const char *id) {
     prog_load();
     cJSON *e = id ? cJSON_GetObjectItem(prog, id) : NULL;
-    double d = e ? jnum(e, "dur") : 0;
-    return d > 0 ? jnum(e, "pos") / d : 0;
+    double d = e ? json_num(e, "dur") : 0;
+    return d > 0 ? json_num(e, "pos") / d : 0;
 }
 static void prog_set(const DItem *t, double pos, double dur) {
     if (!t->id) return;
@@ -459,7 +452,7 @@ static void prog_set(const DItem *t, double pos, double dur) {
     /* keep it small: the 40 newest */
     while (cJSON_GetArraySize(prog) > 40) {
         cJSON *old = NULL, *x;
-        cJSON_ArrayForEach(x, prog) if (!old || jnum(x, "t") < jnum(old, "t")) old = x;
+        cJSON_ArrayForEach(x, prog) if (!old || json_num(x, "t") < json_num(old, "t")) old = x;
         cJSON_DeleteItemFromObject(prog, old->string);
     }
 }
@@ -468,10 +461,10 @@ static void prog_set(const DItem *t, double pos, double dur) {
 static int prog_sorted(cJSON ***out) {
     prog_load();
     int n = cJSON_GetArraySize(prog), k = 0;
-    cJSON **e = calloc((size_t)n + 1, sizeof *e), *x;
+    cJSON **e = xcalloc((size_t)n + 1, sizeof *e), *x;
     cJSON_ArrayForEach(x, prog) if (id_ok(x->string)) e[k++] = x;
     for (int i = 1; i < k; i++)
-        for (int j = i; j > 0 && jnum(e[j], "t") > jnum(e[j - 1], "t"); j--) { cJSON *t = e[j]; e[j] = e[j - 1]; e[j - 1] = t; }
+        for (int j = i; j > 0 && json_num(e[j], "t") > json_num(e[j - 1], "t"); j--) { cJSON *t = e[j]; e[j] = e[j - 1]; e[j - 1] = t; }
     *out = e;
     return k;
 }
@@ -488,12 +481,12 @@ static bool item_parse(cJSON *o, DItem *t, bool big) {
     else if (!strcmp(ty, "link")) t->kind = K_LINK;
     else return false;
     t->id = jid(o, "id");
-    t->path = js(o, "path");
-    t->title = js(o, "title");
-    t->desc = js(o, "shortDescription");
-    if (!t->desc) t->desc = js(o, "description");
-    t->dur = (int)jnum(o, "duration");
-    t->num = (int)jnum(o, "episodeNumber");
+    t->path = json_dup(o, "path");
+    t->title = json_dup(o, "title");
+    t->desc = json_dup(o, "shortDescription");
+    if (!t->desc) t->desc = json_dup(o, "description");
+    t->dur = (int)json_num(o, "duration");
+    t->num = (int)json_num(o, "episodeNumber");
     if (t->kind == K_LINK && t->path && !strncmp(t->path, "/kanal/", 7)) { /* a link to a live channel */
         t->kind = K_CHANNEL;
         free(t->id);
@@ -602,7 +595,7 @@ static void row_remove(Dr *v, int i) {
     else if (v->row == i) v->col = 0; /* the focused row went: the next one takes its place */
 }
 static DItem *row_push(Row *r) {
-    if (r->n == r->cap) { r->cap = r->cap ? r->cap * 2 : 24; r->it = realloc(r->it, sizeof(DItem) * r->cap); }
+    if (r->n == r->cap) { r->cap = r->cap ? r->cap * 2 : 24; r->it = xrealloc(r->it, sizeof(DItem) * r->cap); }
     DItem *t = &r->it[r->n++];
     memset(t, 0, sizeof *t);
     return t;
@@ -666,7 +659,7 @@ static void lazy_tick(Dr *v) {
         if (!id_ok(r->list_id)) { free(r->list_id); r->list_id = NULL; continue; }
         r->loading = true;
         busy++;
-        LazyCtx *c = calloc(1, sizeof *c);
+        LazyCtx *c = xcalloc(1, sizeof *c);
         c->v = v;
         snprintf(c->list_id, sizeof c->list_id, "%s", r->list_id);
         dr_get_ex(str_printf(DR_API "/lists/%s?page_size=24", r->list_id), 0, lazy_done, c, true);
@@ -689,11 +682,11 @@ static void continue_row(Dr *v) { /* local resume positions, newest first */
                 DItem *t = row_push(r);
                 t->kind = K_EPISODE;
                 t->id = str_dup(e[i]->string);
-                t->title = js(e[i], "title");
-                t->sub = js(e[i], "sub");
-                t->img = js(e[i], "img");
-                double d = jnum(e[i], "dur");
-                t->prog = d > 0 ? jnum(e[i], "pos") / d : 0;
+                t->title = json_dup(e[i], "title");
+                t->sub = json_dup(e[i], "sub");
+                t->img = json_dup(e[i], "img");
+                double d = json_num(e[i], "dur");
+                t->prog = d > 0 ? json_num(e[i], "pos") / d : 0;
                 t->dur = (int)d;
             }
         }
@@ -750,13 +743,13 @@ static void account_done(void *ud, cJSON *json, long status) {
 }
 static void account_rows(Dr *v, bool cont, bool mylist) {
     if (mylist) {
-        AccCtx *c = calloc(1, sizeof *c);
+        AccCtx *c = xcalloc(1, sizeof *c);
         c->v = v;
         c->mylist = true;
         dr_get_ex(str_dup(DR_API "/account/profile/bookmarks/list?page_size=48&lang=da"), 2, account_done, c, true);
     }
     if (cont) {
-        AccCtx *c = calloc(1, sizeof *c);
+        AccCtx *c = xcalloc(1, sizeof *c);
         c->v = v;
         dr_get_ex(str_dup(DR_API "/account/profile/continue-watching/list?page_size=24&lang=da"), 2, account_done, c, true);
     }
@@ -817,7 +810,7 @@ static void live_done(void *ud, cJSON *json, long status) {
                     if (!u) u = jv(cJSON_GetObjectItem(it, "images"), "wallpaper");
                     free(t->img);
                     t->img = img_sized(u, 960, 540);
-                    t->desc = js(it, "shortDescription");
+                    t->desc = json_dup(it, "shortDescription");
                 } else if (got_now && a >= now && !t->next) {
                     t->next = str_printf(T("Next %s: %s"), hm, title ? title : "");
                 }
@@ -860,16 +853,16 @@ static void detail_done(void *ud, cJSON *json, long status) {
     const char *ty = jv(it, "type");
     if (!it || !ty) { snprintf(v->msg, sizeof v->msg, "%s", T("Nothing here right now")); return; }
     cJSON *show = cJSON_GetObjectItem(it, "show");
-    v->d_title = js(show, "title");
-    if (!v->d_title) v->d_title = js(it, "title");
-    v->d_desc = js(it, "description");
-    if (!v->d_desc) v->d_desc = js(show, "description");
+    v->d_title = json_dup(show, "title");
+    if (!v->d_title) v->d_title = json_dup(it, "title");
+    v->d_desc = json_dup(it, "description");
+    if (!v->d_desc) v->d_desc = json_dup(show, "description");
     cJSON *im = cJSON_GetObjectItem(it, "images");
     const char *u = jv(im, "wallpaper");
     if (!u) u = jv(im, "tile");
     v->d_img = img_sized(u, 1280, 720);
     char meta[240] = "";
-    int year = (int)jnum(it, "releaseYear"), neps = (int)jnum(it, "availableEpisodeCount");
+    int year = (int)json_num(it, "releaseYear"), neps = (int)json_num(it, "availableEpisodeCount");
     const char *extra = jv(cJSON_GetObjectItem(it, "customFields"), "ExtraDetails");
     if (year > 0) snprintf(meta, sizeof meta, "%d", year);
     if (!strcmp(ty, "season") && neps > 0) {
@@ -880,7 +873,7 @@ static void detail_done(void *ud, cJSON *json, long status) {
         snprintf(meta + l, sizeof meta - l, "%s%s", l ? "  ·  " : "", ep);
     }
     if (extra && *extra) { size_t l = strlen(meta); snprintf(meta + l, sizeof meta - l, "%s%s", l ? "  ·  " : "", extra); }
-    int dur = (int)jnum(it, "duration");
+    int dur = (int)json_num(it, "duration");
     if (dur > 0 && strcmp(ty, "season")) { size_t l = strlen(meta); snprintf(meta + l, sizeof meta - l, T("%s%d min"), l ? "  ·  " : "", (dur + 59) / 60); }
     v->d_meta = str_dup(meta);
 
@@ -910,7 +903,7 @@ static void detail_done(void *ud, cJSON *json, long status) {
                 cJSON_ArrayForEach(o, seasons) {
                     DItem t;
                     if (!item_parse(o, &t, false)) continue;
-                    int sn = (int)jnum(o, "seasonNumber");
+                    int sn = (int)json_num(o, "seasonNumber");
                     free(t.sub);
                     t.sub = sn > 0 ? str_printf(T("Season %d"), sn) : NULL;
                     char *cur = jid(it, "id");
@@ -1039,11 +1032,11 @@ static void vod_run(Blk *bb) {
                 if (!pick) pick = s;
             }
             if (pick) {
-                j->url = js(pick, "url");
+                j->url = json_dup(pick, "url");
                 cJSON *tc;
                 cJSON_ArrayForEach(tc, cJSON_GetObjectItem(pick, "timeCodes")) {
                     const char *ty = jv(tc, "timeCodeType");
-                    double a = jnum(tc, "startTime"), e = jnum(tc, "endTime");
+                    double a = json_num(tc, "startTime"), e = json_num(tc, "endTime");
                     if (!ty || e <= a || j->skip.n >= 6) continue;
                     bool cred = !strcmp(ty, "EndCredit") || !strcmp(ty, "EndCredits");
                     if (!cred && strcmp(ty, "Intro") && strcmp(ty, "Recap")) continue;
@@ -1175,7 +1168,7 @@ static void live_run(Blk *bb) {
             for (int w = 0; w < 3 && !j->url[c]; w++)
                 cJSON_ArrayForEach(s, arr) {
                     const char *ty = jv(s, "type");
-                    if (ty && !strcmp(ty, want[w]) && jv(s, "link")) { j->url[c] = js(s, "link"); break; }
+                    if (ty && !strcmp(ty, want[w]) && jv(s, "link")) { j->url[c] = json_dup(s, "link"); break; }
                 }
             cJSON_Delete(arr);
         }
@@ -1205,11 +1198,9 @@ static void play_live(Dr *v, int idx) {
         blk_release(&j->b);
         return;
     }
-    FILE *f = fopen(LIVE_M3U, "w");
-    if (!f) { blk_release(&j->b); return; }
-    fprintf(f, "#EXTM3U\n");
-    for (int i = 0; i < n; i++) fprintf(f, "#EXTINF:-1,%d %s\n%s\n", i + 1, CHANNELS[map[i]].name, j->url[map[i]]);
-    fclose(f);
+    const char *names[8], *urls[8];
+    for (int i = 0; i < n; i++) { names[i] = CHANNELS[map[i]].name; urls[i] = j->url[map[i]]; }
+    if (!m3u_write(LIVE_M3U, n, names, urls)) { blk_release(&j->b); return; }
     blk_release(&j->b);
     PlayRequest rq = {0};
     rq.url = LIVE_M3U;
@@ -1357,7 +1348,7 @@ static void login_run(Blk *bb) {
                 gql_vars(trans, "password", j->pw));
     memset(j->pw, 0, sizeof j->pw); /* not needed any more */
     cJSON *au = cJSON_GetObjectItem(cJSON_GetObjectItem(r, "data"), "authenticate");
-    href = js(au, "href");
+    href = json_dup(au, "href");
     if (!href) {
         const char *m = jv(au, "message");
         tlog("drtv: login refused (%s)", jv(au, "__typename") ? jv(au, "__typename") : "no reply");
@@ -1410,7 +1401,7 @@ static void login_pw_done(void *ud, const char *pw) {
     LoginAsk *a = ud;
     Dr *v = a->v;
     if (!pw || !*pw || v != live) { free(a); return; }
-    LoginJob *j = calloc(1, sizeof *j);
+    LoginJob *j = xcalloc(1, sizeof *j);
     j->b.run = login_run;
     j->b.release = login_release;
     snprintf(j->email, sizeof j->email, "%s", a->email);
@@ -1438,7 +1429,7 @@ static void login_email_done(void *ud, const char *email) {
         free(e);
         return;
     }
-    LoginAsk *a = calloc(1, sizeof *a);
+    LoginAsk *a = xcalloc(1, sizeof *a);
     a->v = v;
     snprintf(a->email, sizeof a->email, "%s", e);
     free(e);
@@ -1822,8 +1813,8 @@ static bool dr_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *drtv_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
-    Dr *v = calloc(1, sizeof *v);
+    Screen *s = xcalloc(1, sizeof *s);
+    Dr *v = xcalloc(1, sizeof *v);
     s->name = "drtv";
     s->st = v;
     s->enter = dr_enter;
@@ -1858,13 +1849,13 @@ static void drtv_row_refresh(void) {
     int k = prog_sorted(&e);
     for (int i = 0; i < k && n_home < HOME_MAX; i++) {
         HomeItem *h = &home_rows[n_home++];
-        h->title = js(e[i], "title");
+        h->title = json_dup(e[i], "title");
         if (!h->title) h->title = str_dup("DRTV");
-        h->subtitle = js(e[i], "sub");
+        h->subtitle = json_dup(e[i], "sub");
         h->image = img_sized(jv(e[i], "img"), 1280, 720);
         h->key = str_printf("dr:%s", e[i]->string);
-        double d = jnum(e[i], "dur");
-        h->progress = d > 0 ? jnum(e[i], "pos") / d : 0;
+        double d = json_num(e[i], "dur");
+        h->progress = d > 0 ? json_num(e[i], "pos") / d : 0;
     }
     free(e);
 }
@@ -1880,9 +1871,9 @@ static void drtv_row_open(const HomeItem *it, int idx) {
     DItem t = {0};
     t.kind = K_EPISODE;
     t.id = str_dup(it->key + 3);
-    t.title = e ? js(e, "title") : str_dup(it->title);
-    t.sub = e ? js(e, "sub") : NULL;
-    t.img = e ? js(e, "img") : NULL;
+    t.title = e ? json_dup(e, "title") : str_dup(it->title);
+    t.sub = e ? json_dup(e, "sub") : NULL;
+    t.img = e ? json_dup(e, "img") : NULL;
     drtv_init();
     play_vod(NULL, &t, false); /* from where you stopped */
     ditem_free(&t);

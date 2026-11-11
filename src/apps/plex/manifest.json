@@ -1,6 +1,6 @@
 {
   "id": "plex",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "api": 2,
   "name": "Plex",
   "desc": "Movies and shows from your Plex server",

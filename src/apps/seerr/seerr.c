@@ -55,7 +55,7 @@ static void sitem_parse(SItem *s, cJSON *o) {
     s->overview = jdup(o, "overview");
     char *d = jdup(o, "releaseDate");
     if (!d) d = jdup(o, "firstAirDate");
-    if (d) { s->year = strndup(d, 4); free(d); }
+    if (d) { s->year = xstrndup(d, 4); free(d); }
     cJSON *mi = cJSON_GetObjectItem(o, "mediaInfo");
     cJSON *st = cJSON_GetObjectItem(mi, "status");
     s->status = cJSON_IsNumber(st) ? st->valueint : 0;
@@ -99,7 +99,7 @@ static void sreq_done(void *arg) {
 
 static void seerr_call_ex(const char *method, const char *path, const char *body,
                           void (*done)(void *, cJSON *, long), void *ud, bool keep) {
-    SReq *r = calloc(1, sizeof *r);
+    SReq *r = xcalloc(1, sizeof *r);
     r->keep = keep;
     r->method = method;
     r->path = str_dup(path);
@@ -124,11 +124,20 @@ static void rat_login_done(void *ud, cJSON *json, long status) {
     if (status == 200) rat_fetch(c);
     else free(c);
 }
+/* {"authToken": "..."} with cJSON (audit 11/11 B6) */
+static char *auth_body(const char *token) {
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "authToken", token);
+    char *b = cJSON_PrintUnformatted(o);
+    cJSON_Delete(o);
+    if (!b) x_oom(0);
+    return b;
+}
 static void rat_done(void *ud, cJSON *json, long status) {
     RatCtx *c = ud;
     if ((status == 401 || status == 403) && !c->retried && *cfg_get("plex_token", "")) {
         c->retried = true; /* session expired: sign in with Plex and try again */
-        char *body = str_printf("{\"authToken\":\"%s\"}", cfg_get("plex_token", ""));
+        char *body = auth_body(cfg_get("plex_token", ""));
         seerr_call_ex("POST", "/api/v1/auth/plex", body, rat_login_done, c, true);
         free(body);
         return;
@@ -153,7 +162,7 @@ static void rat_fetch(RatCtx *c) {
 }
 void seerr_ratings(bool tv, int tmdb, void (*cb)(void *ud, int rt_critic, int rt_audience, int imdb10), void *ud) {
     if (!*seerr_url() || tmdb <= 0) return;
-    RatCtx *c = calloc(1, sizeof *c);
+    RatCtx *c = xcalloc(1, sizeof *c);
     c->tv = tv; c->tmdb = tmdb; c->cb = cb; c->ud = ud;
     rat_fetch(c);
 }
@@ -204,7 +213,7 @@ static bool type_ok(const char *t) {
 }
 
 static void row_push(SRow *r, SItem *it) {
-    if (r->n == r->cap) { r->cap = r->cap ? r->cap * 2 : 24; r->it = realloc(r->it, sizeof(SItem) * r->cap); }
+    if (r->n == r->cap) { r->cap = r->cap ? r->cap * 2 : 24; r->it = xrealloc(r->it, sizeof(SItem) * r->cap); }
     int pos = r->n;
     if (it->rank > 0) /* Netflix top lists: insert in ranking order */
         while (pos > 0 && (r->it[pos - 1].rank == 0 || r->it[pos - 1].rank > it->rank)) pos--;
@@ -361,7 +370,7 @@ static void nf_done(void *arg) {
     if (j->token == seerr_token) {
         j->r->loading = false;
         for (int i = 0; i < j->n; i++) {
-            NfFind *f = calloc(1, sizeof *f);
+            NfFind *f = xcalloc(1, sizeof *f);
             f->r = j->r; f->tv = j->tv; f->rank = j->ranks[i]; f->title = str_dup(j->titles[i]);
             char *e = url_encode(j->titles[i]);
             char *p = str_printf("/api/v1/search?query=%s&page=1", e);
@@ -396,7 +405,7 @@ static void add_row(Seerr *v, const char *title, const char *path) {
     v->n_rows++;
     if (!strncmp(path, "/api/v1/media?", 14)) { r->recent = true; seerr_call("GET", path, NULL, recent_done, r); }
     else if (!strncmp(path, "@netflix", 8)) { /* "@netflix:tv" = the country's top 10, "@netflixw:tv" = worldwide top 20 */
-        NfJob *j = calloc(1, sizeof *j);
+        NfJob *j = xcalloc(1, sizeof *j);
         j->r = r;
         j->world = path[8] == 'w';
         j->tv = !strcmp(strchr(path, ':') + 1, "tv");
@@ -487,7 +496,7 @@ static void login(Seerr *v) {
     snprintf(v->msg, sizeof v->msg, T("Signing in…"));
     const char *pt = cfg_get("plex_token", "");
     if (*pt) {
-        char *body = str_printf("{\"authToken\":\"%s\"}", pt);
+        char *body = auth_body(pt);
         seerr_call("POST", "/api/v1/auth/plex", body, login_done, v);
         free(body);
     } else {
@@ -933,7 +942,7 @@ static bool seerr_input(Screen *s, const InputEvent *ev) {
 Screen *seerr_screen(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "seerr";
-    s->st = calloc(1, sizeof(Seerr));
+    s->st = xcalloc(1, sizeof(Seerr));
     s->enter = seerr_enter;
     s->update = seerr_update;
     s->draw = seerr_draw;
@@ -1048,7 +1057,7 @@ static void sim_done(void *ud, cJSON *json, long status) {
         cJSON *arr = cJSON_GetObjectItem(json, c->b == 0 ? "parts" : "results"), *o;
         if (status == 200 && arr) {
             int n = cJSON_GetArraySize(arr), k = 0;
-            d->bk[c->b].it = calloc(n + 1, sizeof(SItem));
+            d->bk[c->b].it = xcalloc(n + 1, sizeof(SItem));
             cJSON_ArrayForEach(o, arr) {
                 SItem *it = &d->bk[c->b].it[k];
                 sitem_parse(it, o);
@@ -1063,7 +1072,7 @@ static void sim_done(void *ud, cJSON *json, long status) {
     free(c);
 }
 static void sim_fetch(SDetail *d, int b, const char *path, const char *type) {
-    SimCtx *c = calloc(1, sizeof *c);
+    SimCtx *c = xcalloc(1, sizeof *c);
     c->d = d; c->b = b; c->type = type;
     seerr_call("GET", path, NULL, sim_done, c);
 }
@@ -1416,8 +1425,8 @@ static bool detail_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *seerr_detail(SItem *src) {
-    Screen *s = calloc(1, sizeof *s);
-    SDetail *d = calloc(1, sizeof *d);
+    Screen *s = xcalloc(1, sizeof *s);
+    SDetail *d = xcalloc(1, sizeof *d);
     d->it = *src;
     d->it.type = str_dup(src->type); d->it.title = str_dup(src->title); d->it.poster = str_dup(src->poster);
     d->it.backdrop = str_dup(src->backdrop); d->it.year = str_dup(src->year); d->it.overview = str_dup(src->overview);

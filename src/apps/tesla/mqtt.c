@@ -346,7 +346,7 @@ void tm_conn_apply(void) {
     if (!want) { pthread_mutex_unlock(&mu); return; }
     snprintf(cur_sig, sizeof cur_sig, "%s", sig);
     memset(sig, 0, sizeof sig);
-    ConnCfg *c = calloc(1, sizeof *c);
+    ConnCfg *c = xcalloc(1, sizeof *c);
     c->gen = gen;
     snprintf(c->host, sizeof c->host, "%s", host);
     c->port = cfg_int("tesla_port", 1883);
@@ -447,7 +447,7 @@ static void probe_done(void *arg) {
 }
 
 void tm_probe(const char *host, int port, const char *user, const char *pass, TmProbeDone cb, void *ud) {
-    ProbeJob *j = calloc(1, sizeof *j);
+    ProbeJob *j = xcalloc(1, sizeof *j);
     snprintf(j->host, sizeof j->host, "%s", host);
     snprintf(j->user, sizeof j->user, "%s", user ? user : "");
     snprintf(j->pass, sizeof j->pass, "%s", pass ? pass : "");
@@ -579,7 +579,7 @@ static void disc_done(void *arg) {
 }
 
 void tm_discover(TmDiscDone cb, void *ud) {
-    Disc *d = calloc(1, sizeof *d);
+    Disc *d = xcalloc(1, sizeof *d);
     d->cb = cb;
     d->ud = ud;
     job_submit_q(JQ_SLOW, disc_work, disc_done, d);

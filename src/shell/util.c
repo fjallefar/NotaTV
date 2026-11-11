@@ -34,7 +34,7 @@ int board_pi(void) {
 }
 
 /* ---------- strenge ---------- */
-char *str_dup(const char *s) { return s ? strdup(s) : NULL; }
+char *str_dup(const char *s) { return s ? xstrdup(s) : NULL; }
 
 /* a whole file as a 0-terminated string; NULL if it is missing, unreadable or larger than max bytes */
 char *file_read_all(const char *path, long max) {
@@ -54,7 +54,7 @@ char *str_printf(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
     char *out = NULL;
-    if (vasprintf(&out, fmt, ap) < 0) out = NULL;
+    if (vasprintf(&out, fmt, ap) < 0) x_oom(0); /* never NULL (audit 11/11 B3): the callers do not check */
     va_end(ap);
     return out;
 }
@@ -134,7 +134,7 @@ void jobs_shutdown(void) {
 }
 
 void job_submit_q(JobQueueId qi, JobFn work, JobFn done, void *arg) {
-    Job *j = calloc(1, sizeof *j);
+    Job *j = xcalloc(1, sizeof *j);
     j->work = work; j->done = done; j->arg = arg;
     JobQueue *q = &queues[qi];
     SDL_LockMutex(jq_lock);
@@ -482,9 +482,9 @@ void cfg_load(void) {
         size_t n = strlen(v);
         while (n && (v[n - 1] == '\n' || v[n - 1] == '\r')) v[--n] = 0;
         str_trim(line);
-        cfg = realloc(cfg, sizeof(Kv) * (n_cfg + 1));
-        cfg[n_cfg].k = strdup(line);
-        cfg[n_cfg].v = strdup(v);
+        cfg = xrealloc(cfg, sizeof(Kv) * (n_cfg + 1));
+        cfg[n_cfg].k = xstrdup(line);
+        cfg[n_cfg].v = xstrdup(v);
         n_cfg++;
     }
     free(line);
@@ -572,7 +572,7 @@ static void cfg_set_clean(const char *key, const char *val) {
     for (int i = 0; i < n_cfg; i++)
         if (strcmp(cfg[i].k, key) == 0) {
             if (strcmp(cfg[i].v, val) != 0) {
-                cfg[i].v = strdup(val); /* the old value is leaked on purpose (see cfg_lock) */
+                cfg[i].v = xstrdup(val); /* the old value is leaked on purpose (see cfg_lock) */
                 cfg_save();
             }
             SDL_UnlockMutex(cfg_lock);
@@ -582,8 +582,8 @@ static void cfg_set_clean(const char *key, const char *val) {
     Kv *n = malloc(sizeof(Kv) * (n_cfg + 1));
     if (!n) { SDL_Log("cfg: ingen hukommelse til %s", key); SDL_UnlockMutex(cfg_lock); return; }
     if (n_cfg) memcpy(n, cfg, sizeof(Kv) * n_cfg);
-    n[n_cfg].k = strdup(key);
-    n[n_cfg].v = strdup(val);
+    n[n_cfg].k = xstrdup(key);
+    n[n_cfg].v = xstrdup(val);
     cfg = n;
     n_cfg++;
     cfg_save();
@@ -596,7 +596,7 @@ void cfg_unset(const char *key) {
     for (int i = 0; i < n_cfg; i++)
         if (strcmp(cfg[i].k, key) == 0) {
             /* a new array (the old one and the strings are leaked on purpose, like cfg_set: readers may hold them) */
-            Kv *n = malloc(sizeof(Kv) * (n_cfg > 1 ? n_cfg - 1 : 1));
+            Kv *n = xmalloc(sizeof(Kv) * (n_cfg > 1 ? n_cfg - 1 : 1));
             int k = 0;
             for (int j = 0; j < n_cfg; j++) if (j != i) n[k++] = cfg[j];
             cfg = n;
@@ -742,7 +742,7 @@ char *run_capture_argv(const char *const *argv) {
     }
     close(fd[1]);
     size_t cap = 4096, len = 0;
-    char *buf = malloc(cap);
+    char *buf = xmalloc(cap);
     ssize_t n;
     while (buf && (n = read(fd[0], buf + len, cap - len - 1)) != 0) {
         if (n < 0) { if (errno == EINTR) continue; break; }

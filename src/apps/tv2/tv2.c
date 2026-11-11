@@ -9,6 +9,7 @@
  */
 #include "tv2.h"
 #include "vendor/cJSON.h"
+#include "json_util.h"
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -196,16 +197,6 @@ static bool file_exists(const char *path) {
     return path && access(path, F_OK) == 0;
 }
 
-static char *jstr(cJSON *o, const char *key) {
-    if (!o) return NULL;
-    cJSON *v = cJSON_GetObjectItem(o, key);
-    return cJSON_IsString(v) && v->valuestring && v->valuestring[0] ? str_dup(v->valuestring) : NULL;
-}
-static double jnum(cJSON *o, const char *key) {
-    if (!o) return 0;
-    cJSON *v = cJSON_GetObjectItem(o, key);
-    return cJSON_IsNumber(v) ? v->valuedouble : 0;
-}
 static const char *jval(cJSON *o, const char *key) {
     if (!o) return NULL;
     cJSON *v = cJSON_GetObjectItem(o, key);
@@ -472,7 +463,7 @@ static void req_submit(Tv2Req *r) { job_submit(treq_work, treq_done, r); }
 
 static void tv2_req(const char *url, const char *body, bool api,
                     void (*done)(void *, cJSON *, long), Tv2 *v) {
-    Tv2Req *r = calloc(1, sizeof *r);
+    Tv2Req *r = xcalloc(1, sizeof *r);
     r->method = "POST";
     r->url = str_dup(url);
     r->body = str_dup(body);
@@ -498,7 +489,7 @@ static void tv2_api(const char *url, const char *body, void (*done)(void *, cJSO
 }
 /* entitlement preflight: always deliver, so the job can free itself even if the screen is gone */
 static void tv2_ent_api(const char *url, const char *body, void (*done)(void *, cJSON *, long), void *ud, Tv2 *v) {
-    Tv2Req *r = calloc(1, sizeof *r);
+    Tv2Req *r = xcalloc(1, sizeof *r);
     r->method = "POST";
     r->url = str_dup(url);
     r->body = str_dup(body);
@@ -561,7 +552,7 @@ static int locked_mode(void) {
 
 static void ent_done(void *ud, cJSON *json, long status);
 static void entitlement_start(Tv2 *v) {
-    EntJob *job = calloc(1, sizeof *job);
+    EntJob *job = xcalloc(1, sizeof *job);
     job->v = v;
     job->gen = v->gen;
     job->view = v->view;
@@ -709,12 +700,13 @@ static void write_token_file(Tv2 *v) {
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
     FILE *f = fopen(tmp, "w");
     if (!f) return;
+    fchmod(fileno(f), 0600);
     size_t n = strlen(v->token);
     bool ok = fwrite(v->token, 1, n, f) == n;
     if (fclose(f) != 0) ok = false;
-    if (!ok) { unlink(tmp); return; } /* disk full: never rename an empty/partial token into place */
-    chmod(tmp, 0600);
-    rename(tmp, path);
+    /* only a complete file replaces the old one (a full disk must not leave an empty token file) */
+    if (ok) ok = rename(tmp, path) == 0;
+    if (!ok) unlink(tmp);
 }
 static void clear_token_file(void) {
     char path[600];
@@ -725,11 +717,11 @@ static bool token_valid(const Tv2 *v) {
     return v->token[0] && (v->token_exp <= 0 || v->token_exp > (double)time(NULL) + 60);
 }
 static void save_token_json(Tv2 *v, cJSON *j) {
-    char *at = jstr(j, "access_token");
+    char *at = json_dup(j, "access_token");
     if (!at) return;
     snprintf(v->token, sizeof v->token, "%s", at);
     free(at);
-    char *rt = jstr(j, "refresh_token");
+    char *rt = json_dup(j, "refresh_token");
     if (rt) {
         snprintf(v->refresh, sizeof v->refresh, "%s", rt);
         cfg_set("tv2_refresh", v->refresh);
@@ -804,8 +796,8 @@ static void start_login(Tv2 *v) {
 }
 
 static void login_error(Tv2 *v, cJSON *j, long status) {
-    char *err = j ? jstr(j, "error") : NULL;
-    char *desc = j ? jstr(j, "error_description") : NULL;
+    char *err = j ? json_dup(j, "error") : NULL;
+    char *desc = j ? json_dup(j, "error_description") : NULL;
     set_error(v, T("Sign-in failed: %s"), desc ? desc : (err ? err : T("no connection")));
     free(err); free(desc);
     (void)status;
@@ -826,7 +818,7 @@ static void token_done(void *ud, cJSON *json, long status) {
     Tv2 *v = ud;
     v->polling = false;
     if (v->state != S_CODE) return;
-    char *at = status == 200 ? jstr(json, "access_token") : NULL;
+    char *at = status == 200 ? json_dup(json, "access_token") : NULL;
     if (at) {
         free(at);
         save_token_json(v, json);
@@ -842,8 +834,8 @@ static void token_done(void *ud, cJSON *json, long status) {
         load_profiles(v);
         return;
     }
-    char *err = json ? jstr(json, "error") : NULL;
-    char *desc = json ? jstr(json, "error_description") : NULL;
+    char *err = json ? json_dup(json, "error") : NULL;
+    char *desc = json ? json_dup(json, "error_description") : NULL;
     if (err && !strcmp(err, "authorization_pending")) { free(err); free(desc); return; }
     if (err && !strcmp(err, "slow_down")) {
         v->interval += 5;
@@ -858,10 +850,10 @@ static void token_done(void *ud, cJSON *json, long status) {
 
 static void device_done(void *ud, cJSON *json, long status) {
     Tv2 *v = ud;
-    char *dc = status == 200 ? jstr(json, "device_code") : NULL;
-    char *uc = status == 200 ? jstr(json, "user_code") : NULL;
-    char *uri = status == 200 ? jstr(json, "verification_uri") : NULL;
-    char *cmp = status == 200 ? jstr(json, "verification_uri_complete") : NULL;
+    char *dc = status == 200 ? json_dup(json, "device_code") : NULL;
+    char *uc = status == 200 ? json_dup(json, "user_code") : NULL;
+    char *uri = status == 200 ? json_dup(json, "verification_uri") : NULL;
+    char *cmp = status == 200 ? json_dup(json, "verification_uri_complete") : NULL;
     if (dc && uc) {
         snprintf(v->device_code, sizeof v->device_code, "%s", dc);
         snprintf(v->user_code, sizeof v->user_code, "%s", uc);
@@ -881,7 +873,7 @@ static void device_done(void *ud, cJSON *json, long status) {
 
 static void refresh_done(void *ud, cJSON *json, long status) {
     Tv2 *v = ud;
-    char *at = status == 200 && json ? jstr(json, "access_token") : NULL;
+    char *at = status == 200 && json ? json_dup(json, "access_token") : NULL;
     if (at) {
         free(at);
         save_token_json(v, json);
@@ -911,7 +903,7 @@ static bool refresh_sync(Tv2 *v) {
     bool ok = false;
     if (http_request("POST", AUTH_TOKEN_URL, hdr, body, &b, 20) && b.status == 200 && b.data) {
         cJSON *j = cJSON_Parse(b.data);
-        char *at = j ? jstr(j, "access_token") : NULL;
+        char *at = j ? json_dup(j, "access_token") : NULL;
         if (at) { free(at); save_token_json(v, j); ok = true; }
         cJSON_Delete(j);
     }
@@ -1080,7 +1072,7 @@ static void parse_page_cards(Tv2 *v, Section *s, cJSON *cards) {
         if (!url && img) url = jval(img, "url");
         double prog = 0;
         cJSON *pr = cJSON_GetObjectItem(card, "progress");
-        if (pr) prog = jnum(pr, "percentage");
+        if (pr) prog = json_num(pr, "percentage");
         if (path && path[0] == '#') continue;
         /* provider/category logos are SVG; without a title they would be an empty tile */
         if ((!title || !*title) && url && strstr(url, ".svg")) continue;
@@ -1524,16 +1516,16 @@ static void profiles_done(void *ud, cJSON *json, long status) {
         if (!cJSON_IsArray(nodes)) nodes = NULL;
         cJSON_ArrayForEach(node, nodes) {
             if (v->nprof >= MAX_PROF) break;
-            char *pt = jstr(node, "profileToken");
+            char *pt = json_dup(node, "profileToken");
             if (!pt || !*pt) { free(pt); continue; }
             Tv2Prof *p = &v->prof[v->nprof++];
             memset(p, 0, sizeof *p);
-            char *name = jstr(node, "name"), *id = jstr(node, "profileId");
+            char *name = json_dup(node, "name"), *id = json_dup(node, "profileId");
             snprintf(p->token, sizeof p->token, "%s", pt);
             snprintf(p->name, sizeof p->name, "%s", name ? name : "");
             snprintf(p->id, sizeof p->id, "%s", id ? id : "");
             p->kids = cJSON_IsTrue(cJSON_GetObjectItem(node, "restricted"));
-            char *av = jstr(cJSON_GetObjectItem(node, "avatar"), "url");
+            char *av = json_dup(cJSON_GetObjectItem(node, "avatar"), "url");
             if (av && *av) {
                 char *fx = img_url_fix(av);
                 snprintf(p->avatar, sizeof p->avatar, "%s", fx ? fx : av);
@@ -1595,16 +1587,18 @@ extern const NotaApp nota_app; /* at the bottom */
 static bool cdm_fetch(const char *dir) {
     char *done = str_printf("%s/wvdl.done", dir), *fail = str_printf("%s/wvdl.fail", dir);
     unlink(done); unlink(fail);
-    run_cmd("( d='%s'; t=\"$d/wvdl\"; rm -rf \"$t\" \"$d/lib.new\"; mkdir -p \"$t\" \"$d/lib.new\" && cd \"$t\" && "
+    char *qd = shell_quote(dir), *qdone = shell_quote(done), *qfail = shell_quote(fail);
+    run_cmd("( d=%s; t=\"$d/wvdl\"; rm -rf \"$t\" \"$d/lib.new\"; mkdir -p \"$t\" \"$d/lib.new\" && cd \"$t\" && "
             "get() { h=$1; shift; for u in \"$@\"; do curl -fsSL -m 300 --retry 2 -o p.deb \"$u\" && "
             "[ \"$(sha256sum p.deb | cut -d' ' -f1)\" = \"$h\" ] && ar x p.deb data.tar.xz && "
             "xz -dc data.tar.xz | tar -x -f - && rm -f p.deb data.tar.xz && return 0; done; return 1; }; "
             "get %s '%s' && get %s '%s' '%s' && "
             "cp opt/WidevineCdm/gmp-widevinecdm/latest/libwidevinecdm.so usr/lib/aarch64-linux-gnu/libnspr4.so "
             "usr/lib/aarch64-linux-gnu/libplc4.so usr/lib/aarch64-linux-gnu/libplds4.so \"$d/lib.new/\" && "
-            "rm -rf \"$d/lib\" && mv \"$d/lib.new\" \"$d/lib\" && touch '%s' || touch '%s'; "
+            "rm -rf \"$d/lib\" && mv \"$d/lib.new\" \"$d/lib\" && touch %s || touch %s; "
             "cd /; rm -rf \"$t\" \"$d/lib.new\" ) >/dev/null 2>&1 &",
-            dir, CDM_SHA, CDM_DEB, NSPR_SHA, NSPR_DEB, NSPR_DEB2, done, fail);
+            qd, CDM_SHA, CDM_DEB, NSPR_SHA, NSPR_DEB, NSPR_DEB2, qdone, qfail);
+    free(qd); free(qdone); free(qfail);
     bool ok = false;
     for (;;) {
         if (file_exists(done)) { ok = true; break; }
@@ -1648,10 +1642,14 @@ static PlayResult play_one(Tv2 *v, const char *guid, const char *title,
     double start = progress_load(guid);
     /* profileToken is base64/JWT (no quote); guard anyway so it can never break the shell word */
     char *prof = (v->profile[0] && !strchr(v->profile, '\'')) ? str_printf("TV2_PROFILE='%s' ", v->profile) : str_dup("");
+    char *lib = str_printf("%s/lib", dir), *atok = str_printf("@%s", tok);
+    char *q[7] = {shell_quote(posf), shell_quote(lib), shell_quote(wv), shell_quote(cdm), shell_quote(atok),
+                  shell_quote(guid), shell_quote(log)};
     run_cmd("kill $(pidof wvserve) 2>/dev/null; sleep 0.3; "
-            "%sTV2_POSFILE='%s' LD_LIBRARY_PATH='%s/lib' '%s' '%s' '@%s' '%s' %d >'%s' 2>&1 &",
-            prof, posf, dir, wv, cdm, tok, guid, PORT, log);
-    free(prof);
+            "%sTV2_POSFILE=%s LD_LIBRARY_PATH=%s %s %s %s %s %d >%s 2>&1 &",
+            prof, q[0], q[1], q[2], q[3], q[4], q[5], PORT, q[6]);
+    for (int i = 0; i < 7; i++) free(q[i]);
+    free(lib); free(atok); free(prof);
 
     char url[80];
     snprintf(url, sizeof url, "http://127.0.0.1:%d/manifest.mpd", PORT);
@@ -2608,8 +2606,8 @@ static void tv2_destroy(Screen *s) {
 }
 
 Screen *tv2_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
-    Tv2 *v = calloc(1, sizeof *v);
+    Screen *s = xcalloc(1, sizeof *s);
+    Tv2 *v = xcalloc(1, sizeof *v);
     s->name = "tv2";
     s->st = v;
     s->enter = tv2_enter;
@@ -2636,7 +2634,9 @@ static void tv2_forget(void) {
     unlink(p);
     free(p);
     p = app_dir();
-    run_cmd("rm -f '%s'/progress-* 2>/dev/null", p); /* one per profile */
+    char *qp = shell_quote(p);
+    run_cmd("rm -f %s/progress-* 2>/dev/null", qp); /* one per profile */
+    free(qp);
     free(p);
     p = app_file("serve.log");
     unlink(p);

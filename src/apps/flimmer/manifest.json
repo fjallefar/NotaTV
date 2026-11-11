@@ -1,6 +1,6 @@
 {
   "id": "flimmer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api": 2,
   "name": "Flimmer",
   "desc": "Find and request movies and series on your Flimmertv server",

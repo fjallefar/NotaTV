@@ -705,7 +705,7 @@ static void pending_show(char *val) {
         {"iptv_url", N_("Live TV playlist"), true}, {"iptv_epg", N_("Program guide"), true}, {"xtream_server", N_("Xtream server"), true},
         {"xtream_user", N_("Xtream username"), true}, {"xtream_pass", N_("Xtream password"), false}, {"media_share", N_("Network drive"), false},
         {"device_name", N_("Name of the box"), true}};
-    Pending *p = calloc(1, sizeof *p);
+    Pending *p = xcalloc(1, sizeof *p);
     p->kv = str_dup(val);
     char msg[512] = "";
     char *sv_line;
@@ -726,6 +726,19 @@ static void pending_show(char *val) {
     snprintf(title, sizeof title, T("Save from phone %s?"), p->from);
     confirm_open(title, msg, T("Save"), T("Decline"), pending_cb, p);
 }
+/* key names for the inbox (_key, from the phone page) and the UI test script (k:name). inbox = false: the
+   test script only - the phone page gets no more keys than before (audit 11/11 B9) */
+static const struct { const char *n; Action a; bool inbox; } named_keys[] = {
+    {"up", A_UP, true}, {"down", A_DOWN, true}, {"left", A_LEFT, true}, {"right", A_RIGHT, true},
+    {"ok", A_OK, true}, {"back", A_BACK, true}, {"home", A_HOME, true}, {"menu", A_MENU, true},
+    {"playpause", A_PLAYPAUSE, true}, {"info", A_INFO, false}, {"yellow", A_YELLOW, false},
+    /* color keys: the same meaning as the remote (input.c) */
+    {"red", A_MENU, false}, {"green", A_INFO, false}, {"blue", A_SEARCH, false}, {"power", A_POWER, false},
+    {"bs", A_BACKSPACE, false}, {"pp", A_PLAYPAUSE, false}};
+static void push_named_key(const char *name, bool inbox) {
+    for (size_t i = 0; i < sizeof named_keys / sizeof named_keys[0]; i++)
+        if ((named_keys[i].inbox || !inbox) && !strcmp(name, named_keys[i].n)) input_push(named_keys[i].a, 0, false);
+}
 static char inbox_shot[256]; /* screenshot requested via the inbox (_shot) - for debugging */
 
 static void inbox_check(void) {
@@ -743,7 +756,7 @@ static void inbox_check(void) {
         int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC); /* no symlinks out of the inbox */
         FILE *f = fd >= 0 ? fdopen(fd, "r") : NULL;
         if (!f) { if (fd >= 0) close(fd); unlink(path); continue; }
-        char *val = calloc(1, 8192);
+        char *val = xcalloc(1, 8192);
         size_t n = fread(val, 1, 8191, f);
         val[n] = 0;
         fclose(f);
@@ -754,18 +767,20 @@ static void inbox_check(void) {
         else if (!strcmp(e->d_name, "_toast")) app_toast("%s", tr_msg(val));
         else if (!strcmp(e->d_name, "_pending")) pending_show(val);
         else if (!strcmp(e->d_name, "_wake")) { screensaver = false; input_touch(); } /* "Turn on" on the phone page */
-        else if (!strcmp(e->d_name, "_shot")) { /* developer mode only: writes a file to any path */
-            if (cfg_int("ssh_enabled", 0)) snprintf(inbox_shot, sizeof inbox_shot, "%s", *val ? val : "/tmp/shot.bmp");
+        else if (!strcmp(e->d_name, "_shot")) { /* developer mode only: a screenshot to /tmp/<name>.bmp (audit 11/11 B7) */
+            const char *nm = !strncmp(val, "/tmp/", 5) ? val + 5 : val;
+            size_t ln = strlen(nm);
+            bool ok = !*val || (ln > 4 && ln < 64 && nm[0] != '.' && !strchr(nm, '/') && !strcmp(nm + ln - 4, ".bmp"));
+            if (cfg_int("ssh_enabled", 0) && ok) {
+                snprintf(inbox_shot, sizeof inbox_shot, "/tmp/%s", *val ? nm : "shot.bmp");
+                unlink(inbox_shot); /* never write through a link someone put there */
+            } else if (!ok) SDL_Log("_shot: only /tmp/<name>.bmp is allowed");
         }
         else if (!strcmp(e->d_name, "_moon")) { /* developer mode only: start tvmoon (test) */
             if (cfg_int("ssh_enabled", 0)) moon_inbox(val);
         }
         else if (!strcmp(e->d_name, "_key")) {
-            static const struct { const char *n; Action a; } km[] = {
-                {"up", A_UP}, {"down", A_DOWN}, {"left", A_LEFT}, {"right", A_RIGHT}, {"ok", A_OK},
-                {"back", A_BACK}, {"home", A_HOME}, {"menu", A_MENU}, {"playpause", A_PLAYPAUSE}};
-            for (size_t i = 0; i < sizeof km / sizeof km[0]; i++)
-                if (!strcmp(val, km[i].n)) input_push(km[i].a, 0, false);
+            push_named_key(val, true);
         } else if (e->d_name[0] == '_') {
             apps_inbox(e->d_name, val); /* e.g. _ytpending: an account for the YouTube app */
         } else {
@@ -844,13 +859,7 @@ static void script_step(void) {
     else if (cmd[0] == 't' && cmd[1] == ':') {
         for (char *p = cmd + 2; *p; p++) input_push(A_CHAR, (unsigned char)*p, false);
     } else if (cmd[0] == 'k' && cmd[1] == ':') {
-        static const struct { const char *n; Action a; } km[] = {
-            {"up", A_UP}, {"down", A_DOWN}, {"left", A_LEFT}, {"right", A_RIGHT}, {"ok", A_OK},
-            {"back", A_BACK}, {"home", A_HOME}, {"menu", A_MENU}, {"info", A_INFO}, {"yellow", A_YELLOW},
-            /* color keys from the phone page: the same meaning as the remote (input.c) */
-            {"red", A_MENU}, {"green", A_INFO}, {"blue", A_SEARCH}, {"power", A_POWER}, {"bs", A_BACKSPACE}, {"pp", A_PLAYPAUSE}};
-        for (size_t i = 0; i < sizeof km / sizeof km[0]; i++)
-            if (!strcmp(cmd + 2, km[i].n)) input_push(km[i].a, 0, false);
+        push_named_key(cmd + 2, false);
     }
     /* s:file is taken in the render loop */
 }

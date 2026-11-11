@@ -262,7 +262,7 @@ static bool tesla_input(Screen *s, const InputEvent *ev) {
 static void tesla_destroy(Screen *s) { free(s); }
 
 Screen *tesla_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
+    Screen *s = xcalloc(1, sizeof *s);
     if (!G) G = calloc(1, sizeof *G); /* lives on: discovery and probes call back into it */
     s->name = "tesla";
     s->st = G;

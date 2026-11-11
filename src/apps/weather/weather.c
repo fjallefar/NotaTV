@@ -4,6 +4,7 @@
  * The icons are drawn here (no image files). Built as app.so (see src/apps/README.md). */
 #include "tv.h"
 #include "vendor/cJSON.h"
+#include "json_util.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,7 +35,6 @@ static double next_fetch, fetched_at;
 static bool fetching;
 static int wx_gen; /* increased when the town changes: an answer for the old town is dropped */
 
-static double jnum(cJSON *o, const char *k) { cJSON *v = cJSON_GetObjectItem(o, k); return cJSON_IsNumber(v) ? v->valuedouble : 0; }
 static double jarr(cJSON *o, const char *k, int i) { cJSON *v = cJSON_GetArrayItem(cJSON_GetObjectItem(o, k), i); return cJSON_IsNumber(v) ? v->valuedouble : 0; }
 static const char *jarrs(cJSON *o, const char *k, int i) { cJSON *v = cJSON_GetArrayItem(cJSON_GetObjectItem(o, k), i); return cJSON_IsString(v) ? v->valuestring : ""; }
 
@@ -89,8 +89,8 @@ static void fetch_work(void *arg) {
         cJSON *g = get_json(url), *r = cJSON_GetArrayItem(cJSON_GetObjectItem(g, "results"), 0);
         if (r) {
             j->geo_ok = true;
-            j->glat = jnum(r, "latitude");
-            j->glon = jnum(r, "longitude");
+            j->glat = json_num(r, "latitude");
+            j->glon = json_num(r, "longitude");
             const char *n = cJSON_GetStringValue(cJSON_GetObjectItem(r, "name"));
             snprintf(j->gname, sizeof j->gname, "%s", n ? n : j->geo_q);
             j->lat = j->glat;
@@ -114,11 +114,11 @@ static void fetch_work(void *arg) {
     cJSON *cur = cJSON_GetObjectItem(d, "current");
     if (cur) {
         w->ok = true;
-        w->temp = (float)jnum(cur, "temperature_2m");
-        w->feels = (float)jnum(cur, "apparent_temperature");
-        w->wind = (float)jnum(cur, "wind_speed_10m");
-        w->code = (int)jnum(cur, "weather_code");
-        w->day = jnum(cur, "is_day") != 0;
+        w->temp = (float)json_num(cur, "temperature_2m");
+        w->feels = (float)json_num(cur, "apparent_temperature");
+        w->wind = (float)json_num(cur, "wind_speed_10m");
+        w->code = (int)json_num(cur, "weather_code");
+        w->day = json_num(cur, "is_day") != 0;
         const char *t = cJSON_GetStringValue(cJSON_GetObjectItem(cur, "time"));
         snprintf(w->time, sizeof w->time, "%s", t ? t : "");
     }
@@ -183,7 +183,7 @@ static void tz_town(char *out, size_t n) {
 
 static void wx_fetch(void) {
     if (fetching) return;
-    FetchJob *j = calloc(1, sizeof *j);
+    FetchJob *j = xcalloc(1, sizeof *j);
     j->gen = wx_gen;
     const char *la = cfg_get("wx_lat", ""), *lo = cfg_get("wx_lon", "");
     if (*la && *lo) {
@@ -224,8 +224,8 @@ static void search_work(void *arg) {
         if (!n) continue;
         snprintf(s->name[s->n], sizeof s->name[0], "%s", n);
         snprintf(s->label[s->n], sizeof s->label[0], "%s%s%s%s%s", n, a1 ? ", " : "", a1 ? a1 : "", co ? ", " : "", co ? co : "");
-        s->lat[s->n] = jnum(r, "latitude");
-        s->lon[s->n] = jnum(r, "longitude");
+        s->lat[s->n] = json_num(r, "latitude");
+        s->lon[s->n] = json_num(r, "longitude");
         s->n++;
     }
     cJSON_Delete(g);
@@ -268,7 +268,7 @@ static void town_typed(void *ud, const char *text) {
     char *t = str_dup(text);
     str_trim(t);
     if (*t) {
-        SearchJob *s = calloc(1, sizeof *s);
+        SearchJob *s = xcalloc(1, sizeof *s);
         snprintf(s->q, sizeof s->q, "%s", t);
         snprintf(s->lang, sizeof s->lang, "%.2s", lang2());
         job_submit(search_work, search_done, s);
@@ -515,7 +515,7 @@ static void wx_destroy(Screen *s) {
 static Screen *weather_screen(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "weather";
-    s->st = calloc(1, sizeof(WxView));
+    s->st = xcalloc(1, sizeof(WxView));
     s->enter = wx_enter;
     s->update = wx_update;
     s->draw = wx_draw;

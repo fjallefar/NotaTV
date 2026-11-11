@@ -456,7 +456,7 @@ static void store_enter(Screen *s) {
 Screen *appstore_screen(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "appstore";
-    s->st = calloc(1, sizeof(Store));
+    s->st = xcalloc(1, sizeof(Store));
     s->enter = store_enter;
     s->update = store_update;
     s->draw = store_draw;

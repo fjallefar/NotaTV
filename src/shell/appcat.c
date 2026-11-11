@@ -319,7 +319,7 @@ static void cat_done(void *arg) {
 void appcat_refresh(void) {
     if (state == CAT_LOADING) return;
     state = CAT_LOADING;
-    job_submit_q(JQ_SLOW, cat_work, cat_done, calloc(1, sizeof(CatJob)));
+    job_submit_q(JQ_SLOW, cat_work, cat_done, xcalloc(1, sizeof(CatJob)));
 }
 
 bool appcat_has_update(const char *id) {
@@ -397,7 +397,7 @@ static void start_next(void) {
     const CatApp *c = appcat_find(queue[q_pos]);
     char url[400];
     if (!c || !base_url(url, sizeof url)) { q_pos++; q_done_n++; start_next(); return; }
-    InstJob *j = calloc(1, sizeof *j);
+    InstJob *j = xcalloc(1, sizeof *j);
     snprintf(j->id, sizeof j->id, "%s", c->id);
     snprintf(j->url, sizeof j->url, "%s", url);
     snprintf(j->file, sizeof j->file, "%s", c->file);

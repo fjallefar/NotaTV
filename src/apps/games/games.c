@@ -380,9 +380,9 @@ static Games *G;
 static void games_destroy(Screen *s) { free(s); }
 
 Screen *games_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
+    Screen *s = xcalloc(1, sizeof *s);
     if (!G) {
-        G = calloc(1, sizeof *G);
+        G = xcalloc(1, sizeof *G);
         pthread_mutex_init(&G->mu, NULL);
     }
     Games *g = G;

@@ -1,6 +1,7 @@
 /* NotaTV app package "jellyfin" - Jellyfin: libraries, continue/next episode, series and playback via mpv */
 #include "jellyfin.h"
 #include "vendor/cJSON.h"
+#include "json_util.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -76,7 +77,7 @@ static void jreq_done(void *arg) {
 /* keep: the reply is delivered even if the screen has changed (e.g. playback reports) */
 static void jf_call_ex(const char *method, const char *path, const char *body,
                        void (*done)(void *, cJSON *, long), void *ud, bool keep) {
-    JReq *r = calloc(1, sizeof *r);
+    JReq *r = xcalloc(1, sizeof *r);
     r->method = method;
     r->path = str_dup(path);
     r->body = str_dup(body);
@@ -122,49 +123,41 @@ static JItem jitem_copy(const JItem *s) {
     return d;
 }
 
-static char *js(cJSON *o, const char *k) {
-    cJSON *v = cJSON_GetObjectItem(o, k);
-    return cJSON_IsString(v) && v->valuestring[0] ? str_dup(v->valuestring) : NULL;
-}
-static double jnum(cJSON *o, const char *k) {
-    cJSON *v = cJSON_GetObjectItem(o, k);
-    return cJSON_IsNumber(v) ? v->valuedouble : 0;
-}
 
 static void jitem_parse(JItem *j, cJSON *o) {
     memset(j, 0, sizeof *j);
-    j->id = js(o, "Id");
-    j->type = js(o, "Type");
-    j->name = js(o, "Name");
-    j->series = js(o, "SeriesName");
-    j->series_id = js(o, "SeriesId");
-    j->season_id = js(o, "SeasonId");
-    j->overview = js(o, "Overview");
-    int y = (int)jnum(o, "ProductionYear");
+    j->id = json_dup(o, "Id");
+    j->type = json_dup(o, "Type");
+    j->name = json_dup(o, "Name");
+    j->series = json_dup(o, "SeriesName");
+    j->series_id = json_dup(o, "SeriesId");
+    j->season_id = json_dup(o, "SeasonId");
+    j->overview = json_dup(o, "Overview");
+    int y = (int)json_num(o, "ProductionYear");
     if (y > 0) j->year = str_printf("%d", y);
-    j->index = (int)jnum(o, "IndexNumber");
-    j->parent_index = (int)jnum(o, "ParentIndexNumber");
-    j->child_count = (int)jnum(o, "ChildCount");
+    j->index = (int)json_num(o, "IndexNumber");
+    j->parent_index = (int)json_num(o, "ParentIndexNumber");
+    j->child_count = (int)json_num(o, "ChildCount");
     cJSON *tm = cJSON_GetObjectItem(cJSON_GetObjectItem(o, "ProviderIds"), "Tmdb");
     if (cJSON_IsString(tm)) j->tmdb = atoi(tm->valuestring);
-    j->run = jnum(o, "RunTimeTicks") / TICKS;
+    j->run = json_num(o, "RunTimeTicks") / TICKS;
     cJSON *ud = cJSON_GetObjectItem(o, "UserData");
-    j->pos = jnum(ud, "PlaybackPositionTicks") / TICKS;
+    j->pos = json_num(ud, "PlaybackPositionTicks") / TICKS;
     j->played = cJSON_IsTrue(cJSON_GetObjectItem(ud, "Played"));
-    j->played_pct = jnum(ud, "PlayedPercentage");
+    j->played_pct = json_num(ud, "PlayedPercentage");
     cJSON *lp = cJSON_GetObjectItem(ud, "LastPlayedDate");
     if (cJSON_IsString(lp)) snprintf(j->last_played, sizeof j->last_played, "%s", lp->valuestring);
-    j->unplayed = (int)jnum(ud, "UnplayedItemCount");
+    j->unplayed = (int)json_num(ud, "UnplayedItemCount");
     /* backdrop: its own, otherwise the series'/parent's */
     cJSON *bt = cJSON_GetObjectItem(o, "BackdropImageTags");
     if (cJSON_GetArraySize(bt) > 0) j->backdrop_id = str_dup(j->id);
-    else j->backdrop_id = js(o, "ParentBackdropItemId");
+    else j->backdrop_id = json_dup(o, "ParentBackdropItemId");
     /* title logo: its own, otherwise the series' */
     if (cJSON_GetObjectItem(cJSON_GetObjectItem(o, "ImageTags"), "Logo")) j->logo_id = str_dup(j->id);
-    else j->logo_id = js(o, "ParentLogoItemId");
-    j->rating = js(o, "OfficialRating");
-    j->rt_critic = cJSON_GetObjectItem(o, "CriticRating") ? (int)(jnum(o, "CriticRating") + 0.5) : -1;
-    j->community10 = cJSON_GetObjectItem(o, "CommunityRating") ? (int)(jnum(o, "CommunityRating") * 10 + 0.5) : -1;
+    else j->logo_id = json_dup(o, "ParentLogoItemId");
+    j->rating = json_dup(o, "OfficialRating");
+    j->rt_critic = cJSON_GetObjectItem(o, "CriticRating") ? (int)(json_num(o, "CriticRating") + 0.5) : -1;
+    j->community10 = cJSON_GetObjectItem(o, "CommunityRating") ? (int)(json_num(o, "CommunityRating") * 10 + 0.5) : -1;
 }
 
 static bool is_ep(const JItem *j) { return j->type && !strcmp(j->type, "Episode"); }
@@ -247,9 +240,21 @@ typedef struct {
 /* raised after every playback: the home rows are fetched again (see jf_update) */
 static int jf_play_gen;
 
+/* the progress body; built with cJSON, so an id from the server cannot break the JSON (audit 11/11 B6) */
+static char *report_body(const char *id, double pos, bool paused) {
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "ItemId", id ? id : "");
+    cJSON_AddNumberToObject(o, "PositionTicks", floor(pos * TICKS));
+    cJSON_AddBoolToObject(o, "IsPaused", paused);
+    cJSON_AddBoolToObject(o, "CanSeek", true);
+    cJSON_AddStringToObject(o, "PlayMethod", "DirectStream");
+    char *b = cJSON_PrintUnformatted(o);
+    cJSON_Delete(o);
+    if (!b) x_oom(0);
+    return b;
+}
 static void report(const char *path, const char *id, double pos, bool paused) {
-    char *b = str_printf("{\"ItemId\":\"%s\",\"PositionTicks\":%.0f,\"IsPaused\":%s,\"CanSeek\":true,\"PlayMethod\":\"DirectStream\"}",
-                         id, pos * TICKS, paused ? "true" : "false");
+    char *b = report_body(id, pos, paused);
     jf_call_ex("POST", path, b, NULL, NULL, true);
     free(b);
 }
@@ -271,8 +276,7 @@ static cJSON *jf_get_sync(const char *method, const char *path, const char *body
     return j;
 }
 static void report_sync(const char *path, const char *id, double pos) {
-    char *b = str_printf("{\"ItemId\":\"%s\",\"PositionTicks\":%.0f,\"IsPaused\":false,\"CanSeek\":true,\"PlayMethod\":\"DirectStream\"}",
-                         id, pos * TICKS);
+    char *b = report_body(id, pos, false);
     /* waits for the server (a slow one too), so "Continue watching" is up to date when the lists are fetched again */
     cJSON_Delete(jf_get_sync("POST", path, b, 10));
     free(b);
@@ -305,7 +309,7 @@ static void jf_segments(PlayCtxJ *c, PlaySkip *sk) {
         if (!cJSON_IsString(ty)) continue;
         bool credits = !strcmp(ty->valuestring, "Outro");
         if (!credits && strcmp(ty->valuestring, "Intro") && strcmp(ty->valuestring, "Recap")) continue;
-        add_marker(sk, c, jnum(seg, "StartTicks") / TICKS, jnum(seg, "EndTicks") / TICKS, credits);
+        add_marker(sk, c, json_num(seg, "StartTicks") / TICKS, json_num(seg, "EndTicks") / TICKS, credits);
     }
     cJSON_Delete(j);
     if (sk->n) return;
@@ -315,15 +319,15 @@ static void jf_segments(PlayCtxJ *c, PlaySkip *sk) {
     free(p);
     if (j) {
         cJSON *in = cJSON_GetObjectItem(j, "Introduction"), *cr = cJSON_GetObjectItem(j, "Credits");
-        if (cJSON_IsTrue(cJSON_GetObjectItem(in, "Valid"))) add_marker(sk, c, jnum(in, "Start"), jnum(in, "End"), false);
-        if (cJSON_IsTrue(cJSON_GetObjectItem(cr, "Valid"))) add_marker(sk, c, jnum(cr, "Start"), jnum(cr, "End"), true);
+        if (cJSON_IsTrue(cJSON_GetObjectItem(in, "Valid"))) add_marker(sk, c, json_num(in, "Start"), json_num(in, "End"), false);
+        if (cJSON_IsTrue(cJSON_GetObjectItem(cr, "Valid"))) add_marker(sk, c, json_num(cr, "Start"), json_num(cr, "End"), true);
         cJSON_Delete(j);
     }
     if (sk->n) return;
     p = str_printf("/Episode/%s/IntroTimestamps/v1", c->id);
     j = jf_get_sync("GET", p, NULL, 4);
     free(p);
-    if (j && cJSON_IsTrue(cJSON_GetObjectItem(j, "Valid"))) add_marker(sk, c, jnum(j, "IntroStart"), jnum(j, "IntroEnd"), false);
+    if (j && cJSON_IsTrue(cJSON_GetObjectItem(j, "Valid"))) add_marker(sk, c, json_num(j, "IntroStart"), json_num(j, "IntroEnd"), false);
     cJSON_Delete(j);
 }
 static void jf_skip_info(void *ud, PlaySkip *sk) {
@@ -353,18 +357,18 @@ static void jf_streams(const JItem *j, JStreams *t) {
     if (ms) {
         cJSON *da = cJSON_GetObjectItem(ms, "DefaultAudioStreamIndex"), *ds = cJSON_GetObjectItem(ms, "DefaultSubtitleStreamIndex");
         int def_a = cJSON_IsNumber(da) ? da->valueint : -1, def_s = cJSON_IsNumber(ds) ? ds->valueint : -1;
-        char *msid = js(ms, "Id");
+        char *msid = json_dup(ms, "Id");
         int n_audio = 0, n_emb = 0, n_ext = 0, sel_emb = 0, sel_ext = 0;
         cJSON *st;
         cJSON_ArrayForEach(st, cJSON_GetObjectItem(ms, "MediaStreams")) {
             cJSON *ty = cJSON_GetObjectItem(st, "Type");
-            int idx = (int)jnum(st, "Index");
+            int idx = (int)json_num(st, "Index");
             if (!cJSON_IsString(ty)) continue;
             if (!strcmp(ty->valuestring, "Video") && !t->hdr) { /* HDR and width: the player then skips ffprobe */
-                char *trc = js(st, "ColorTransfer"), *vr = js(st, "VideoRange");
+                char *trc = json_dup(st, "ColorTransfer"), *vr = json_dup(st, "VideoRange");
                 bool hdr = (trc && (!strcmp(trc, "smpte2084") || !strcmp(trc, "arib-std-b67"))) || (vr && !strcmp(vr, "HDR"));
                 if (trc || vr) t->hdr = hdr ? 2 : 1;
-                t->w = (int)jnum(st, "Width");
+                t->w = (int)json_num(st, "Width");
                 free(trc);
                 free(vr);
             }
@@ -376,16 +380,13 @@ static void jf_streams(const JItem *j, JStreams *t) {
                 bool text = !cJSON_IsFalse(cJSON_GetObjectItem(st, "IsTextSubtitleStream"));
                 if (!ext) { n_emb++; if (idx == def_s) sel_emb = n_emb; }
                 else if (text && msid) { /* a file next to the video: mpv gets it as a subtitle file */
-                    char *cod = js(st, "Codec");
+                    char *cod = json_dup(st, "Codec");
                     const char *fmt = cod && (!strcmp(cod, "ass") || !strcmp(cod, "ssa")) ? "ass" : cod && !strcmp(cod, "webvtt") ? "vtt" : "srt";
-                    char **ns = realloc(t->subs, sizeof(char *) * (t->n_subs + 1));
-                    char *u = NULL;
-                    if (ns) { t->subs = ns; u = str_printf("%s/Videos/%s/%s/Subtitles/%d/0/Stream.%s?ApiKey=%s", jf_url(), j->id, msid, idx, fmt, jf_token()); }
-                    free(cod);
-                    if (!u) continue; /* out of memory: skip this subtitle */
-                    t->subs[t->n_subs++] = u;
+                    t->subs = xrealloc(t->subs, sizeof(char *) * (t->n_subs + 1));
+                    t->subs[t->n_subs++] = str_printf("%s/Videos/%s/%s/Subtitles/%d/0/Stream.%s?ApiKey=%s", jf_url(), j->id, msid, idx, fmt, jf_token());
                     n_ext++;
                     if (idx == def_s) sel_ext = n_ext;
+                    free(cod);
                 }
             }
         }
@@ -420,7 +421,7 @@ static bool jf_play(JItem *j, bool resume, bool *watched, JItem *next) {
     JStreams ts = {0};
     jf_streams(j, &ts);
     const char *sm = cfg_get("jf_subs", "jellyfin");
-    char **extra = calloc(ts.n_subs + 5, sizeof(char *));
+    char **extra = xcalloc(ts.n_subs + 5, sizeof(char *));
     int ne = 0;
     extra[ne++] = hdr;
     if (ts.aid > 0) extra[ne++] = str_printf("--aid=%d", ts.aid);
@@ -495,7 +496,7 @@ typedef struct {
 } JRow;
 
 static void row_push(JRow *r, JItem *it) {
-    if (r->n == r->cap) { r->cap = r->cap ? r->cap * 2 : 24; r->it = realloc(r->it, sizeof(JItem) * r->cap); }
+    if (r->n == r->cap) { r->cap = r->cap ? r->cap * 2 : 24; r->it = xrealloc(r->it, sizeof(JItem) * r->cap); }
     r->it[r->n++] = *it;
 }
 static void row_free(JRow *r) {
@@ -641,13 +642,13 @@ static void views_done(void *ud, cJSON *json, long status) {
     v->n_libs = 0;
     cJSON *o;
     cJSON_ArrayForEach(o, cJSON_GetObjectItem(json, "Items")) {
-        char *ct = js(o, "CollectionType");
+        char *ct = json_dup(o, "CollectionType");
         /* video libraries only */
         bool ok = !ct || !strcmp(ct, "movies") || !strcmp(ct, "tvshows") || !strcmp(ct, "homevideos") || !strcmp(ct, "boxsets");
         free(ct);
         if (!ok || v->n_libs >= 16) continue;
-        v->libs[v->n_libs].id = js(o, "Id");
-        v->libs[v->n_libs].name = js(o, "Name");
+        v->libs[v->n_libs].id = json_dup(o, "Id");
+        v->libs[v->n_libs].name = json_dup(o, "Name");
         if (v->libs[v->n_libs].id && v->libs[v->n_libs].name) v->n_libs++;
     }
     v->state = 2;
@@ -670,9 +671,9 @@ static void auth_done(void *ud, cJSON *json, long status) {
     Jf *v = ud;
     if (v != live) return;
     if (status == 200 && json) {
-        char *tok = js(json, "AccessToken");
+        char *tok = json_dup(json, "AccessToken");
         cJSON *u = cJSON_GetObjectItem(json, "User");
-        char *uid = js(u, "Id"), *name = js(u, "Name");
+        char *uid = json_dup(u, "Id"), *name = json_dup(u, "Name");
         if (tok && uid) {
             cfg_set("jf_token", tok);
             cfg_set("jf_uid", uid);
@@ -858,7 +859,7 @@ static void home_cb(void *ud, cJSON *json, long status) {
     if ((u >> 1) != home_gen) return; /* signed out meanwhile */
     if (status == 200 && json) {
         cJSON *arr = cJSON_IsArray(json) ? json : cJSON_GetObjectItem(json, "Items"), *o;
-        home_got[w] = calloc(cJSON_GetArraySize(arr) + 1, sizeof(JItem));
+        home_got[w] = xcalloc(cJSON_GetArraySize(arr) + 1, sizeof(JItem));
         cJSON_ArrayForEach(o, arr) jitem_parse(&home_got[w][n_home_got[w]++], o);
     }
     if (home_pending == 0) home_build();
@@ -1017,7 +1018,7 @@ static void jw_done(void *ud, cJSON *json, long status) {
 
 static void jw_do(const char *id, int a) {
     if (!id || !*id) return;
-    JwJob *w = calloc(1, sizeof *w);
+    JwJob *w = xcalloc(1, sizeof *w);
     w->a = a;
     snprintf(w->id, sizeof w->id, "%s", id);
     char *p;
@@ -1436,9 +1437,9 @@ static bool jf_input(Screen *s, const InputEvent *ev) {
 }
 
 Screen *jellyfin_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
+    Screen *s = xcalloc(1, sizeof *s);
     s->name = "jellyfin";
-    s->st = calloc(1, sizeof(Jf));
+    s->st = xcalloc(1, sizeof(Jf));
     s->enter = jf_enter;
     s->resume = jf_resume;
     s->update = jf_update;
@@ -1468,7 +1469,7 @@ static bool jf_next_ep(const JItem *j, JItem *out) {
         cJSON *items = root ? cJSON_GetObjectItem(root, "Items") : NULL;
         int n = cJSON_GetArraySize(items);
         for (int i = 0; i < n; i++) {
-            char *id = js(cJSON_GetArrayItem(items, i), "Id");
+            char *id = json_dup(cJSON_GetArrayItem(items, i), "Id");
             bool cur = id && j->id && !strcmp(id, j->id);
             free(id);
             if (cur) {
@@ -1528,7 +1529,7 @@ static void jf_chain_run(JfChain *c, bool resume) {
 /* Play an episode and go on to the next one when it ends. back (optional) is where the item ends up, so the
    caller's "Play" continues with the next episode if you stop in the credits. */
 static void jf_play_chain(const JItem *it, bool resume, JItem *back) {
-    JfChain *c = calloc(1, sizeof *c);
+    JfChain *c = xcalloc(1, sizeof *c);
     c->it = jitem_copy(it);
     c->back = back;
     jf_chain_run(c, resume);
@@ -1620,7 +1621,7 @@ static void eps_done(void *ud, cJSON *json, long status) {
     }
     d->eps.n = w;
     free(d->sidx);
-    d->sidx = calloc(d->eps.n + 1, sizeof(int));
+    d->sidx = xcalloc(d->eps.n + 1, sizeof(int));
     d->n_seasons = 0;
     for (int pass = 0; pass < 2; pass++)
         for (int i = 0; i < d->eps.n; i++) {
@@ -1968,8 +1969,8 @@ static bool jd_input(Screen *s, const InputEvent *ev) {
 
 /* a movie/video, or a series page: from a series, a season (that season) or an episode (that episode in focus) */
 static Screen *jf_detail(const JItem *src) {
-    Screen *s = calloc(1, sizeof *s);
-    JDetail *d = calloc(1, sizeof *d);
+    Screen *s = xcalloc(1, sizeof *s);
+    JDetail *d = xcalloc(1, sizeof *d);
     d->want_season = -1;
     d->next = -1;
     bool ep = is_ep(src) && src->series_id, season = src->type && !strcmp(src->type, "Season") && src->series_id;
@@ -2046,7 +2047,7 @@ static void ws_send(CURL *c, const char *txt) {
 static int ws_thread(void *arg) {
     (void)arg;
     size_t cap = 256 * 1024;
-    char *buf = malloc(cap + 1);
+    char *buf = xmalloc(cap + 1);
     for (;;) {
         SDL_LockMutex(rmu);
         int gen = rconf.gen;
@@ -2190,7 +2191,7 @@ void jellyfin_remote_tick(void) {
         if (!strcmp(m.type, "Play")) {
             cJSON *ids = cJSON_GetObjectItem(m.data, "ItemIds"), *id0 = cJSON_GetArrayItem(ids, 0);
             if (cJSON_IsString(id0)) {
-                RemoteStart *rs = calloc(1, sizeof *rs);
+                RemoteStart *rs = xcalloc(1, sizeof *rs);
                 rs->start = num(m.data, "StartPositionTicks") / TICKS;
                 char *p = str_printf("/Items/%s?userId=%s&" FIELDS, id0->valuestring, jf_uid());
                 jf_call_ex("GET", p, NULL, remote_item, rs, true);

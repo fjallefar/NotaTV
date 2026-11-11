@@ -1,6 +1,6 @@
 {
   "id": "electricity",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": 2,
   "name": "Electricity price",
   "desc": "The electricity price hour by hour, today and tomorrow",

@@ -49,8 +49,8 @@ static void busy_destroy(Screen *s) {
 }
 static void busy_open(const char *title) {
     unlink("/tmp/notatv-progress");
-    Screen *s = calloc(1, sizeof *s);
-    Busy *b = calloc(1, sizeof *b);
+    Screen *s = xcalloc(1, sizeof *s);
+    Busy *b = xcalloc(1, sizeof *b);
     snprintf(b->title, sizeof b->title, "%s", title);
     b->t0 = app_time();
     s->name = "busy";
@@ -84,7 +84,7 @@ static void run_async(void (*done)(char *, void *), void *ud, const char *fmt, .
     char *args = NULL;
     if (vasprintf(&args, fmt, ap) < 0) { va_end(ap); return; }
     va_end(ap);
-    CmdJob *j = calloc(1, sizeof *j);
+    CmdJob *j = xcalloc(1, sizeof *j);
     j->cmd = str_printf("%s/%s 2>&1", helper_path(), args);
     free(args);
     j->done = done;
@@ -176,9 +176,9 @@ static void wifi_scanned(char *out, void *ud) {
     free(scan_open);
     char **lines;
     int n = split_lines(out, &lines);
-    scan_ssids = calloc(n + 1, sizeof(char *));
-    scan_open = calloc(n + 1, sizeof(bool));
-    char **labels = calloc(n + 1, sizeof(char *));
+    scan_ssids = xcalloc(n + 1, sizeof(char *));
+    scan_open = xcalloc(n + 1, sizeof(bool));
+    char **labels = xcalloc(n + 1, sizeof(char *));
     n_scan = 0;
     for (int i = 0; i < n; i++) {
         char *sv_ssid = NULL;
@@ -320,8 +320,8 @@ static void adev_listed(char *out, void *ud) {
     free(adev_ids);
     char **lines;
     int n = split_lines(out, &lines);
-    adev_ids = calloc(n + 2, sizeof(char *));
-    char **labels = calloc(n + 2, sizeof(char *));
+    adev_ids = xcalloc(n + 2, sizeof(char *));
+    char **labels = xcalloc(n + 2, sizeof(char *));
     adev_ids[0] = str_dup("");
     labels[0] = str_dup(T("Automatic"));
     n_adev = 1;
@@ -747,7 +747,7 @@ static void info_refresh(Settings *s) {
     if (s->info_loading) return;
     s->info_loading = true;
     s->info_t = app_time();
-    InfoJob *j = calloc(1, sizeof *j);
+    InfoJob *j = xcalloc(1, sizeof *j);
     j->s = s;
     j->id = s->info_sec = sec_id(s);
     j->cs = cur_sec(s);
@@ -1030,9 +1030,9 @@ static bool settings_input(Screen *sc, const InputEvent *ev) {
 
 Screen *settings_screen(void) {
     rebuild_apps();
-    Screen *s = calloc(1, sizeof *s);
+    Screen *s = xcalloc(1, sizeof *s);
     s->name = "settings";
-    Settings *st = calloc(1, sizeof(Settings));
+    Settings *st = xcalloc(1, sizeof(Settings));
     st->sub = -1;
     st->hl_sec_id = -999; /* the item pill starts on the right row (no slide from the top) */
     s->st = st;

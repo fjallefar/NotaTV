@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <math.h>
 #include "vendor/cJSON.h"
+#include "json_util.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -106,7 +107,7 @@ static void srv_load(void) {
         fseek(f, 0, SEEK_END);
         long n = ftell(f);
         fseek(f, 0, SEEK_SET);
-        char *buf = calloc(1, n + 1);
+        char *buf = xcalloc(1, n + 1);
         if (fread(buf, 1, n, f) == (size_t)n) {
             cJSON *arr = cJSON_Parse(buf), *o;
             cJSON_ArrayForEach(o, arr) {
@@ -230,10 +231,6 @@ static char *jstr(cJSON *o, const char *k) {
     if (cJSON_IsNumber(v)) return str_printf("%d", v->valueint);
     return NULL;
 }
-static double jnum(cJSON *o, const char *k) {
-    cJSON *v = cJSON_GetObjectItem(o, k);
-    return cJSON_IsNumber(v) ? v->valuedouble : 0;
-}
 
 static void pitem_parse(PItem *it, cJSON *m, int si) {
     memset(it, 0, sizeof *it);
@@ -246,16 +243,16 @@ static void pitem_parse(PItem *it, cJSON *m, int si) {
     it->year = jstr(m, "year");
     it->rating = jstr(m, "contentRating");
     it->subtype = jstr(m, "subtype");
-    it->duration = jnum(m, "duration") / 1000;
-    it->offset = jnum(m, "viewOffset") / 1000;
-    it->last_viewed = jnum(m, "lastViewedAt");
-    it->view_count = (int)jnum(m, "viewCount");
-    it->index = (int)jnum(m, "index");
-    it->parent_index = (int)jnum(m, "parentIndex");
-    it->leaves = (int)jnum(m, "leafCount");
-    it->viewed_leaves = (int)jnum(m, "viewedLeafCount");
-    it->extra_type = (int)jnum(m, "extraType");
-    it->section = (int)jnum(m, "librarySectionID");
+    it->duration = json_num(m, "duration") / 1000;
+    it->offset = json_num(m, "viewOffset") / 1000;
+    it->last_viewed = json_num(m, "lastViewedAt");
+    it->view_count = (int)json_num(m, "viewCount");
+    it->index = (int)json_num(m, "index");
+    it->parent_index = (int)json_num(m, "parentIndex");
+    it->leaves = (int)json_num(m, "leafCount");
+    it->viewed_leaves = (int)json_num(m, "viewedLeafCount");
+    it->extra_type = (int)json_num(m, "extraType");
+    it->section = (int)json_num(m, "librarySectionID");
     cJSON *gu;
     cJSON_ArrayForEach(gu, cJSON_GetObjectItem(m, "Guid")) {
         cJSON *gid = cJSON_GetObjectItem(gu, "id");
@@ -276,10 +273,10 @@ static void pitem_parse(PItem *it, cJSON *m, int si) {
     }
     cJSON *ri = cJSON_GetObjectItem(m, "ratingImage"), *ari = cJSON_GetObjectItem(m, "audienceRatingImage");
     if (it->rt_critic < 0 && cJSON_IsString(ri) && strstr(ri->valuestring, "rottentomatoes"))
-        it->rt_critic = (int)(jnum(m, "rating") * 10 + 0.5);
+        it->rt_critic = (int)(json_num(m, "rating") * 10 + 0.5);
     if (cJSON_IsString(ari)) {
-        if (strstr(ari->valuestring, "imdb") && it->imdb10 < 0) it->imdb10 = (int)(jnum(m, "audienceRating") * 10 + 0.5);
-        else if (strstr(ari->valuestring, "rottentomatoes") && it->rt_audience < 0) it->rt_audience = (int)(jnum(m, "audienceRating") * 10 + 0.5);
+        if (strstr(ari->valuestring, "imdb") && it->imdb10 < 0) it->imdb10 = (int)(json_num(m, "audienceRating") * 10 + 0.5);
+        else if (strstr(ari->valuestring, "rottentomatoes") && it->rt_audience < 0) it->rt_audience = (int)(json_num(m, "audienceRating") * 10 + 0.5);
     }
     bool ep = it->type && !strcmp(it->type, "episode");
     if (ep) {
@@ -297,8 +294,8 @@ static void pitem_parse(PItem *it, cJSON *m, int si) {
         it->grandparent_key = jstr(m, "parentRatingKey"); /* the series */
         it->thumb = jstr(m, "thumb");
         it->art = jstr(m, "art");
-    } else if (it->type && !strcmp(it->type, "show") && jnum(m, "childCount") > 0) { /* "2024 · 2 seasons" */
-        int ns = (int)jnum(m, "childCount");
+    } else if (it->type && !strcmp(it->type, "show") && json_num(m, "childCount") > 0) { /* "2024 · 2 seasons" */
+        int ns = (int)json_num(m, "childCount");
         char sn[64];
         snprintf(sn, sizeof sn, ns == 1 ? T("1 season") : T("%d seasons"), ns);
         it->subtitle = it->year ? str_printf("%s · %s", it->year, sn) : str_dup(sn);
@@ -318,31 +315,29 @@ static void pitem_parse(PItem *it, cJSON *m, int si) {
     cJSON *part = cJSON_GetArrayItem(cJSON_GetObjectItem(media, "Part"), 0);
     if (part) {
         it->part = jstr(part, "key");
-        it->width = (int)jnum(media, "width");
+        it->width = (int)json_num(media, "width");
         it->full = cJSON_GetObjectItem(part, "Stream") != NULL;
         cJSON *st;
         int n_audio = 0, n_emb = 0, n_ext = 0, sel_emb = 0, sel_ext = 0;
         cJSON_ArrayForEach(st, cJSON_GetObjectItem(part, "Stream")) {
-            if ((int)jnum(st, "streamType") == 1) {
+            if ((int)json_num(st, "streamType") == 1) {
                 cJSON *trc = cJSON_GetObjectItem(st, "colorTrc");
                 if (cJSON_IsString(trc) && (!strcmp(trc->valuestring, "smpte2084") || !strcmp(trc->valuestring, "arib-std-b67")))
                     it->hdr = true;
             }
-            if ((int)jnum(st, "streamType") == 2) { /* audio: Plex's choice is followed, so the dashboard matches */
+            if ((int)json_num(st, "streamType") == 2) { /* audio: Plex's choice is followed, so the dashboard matches */
                 n_audio++;
                 if (cJSON_IsTrue(cJSON_GetObjectItem(st, "selected"))) it->aid = n_audio;
             }
-            if ((int)jnum(st, "streamType") == 3) {
+            if ((int)json_num(st, "streamType") == 3) {
                 char *k = jstr(st, "key");
                 bool sel = cJSON_IsTrue(cJSON_GetObjectItem(st, "selected"));
                 if (!k) { n_emb++; if (sel) sel_emb = n_emb; }
                 else if (sel) sel_ext = n_ext + 1;
                 if (k) {
-                    char **ns = realloc(it->subs, sizeof(char *) * (it->n_subs + 1));
-                    if (!ns) { free(k); if (sel) sel_ext = 0; continue; } /* out of memory: skip this subtitle */
-                    it->subs = ns;
-                    it->subs[it->n_subs++] = k;
                     n_ext++;
+                    it->subs = xrealloc(it->subs, sizeof(char *) * (it->n_subs + 1));
+                    it->subs[it->n_subs++] = k;
                 }
             }
         }
@@ -369,7 +364,7 @@ static PItem pitem_copy(const PItem *s) {
     d.year = str_dup(s->year); d.rating = str_dup(s->rating); d.subtype = str_dup(s->subtype); d.show = str_dup(s->show);
     d.grandparent_key = str_dup(s->grandparent_key);
     d.parent_key = str_dup(s->parent_key);
-    d.subs = calloc(s->n_subs + 1, sizeof(char *));
+    d.subs = xcalloc(s->n_subs + 1, sizeof(char *));
     for (int i = 0; i < s->n_subs; i++) d.subs[i] = str_dup(s->subs[i]);
     return d;
 }
@@ -457,7 +452,7 @@ static void req_done(void *arg) {
 }
 
 static Req *req_send(const char *method, const char *url, const char *token, void (*cb)(void *, Req *), void *ud) {
-    Req *r = calloc(1, sizeof *r);
+    Req *r = xcalloc(1, sizeof *r);
     r->url = str_dup(url);
     r->method = method;
     r->token = str_dup(token);
@@ -497,7 +492,7 @@ static void srv_ping(int si, const char *fmt, ...) {
     char *path = NULL;
     if (vasprintf(&path, fmt, ap) < 0) { va_end(ap); return; }
     va_end(ap);
-    Bg *g = calloc(1, sizeof *g);
+    Bg *g = xcalloc(1, sizeof *g);
     g->url = str_printf("%s%s", S[si].uri, path);
     g->token = str_dup(S[si].token);
     free(path);
@@ -581,7 +576,7 @@ static void deck_cb(void *ud, Req *r) {
     if (!mc) return;
     PItem *items;
     int n = parse_items(mc, &items, r->srv);
-    deck_items = realloc(deck_items, sizeof(PItem) * (n_deck_items + n + 1));
+    deck_items = xrealloc(deck_items, sizeof(PItem) * (n_deck_items + n + 1));
     memcpy(deck_items + n_deck_items, items, sizeof(PItem) * n);
     n_deck_items += n;
     free(items);
@@ -744,7 +739,7 @@ static void plex_skip_info(void *ud, PlaySkip *sk) {
             if (!cJSON_IsString(ty) || sk->n >= (int)(sizeof sk->m / sizeof sk->m[0])) continue;
             bool credits = !strcmp(ty->valuestring, "credits");
             if (!credits && strcmp(ty->valuestring, "intro")) continue;
-            double a = jnum(mk, "startTimeOffset") / 1000 - p->offset, e = jnum(mk, "endTimeOffset") / 1000 - p->offset;
+            double a = json_num(mk, "startTimeOffset") / 1000 - p->offset, e = json_num(mk, "endTimeOffset") / 1000 - p->offset;
             if (e <= 0 || e <= a) continue; /* before the point a transcoded stream starts at */
             sk->m[sk->n++] = (PlayMarker){a < 0 ? 0 : a, e, credits};
             if (credits && (p->credits_start <= 0 || a + p->offset > p->credits_start)) p->credits_start = a + p->offset;
@@ -849,7 +844,7 @@ static bool plex_play(PItem *it, double start, bool *watched, PItem *next) {
     for (;;) {
         bool direct = !strcmp(quality, "Original");
         char *url;
-        char **extra = calloc(it->n_subs + 3, sizeof(char *));
+        char **extra = xcalloc(it->n_subs + 3, sizeof(char *));
         int ne = 0;
         if (direct) {
             url = str_printf("%s%s?X-Plex-Token=%s", sv->uri, it->part, sv->token);
@@ -1000,7 +995,7 @@ static void plex_chain_run(PlexChain *c, double start) {
 /* Play an episode and offer the next one when it ends. back (optional) is where the item ends up,
    so the caller's "Play" continues with the next episode if the user declines. */
 static void plex_play_chain(PItem *it, double start, PItem *back) {
-    PlexChain *c = calloc(1, sizeof *c);
+    PlexChain *c = xcalloc(1, sizeof *c);
     c->it = pitem_copy(it);
     c->back = back;
     plex_chain_run(c, start);
@@ -1019,7 +1014,7 @@ static void play_with_resume(PItem *it, PItem *back) {
         char a[64], d[32];
         snprintf(a, sizeof a, T("Resume from %s"), fmt_duration(it->offset, d, sizeof d));
         const char *items[] = {a, T("Start over")};
-        ResumeCtx *c = calloc(1, sizeof *c);
+        ResumeCtx *c = xcalloc(1, sizeof *c);
         c->it = pitem_copy(it);
         c->back = back;
         choice_open(it->title ? it->title : T("Play"), items, 2, 0, resume_choice, c);
@@ -1373,8 +1368,8 @@ static bool link_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *link_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
-    Link *l = calloc(1, sizeof *l);
+    Screen *s = xcalloc(1, sizeof *s);
+    Link *l = xcalloc(1, sizeof *l);
     s->name = "plex-link";
     s->st = l;
     s->update = link_update;
@@ -1529,7 +1524,7 @@ static void libsel_cb(void *ud, Req *r) {
     cJSON *mc = mc_of(r);
     if (!mc) return;
     cJSON *arr = cJSON_GetObjectItem(mc, "Directory"), *d;
-    l->libs = calloc(cJSON_GetArraySize(arr) + 1, sizeof(PItem));
+    l->libs = xcalloc(cJSON_GetArraySize(arr) + 1, sizeof(PItem));
     cJSON_ArrayForEach(d, arr) pitem_parse(&l->libs[l->n++], d, r->srv);
 }
 
@@ -1588,8 +1583,8 @@ static bool libsel_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *libsel_screen(int srv, bool *changed) {
-    Screen *s = calloc(1, sizeof *s);
-    Libs *l = calloc(1, sizeof *l);
+    Screen *s = xcalloc(1, sizeof *s);
+    Libs *l = xcalloc(1, sizeof *l);
     l->srv = srv;
     l->changed = changed;
     s->name = "plex-libs";
@@ -1606,7 +1601,7 @@ static Screen *servers_screen(bool first_time) {
     (void)first_time;
     Screen *s = calloc(1, sizeof *s);
     s->name = "plex-servers";
-    s->st = calloc(1, sizeof(Servers));
+    s->st = xcalloc(1, sizeof(Servers));
     s->enter = servers_enter;
     s->leave = servers_leave;
     s->draw = servers_draw;
@@ -1745,8 +1740,8 @@ static void browse_free_rows(Browse *b) {
 
 static void add_row(Browse *b, const char *title, PItem *items, int n, bool front) {
     if (n <= 0) { free(items); return; }
-    b->rows = realloc(b->rows, sizeof(Row) * (b->n_rows + 1));
-    b->scroll_x = realloc(b->scroll_x, sizeof(float) * (b->n_rows + 1));
+    b->rows = xrealloc(b->rows, sizeof(Row) * (b->n_rows + 1));
+    b->scroll_x = xrealloc(b->scroll_x, sizeof(float) * (b->n_rows + 1));
     Row nr = {str_dup(title), items, n, false};
     if (front) {
         memmove(b->rows + 1, b->rows, sizeof(Row) * b->n_rows);
@@ -1776,7 +1771,7 @@ static void merge_continue(Browse *b, PItem *items, int n) {
         b->rows[0].cont = true;
         cr = &b->rows[0];
     } else {
-        cr->items = realloc(cr->items, sizeof(PItem) * (cr->n + n));
+        cr->items = xrealloc(cr->items, sizeof(PItem) * (cr->n + n));
         memcpy(cr->items + cr->n, items, sizeof(PItem) * n);
         cr->n += n;
         free(items);
@@ -1820,7 +1815,7 @@ static void libs_cb(void *ud, Req *r) {
     if (!mc) return;
     cJSON *arr = cJSON_GetObjectItem(mc, "Directory");
     int n = cJSON_GetArraySize(arr);
-    b->libs = realloc(b->libs, sizeof(PItem) * (b->n_libs + n + 1));
+    b->libs = xrealloc(b->libs, sizeof(PItem) * (b->n_libs + n + 1));
     cJSON *d;
     cJSON_ArrayForEach(d, arr) {
         PItem *l = &b->libs[b->n_libs];
@@ -1889,7 +1884,7 @@ static bool same_title(const PItem *a, const PItem *c) {
 }
 
 static void search_rebuild(Browse *b) {
-    int n = b->n_sres, *ord = malloc(sizeof(int) * (n + 1)), m = 0;
+    int n = b->n_sres, *ord = xmalloc(sizeof(int) * (n + 1)), m = 0;
     for (int i = 0; i < n; i++) ord[i] = i;
     for (int i = 1; i < n; i++) /* insertion sort: few results */
         for (int k = i; k > 0 && sort_q(b, ord[k - 1], ord[k]) > 0; k--) { int t = ord[k]; ord[k] = ord[k - 1]; ord[k - 1] = t; }
@@ -1901,7 +1896,7 @@ static void search_rebuild(Browse *b) {
     int keep_row = b->row, keep_col = b->col;
     browse_free_rows(b);
     /* best match: only titles that actually match (not people/genres) */
-    PItem *best = calloc(13, sizeof(PItem));
+    PItem *best = xcalloc(13, sizeof(PItem));
     int nb = 0;
     for (int i = 0; i < m && nb < 12; i++) {
         unsigned char f = b->sgrp[ord[i]];
@@ -1909,7 +1904,7 @@ static void search_rebuild(Browse *b) {
     }
     add_row(b, T("Top results"), best, nb, false);
     for (int g = 0; g < N_SGROUPS; g++) {
-        PItem *items = calloc(m + 1, sizeof(PItem));
+        PItem *items = xcalloc(m + 1, sizeof(PItem));
         int k = 0;
         for (int i = 0; i < m; i++)
             if ((b->sgrp[ord[i]] & ~SG_TITLE) == g) items[k++] = pitem_copy(&b->sres[ord[i]]);
@@ -1932,9 +1927,9 @@ static void list_cb(void *ud, Req *r) {
             PItem *hi;
             int hn = parse_items(hub, &hi, r->srv);
             char *ht = jstr(hub, "type");
-            b->sres = realloc(b->sres, sizeof(PItem) * (b->n_sres + hn + 1));
-            b->sscore = realloc(b->sscore, sizeof(int) * (b->n_sres + hn + 1));
-            b->sgrp = realloc(b->sgrp, b->n_sres + hn + 1);
+            b->sres = xrealloc(b->sres, sizeof(PItem) * (b->n_sres + hn + 1));
+            b->sscore = xrealloc(b->sscore, sizeof(int) * (b->n_sres + hn + 1));
+            b->sgrp = xrealloc(b->sgrp, b->n_sres + hn + 1);
             for (int i = 0; i < hn; i++) {
                 b->sscore[b->n_sres] = search_score(&hi[i], b->query, i);
                 b->sgrp[b->n_sres] = (unsigned char)(sgroup_of(ht, hi[i].type) | (search_title_match(&hi[i], b->query) >= 400 ? SG_TITLE : 0));
@@ -1965,7 +1960,7 @@ static void list_cb(void *ud, Req *r) {
     if (!b->grid) { add_row(b, NULL, items, n, false); return; }
     for (int i = 0; i < n; i += 6) { /* rows of 6 */
         int k = n - i < 6 ? n - i : 6;
-        PItem *chunk = calloc(k, sizeof(PItem));
+        PItem *chunk = xcalloc(k, sizeof(PItem));
         memcpy(chunk, items + i, sizeof(PItem) * k);
         add_row(b, NULL, chunk, k, false);
     }
@@ -2427,8 +2422,8 @@ static bool browse_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *browse_screen(const char *title, const char *path, bool grid, int srv) {
-    Screen *s = calloc(1, sizeof *s);
-    Browse *b = calloc(1, sizeof *b);
+    Screen *s = xcalloc(1, sizeof *s);
+    Browse *b = xcalloc(1, sizeof *b);
     snprintf(b->title, sizeof b->title, "%s", title ? title : "Plex");
     b->gen = play_gen;
     if (path) snprintf(b->path, sizeof b->path, "%s", path);
@@ -2691,8 +2686,8 @@ static bool detail_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *detail_screen(PItem *src) {
-    Screen *s = calloc(1, sizeof *s);
-    Detail *d = calloc(1, sizeof *d);
+    Screen *s = xcalloc(1, sizeof *s);
+    Detail *d = xcalloc(1, sizeof *d);
     d->it = pitem_copy(src);
     s->name = "plex-detail";
     s->st = d;
@@ -2773,7 +2768,7 @@ static void show_eps_cb(void *ud, Req *r) {
     free(sh->eps);
     free(sh->sidx);
     sh->n_eps = parse_items(mc, &sh->eps, r->srv);
-    sh->sidx = calloc(sh->n_eps + 1, sizeof(int));
+    sh->sidx = xcalloc(sh->n_eps + 1, sizeof(int));
     sh->n_seasons = 0;
     for (int pass = 0; pass < 2; pass++) /* the seasons in order, specials last */
         for (int i = 0; i < sh->n_eps; i++) {
@@ -3072,8 +3067,8 @@ static bool show_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *show_screen(int srv, const char *show_key, const char *focus_rk, int season) {
-    Screen *s = calloc(1, sizeof *s);
-    Show *sh = calloc(1, sizeof *sh);
+    Screen *s = xcalloc(1, sizeof *s);
+    Show *sh = xcalloc(1, sizeof *sh);
     sh->srv = srv;
     snprintf(sh->key, sizeof sh->key, "%s", show_key ? show_key : "");
     snprintf(sh->focus_rk, sizeof sh->focus_rk, "%s", focus_rk ? focus_rk : "");

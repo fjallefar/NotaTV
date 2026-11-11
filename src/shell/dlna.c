@@ -412,7 +412,7 @@ typedef struct { const char *name; const char *args[12]; } Act;
 typedef struct { const char *name, *type; bool events; } Var;
 static char *scpd(const Act *a, int na, const Var *v, int nv) {
     size_t cap = 32768, n = 0;
-    char *o = malloc(cap);
+    char *o = xmalloc(cap);
     n += snprintf(o + n, cap - n, "<?xml version=\"1.0\"?><scpd xmlns=\"urn:schemas-upnp-org:service-1-0\"><specVersion><major>1</major><minor>0</minor></specVersion><actionList>");
     if (n > cap - 1) n = cap - 1;
     for (int i = 0; i < na; i++) {

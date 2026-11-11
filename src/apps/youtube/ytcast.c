@@ -130,7 +130,7 @@ typedef struct { char *d; size_t n; } Buf;
 static size_t buf_write(char *p, size_t sz, size_t nm, void *ud) {
     Buf *b = ud;
     size_t n = sz * nm;
-    b->d = realloc(b->d, b->n + n + 1);
+    b->d = xrealloc(b->d, b->n + n + 1);
     memcpy(b->d + b->n, p, n);
     b->n += n;
     b->d[b->n] = 0;
@@ -437,7 +437,7 @@ static int out_thread(void *arg) {
             cap += 32 + strlen(msgs[i].sc);
             for (int k = 0; k < msgs[i].n; k++) cap += 32 + strlen(msgs[i].k[k]) + 3 * strlen(msgs[i].v[k]);
         }
-        char *body = malloc(cap);
+        char *body = xmalloc(cap);
         len += (size_t)snprintf(body + len, cap - len, "count=%d&ofs=%ld", n, ofs);
         if (len > cap - 1) len = cap - 1;
         for (int i = 0; i < n; i++) {
@@ -724,7 +724,7 @@ static int dial_thread(void *arg) {
     for (;;) {
         int fd = accept4(s, NULL, NULL, SOCK_CLOEXEC);
         if (fd < 0) { SDL_Delay(100); continue; }
-        DConn *dc = SDL_GetAtomicInt(&dial_n) < DIAL_MAX_CONN ? malloc(sizeof *dc) : NULL;
+        DConn *dc = SDL_GetAtomicInt(&dial_n) < DIAL_MAX_CONN ? xmalloc(sizeof *dc) : NULL;
         if (!dc) { close(fd); continue; } /* busy: the phone tries again */
         dc->fd = fd;
         SDL_AddAtomicInt(&dial_n, 1);

@@ -1,6 +1,6 @@
 {
   "id": "music",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "api": 2,
   "name": "Music",
   "desc": "Play music from your phone via AirPlay",

@@ -166,8 +166,8 @@ static bool notice_input(Screen *s, const InputEvent *ev) {
 }
 
 static void notice_open(const char *ver) {
-    Screen *s = calloc(1, sizeof *s);
-    Notice *n = calloc(1, sizeof *n);
+    Screen *s = xcalloc(1, sizeof *s);
+    Notice *n = xcalloc(1, sizeof *n);
     snprintf(n->ver, sizeof n->ver, "%s", ver);
     n->has_news = update_news(ver, &n->news);
     s->name = "update-notice";
@@ -337,8 +337,8 @@ void update_install_open(const char *ver) {
     if (ins_cur) return; /* already installing */
     unlink(STATE_FILE);
     unlink(TEXT_FILE);
-    Screen *s = calloc(1, sizeof *s);
-    Install *v = calloc(1, sizeof *v);
+    Screen *s = xcalloc(1, sizeof *s);
+    Install *v = xcalloc(1, sizeof *v);
     snprintf(v->ver, sizeof v->ver, "%s", ver && *ver ? ver : "");
     v->target = 0;
     s->name = "update-install";
@@ -350,7 +350,7 @@ void update_install_open(const char *ver) {
     s->overlay = true;
     ins_cur = v;
     app_push(s);
-    job_submit_q(JQ_SLOW, ins_work, ins_done, calloc(1, sizeof(char *)));
+    job_submit_q(JQ_SLOW, ins_work, ins_done, xcalloc(1, sizeof(char *)));
 }
 
 /* every frame from the main loop */
@@ -362,7 +362,7 @@ void update_tick(void) {
     if (!checking && now >= next_check) {
         checking = true;
         next_check = now + CHECK_EVERY;
-        job_submit_q(JQ_SLOW, check_work, check_done, calloc(1, sizeof(char *)));
+        job_submit_q(JQ_SLOW, check_work, check_done, xcalloc(1, sizeof(char *)));
     }
     if (!found[0]) return;
     /* only on the home screen (never over an app, playback or the setup guide), at most every other day */

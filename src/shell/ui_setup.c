@@ -601,9 +601,9 @@ static void setup_enter(Screen *s) { live = s->st; }
 static void setup_leave(Screen *s) { if (live == s->st) live = NULL; }
 
 Screen *setup_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
+    Screen *s = xcalloc(1, sizeof *s);
     s->name = "setup";
-    Setup *v = calloc(1, sizeof(Setup));
+    Setup *v = xcalloc(1, sizeof(Setup));
     s->st = v;
     chosen_ready = false; /* a new run: the app choice starts over */
     v->dir = 1;

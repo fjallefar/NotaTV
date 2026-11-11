@@ -155,7 +155,7 @@ static void freq_done(void *arg) {
 
 static void fl_call_ex(const char *method, const char *path, const char *body,
                        void (*done)(void *, cJSON *, long), void *ud, bool keep) {
-    FReq *r = calloc(1, sizeof *r);
+    FReq *r = xcalloc(1, sizeof *r);
     r->method = method;
     r->path = str_dup(path);
     r->body = str_dup(body);
@@ -223,7 +223,7 @@ static Fl *live;
 static Screen *fl_detail(const FItem *it);
 
 static void row_push(FRow *r, FItem *it) {
-    if (r->n == r->cap) { r->cap = r->cap ? r->cap * 2 : 24; r->it = realloc(r->it, sizeof(FItem) * r->cap); }
+    if (r->n == r->cap) { r->cap = r->cap ? r->cap * 2 : 24; r->it = xrealloc(r->it, sizeof(FItem) * r->cap); }
     r->it[r->n++] = *it;
 }
 
@@ -358,7 +358,7 @@ static void requests_done(void *ud, cJSON *json, long status) {
     v->msg[0] = 0;
     free_requests(v);
     int n = cJSON_GetArraySize(json), k = 0;
-    v->rq = calloc(n + 1, sizeof *v->rq);
+    v->rq = xcalloc(n + 1, sizeof *v->rq);
     cJSON *o;
     cJSON_ArrayForEach(o, json) {
         FRequest *r = &v->rq[k];
@@ -918,9 +918,9 @@ static bool fl_input(Screen *s, const InputEvent *ev) {
 }
 
 Screen *flimmer_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
+    Screen *s = xcalloc(1, sizeof *s);
     s->name = "flimmer";
-    s->st = calloc(1, sizeof(Fl));
+    s->st = xcalloc(1, sizeof(Fl));
     s->enter = fl_enter;
     s->resume = fl_resume;
     s->update = fl_update;
@@ -1308,8 +1308,8 @@ static bool detail_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *fl_detail(const FItem *src) {
-    Screen *s = calloc(1, sizeof *s);
-    FDetail *d = calloc(1, sizeof *d);
+    Screen *s = xcalloc(1, sizeof *s);
+    FDetail *d = xcalloc(1, sizeof *d);
     fitem_copy(&d->it, src);
     bool slot = false;
     for (int i = 0; i < 16 && !slot; i++) if (!open_details[i]) { open_details[i] = d; slot = true; }

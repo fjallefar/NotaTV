@@ -1043,8 +1043,8 @@ static bool rd_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *radio_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
-    Rd *v = calloc(1, sizeof *v);
+    Screen *s = xcalloc(1, sizeof *s);
+    Rd *v = xcalloc(1, sizeof *v);
     s->name = "radio";
     s->st = v;
     s->enter = rd_enter;

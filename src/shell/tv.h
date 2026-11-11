@@ -12,6 +12,52 @@
    check that it is there before calling it (if (app_close) ...), because an older NotaTV with the same NOTA_API
    gives NULL. That way an app can use it and still run on boxes that are not updated yet. */
 #define NOTA_NEW __attribute__((weak))
+
+/* Checked allocation (audit 11/11 B3): out of memory = log and end tvshell, which the session starts again.
+   _exit, not abort(): the crash guard would count a SIGABRT as the app's fault and skip the app. Static inline,
+   so an app using them needs no new symbol from tvshell (runs on older boxes with the same NOTA_API). Use the
+   plain functions where a failure is handled (e.g. big image buffers). */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+static inline _Noreturn void x_oom(size_t n) {
+    SDL_Log("out of memory (%zu bytes) - restarting", n);
+    fflush(NULL);
+    _exit(70);
+}
+static inline void *xmalloc(size_t n) { void *p = malloc(n ? n : 1); if (!p) x_oom(n); return p; }
+static inline void *xcalloc(size_t n, size_t s) { void *p = calloc(n ? n : 1, s ? s : 1); if (!p) x_oom(n * s); return p; }
+static inline void *xrealloc(void *o, size_t n) { void *p = realloc(o, n ? n : 1); if (!p) x_oom(n); return p; }
+static inline char *xstrdup(const char *s) { char *p = strdup(s); if (!p) x_oom(strlen(s) + 1); return p; }
+static inline char *xstrndup(const char *s, size_t n) { char *p = strndup(s, n); if (!p) x_oom(n + 1); return p; }
+/* A playlist for mpv: "#EXTINF:-1,<n> <name>" + url per entry (Live TV, DRTV). Line breaks in a name or url are
+   left out, so one entry is always two lines and the playlist index stays the channel's. Static inline as above */
+static inline bool m3u_write(const char *path, int n, const char *const *names, const char *const *urls) {
+    FILE *f = fopen(path, "w");
+    if (!f) return false;
+    fputs("#EXTM3U\n", f);
+    for (int i = 0; i < n; i++) {
+        fprintf(f, "#EXTINF:-1,%d ", i + 1);
+        for (const char *p = names[i] ? names[i] : ""; *p; p++) if (*p != '\n' && *p != '\r') fputc(*p, f);
+        fputc('\n', f);
+        for (const char *p = urls[i] ? urls[i] : ""; *p; p++) if (*p != '\n' && *p != '\r') fputc(*p, f);
+        fputc('\n', f);
+    }
+    return fclose(f) == 0;
+}
+/* s as one single-quoted shell word for run_cmd ('it'\''s'); free it. Static inline for the same reason */
+static inline char *shell_quote(const char *s) {
+    char *o = xmalloc(strlen(s) * 4 + 3), *w = o;
+    *w++ = '\'';
+    for (const char *p = s; *p; p++) {
+        if (*p == '\'') { memcpy(w, "'\\''", 4); w += 4; }
+        else *w++ = *p;
+    }
+    *w++ = '\'';
+    *w = 0;
+    return o;
+}
 #ifndef TV_VERSION
 #define TV_VERSION "dev" /* set from VERSION by the build (tvshell.mk / Makefile) */
 #endif

@@ -1,6 +1,6 @@
 {
   "id": "games",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "api": 2,
   "name": "Games",
   "desc": "Play games from your PC via Sunshine (Moonlight)",

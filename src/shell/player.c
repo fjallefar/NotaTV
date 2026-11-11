@@ -158,7 +158,7 @@ static bool probe_video_wait(const char *url) {
     bool hdr = false;
     int w = 0;
     if (!probe_skip(url)) {
-        ProbeJob *j = calloc(1, sizeof *j);
+        ProbeJob *j = xcalloc(1, sizeof *j);
         j->url = str_dup(url);
         SDL_SetAtomicInt(&j->refs, 2);
         SDL_Thread *t = SDL_CreateThread(probe_thread, "probe", j);
@@ -499,13 +499,11 @@ static void build_args(const PlayRequest *rq, const char *mode, char ***out, int
     if (*adev) { char *s = str_printf("--audio-device=%s", adev); add_arg(&argv, n, s); free(s); }
     if (audio_cfg("audio_passthrough", 0, DA_AC3)) {
         /* only the formats the TV/receiver lists - an unsupported one (e.g. E-AC-3 to an AC-3-only receiver) gives silence */
-        char codecs[64] = "ac3";
         bool pt_hd = audio_cfg("pt_hd", 0, DA_HD);
-        if (display_audio_ok(DA_EAC3)) strcat(codecs, ",eac3");
-        if (audio_cfg("pt_dts", 1, DA_DTS)) strcat(codecs, ",dts");
-        if (pt_hd && display_audio_ok(DA_DTSHD)) strcat(codecs, ",dts-hd");
-        if (pt_hd && display_audio_ok(DA_TRUEHD)) strcat(codecs, ",truehd");
-        char *s = str_printf("--audio-spdif=%s", codecs);
+        char *s = str_printf("--audio-spdif=ac3%s%s%s%s", display_audio_ok(DA_EAC3) ? ",eac3" : "",
+                             audio_cfg("pt_dts", 1, DA_DTS) ? ",dts" : "",
+                             pt_hd && display_audio_ok(DA_DTSHD) ? ",dts-hd" : "",
+                             pt_hd && display_audio_ok(DA_TRUEHD) ? ",truehd" : "");
         add_arg(&argv, n, s);
         free(s);
         /* ARC (without HD passthrough): multichannel audio that cannot be sent unchanged (TrueHD, AAC/FLAC/PCM 5.1)
@@ -784,24 +782,20 @@ PlayResult player_run(const PlayRequest *rq) {
     pact_next.n = 0;
     pact_result = 0;
     audio_bg_take();
-    run_cmd("%s/music pause >/dev/null 2>&1 &", helper_path());
+    char *qmusic = str_printf("%s/music", helper_path()), *qm = shell_quote(qmusic);
+    free(qmusic);
+    run_cmd("%s pause >/dev/null 2>&1 &", qm);
     PlayResult res = player_run_inner(rq);
     pact.n = 0;
-    run_cmd("%s/music resume >/dev/null 2>&1 &", helper_path());
+    run_cmd("%s resume >/dev/null 2>&1 &", qm);
+    free(qm);
     active = false;
     return res;
 }
 
-static PlayResult player_run_inner(const PlayRequest *rq) {
-    PlayResult res = {0};
-    unlink(SOCK_PATH);
-    { /* the previous playback's log is kept as .1 (e.g. the one that failed, before you tried again) */
-        char *old = str_printf("%s.1", mpv_log_path());
-        rename(mpv_log_path(), old);
-        free(old);
-    }
-    bt_media("Pause"); /* Bluetooth: pause the phone, so the music does not keep playing into nothing */
-
+/* probe the video if needed (frame rate, HDR) and choose the display modes mpv tries, the empty one last;
+   sets g_probe_* and the HDR conversion flags. -1 = the user backed out while probing */
+static int playback_modes(const PlayRequest *rq, char modes[2][48]) {
     /* frame rate and HDR are only checked if they are used */
     bool want_rate = cfg_int("match_rate", 1) && input_evdev_active() && !rq->is_live;
     bool want_hdr = hdr_cfg("hdr_always", 0);
@@ -815,13 +809,11 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
         g_probe_hdr = rq->media_hdr == 2;
         g_probe_w = rq->media_w;
     } else if ((want_rate || want_hdr || sdr_out) && !probe_video_wait(rq->url)) {
-        res.cancelled = true;
-        return res;
+        return -1;
     }
 
     /* frame rate match: only a mode the display really has (display_mode_for reads its mode list), so mpv
        does not have to fail and start again. The empty mode last is the safety net if mpv still fails. */
-    char modes[2][48] = {"", ""};
     int n_modes = 0;
     if (cfg_int("match_rate", 1) && input_evdev_active()) {
         char res_s[32];
@@ -836,45 +828,83 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
     g_hdr_to_sdr = sdr_out && g_probe_hdr;
     if (g_hdr_to_sdr) SDL_Log("player: HDR-video tone-mappes til SDR (skærmen får ikke HDR)");
     if (g_sdr_to_hdr) SDL_Log("player: SDR-video omregnes til HDR");
+    return n_modes;
+}
 
-    /* metadata for media controls/pause screen (notatv-osd.lua) */
-    {
-        cJSON *m = cJSON_CreateObject();
-        if (rq->title) cJSON_AddStringToObject(m, "title", rq->title);
-        if (rq->subtitle) cJSON_AddStringToObject(m, "subtitle", rq->subtitle);
-        if (rq->description) cJSON_AddStringToObject(m, "description", rq->description);
-        cJSON_AddBoolToObject(m, "live", rq->is_live);
-        cJSON_AddBoolToObject(m, "sdr_to_hdr", g_sdr_to_hdr); /* video is converted -> the TV in HDR */
-        if (rq->qualities) {
-            cJSON *qa = cJSON_AddArrayToObject(m, "qualities");
-            for (int i = 0; rq->qualities[i]; i++) cJSON_AddItemToArray(qa, cJSON_CreateString(rq->qualities[i]));
-            cJSON_AddStringToObject(m, "quality", rq->quality ? rq->quality : rq->qualities[0]);
-        }
-        if (rq->speed) cJSON_AddBoolToObject(m, "speed", true);
-        if (rq->channel) cJSON_AddStringToObject(m, "channel", rq->channel);
-        if (pact.n > 0) cJSON_AddItemToObject(m, "actions", actions_json()); /* first labels; sent again when the menu opens */
-        if (rq->sub_search) cJSON_AddBoolToObject(m, "subsearch", true);
-        /* without a key the menu explains where to add it instead of searching */
-        if (rq->sub_search && !*cfg_get("os_apikey", "")) cJSON_AddBoolToObject(m, "subnokey", true);
-        char *js = cJSON_PrintUnformatted(m);
-        write_nowplaying(js);
-        /* the poster (for the pause screen) is made in a thread while mpv starts - it may have to be fetched */
-        int gen = SDL_AddAtomicInt(&np_gen, 1) + 1;
-        if (rq->poster) {
-            PosterJob *pj = calloc(1, sizeof *pj);
-            if (pj) {
-                pj->url = str_dup(rq->poster);
-                pj->json = js;
-                js = NULL;
-                pj->gen = gen;
-                SDL_Thread *t = SDL_CreateThread(poster_thread, "poster", pj);
-                if (t) SDL_DetachThread(t);
-                else { free(pj->url); free(pj->json); free(pj); }
-            }
-        }
-        free(js);
-        cJSON_Delete(m);
+/* metadata for media controls/pause screen (notatv-osd.lua) */
+static void write_osd_metadata(const PlayRequest *rq) {
+    cJSON *m = cJSON_CreateObject();
+    if (rq->title) cJSON_AddStringToObject(m, "title", rq->title);
+    if (rq->subtitle) cJSON_AddStringToObject(m, "subtitle", rq->subtitle);
+    if (rq->description) cJSON_AddStringToObject(m, "description", rq->description);
+    cJSON_AddBoolToObject(m, "live", rq->is_live);
+    cJSON_AddBoolToObject(m, "sdr_to_hdr", g_sdr_to_hdr); /* video is converted -> the TV in HDR */
+    if (rq->qualities) {
+        cJSON *qa = cJSON_AddArrayToObject(m, "qualities");
+        for (int i = 0; rq->qualities[i]; i++) cJSON_AddItemToArray(qa, cJSON_CreateString(rq->qualities[i]));
+        cJSON_AddStringToObject(m, "quality", rq->quality ? rq->quality : rq->qualities[0]);
     }
+    if (rq->speed) cJSON_AddBoolToObject(m, "speed", true);
+    if (rq->channel) cJSON_AddStringToObject(m, "channel", rq->channel);
+    if (pact.n > 0) cJSON_AddItemToObject(m, "actions", actions_json()); /* first labels; sent again when the menu opens */
+    if (rq->sub_search) cJSON_AddBoolToObject(m, "subsearch", true);
+    /* without a key the menu explains where to add it instead of searching */
+    if (rq->sub_search && !*cfg_get("os_apikey", "")) cJSON_AddBoolToObject(m, "subnokey", true);
+    char *js = cJSON_PrintUnformatted(m);
+    write_nowplaying(js);
+    /* the poster (for the pause screen) is made in a thread while mpv starts - it may have to be fetched */
+    int gen = SDL_AddAtomicInt(&np_gen, 1) + 1;
+    if (rq->poster) {
+        PosterJob *pj = calloc(1, sizeof *pj);
+        if (pj) {
+            pj->url = str_dup(rq->poster);
+            pj->json = js;
+            js = NULL;
+            pj->gen = gen;
+            SDL_Thread *t = SDL_CreateThread(poster_thread, "poster", pj);
+            if (t) SDL_DetachThread(t);
+            else { free(pj->url); free(pj->json); free(pj); }
+        }
+    }
+    free(js);
+    cJSON_Delete(m);
+}
+
+/* mpv stopped before playback got going: say why if mpv's log knows */
+static void explain_failure(const PlayRequest *rq) {
+    /* mpv's log says why: a server that never answered is worth saying (it is not the box) */
+    bool no_answer = false, http_error = false; /* an answer like 401/404 is not "did not answer" */
+    FILE *lf = fopen(mpv_log_path(), "r");
+    if (lf) {
+        char line[1024];
+        while (fgets(line, sizeof line, lf))
+            if (strstr(line, "][e][stream] Failed to open http") || strstr(line, "Connection timed out") || strstr(line, "Connection refused"))
+                no_answer = true;
+            else if (strstr(line, "HTTP error")) http_error = true;
+        fclose(lf);
+    }
+    if (no_answer && !http_error) app_toast(T("The server did not send %s in time - check that it is running and the network"), rq->title ? rq->title : "videoen");
+    else app_toast(T("Could not play %s"), rq->title ? rq->title : "videoen");
+}
+
+static PlayResult player_run_inner(const PlayRequest *rq) {
+    PlayResult res = {0};
+    unlink(SOCK_PATH);
+    { /* the previous playback's log is kept as .1 (e.g. the one that failed, before you tried again) */
+        char *old = str_printf("%s.1", mpv_log_path());
+        rename(mpv_log_path(), old);
+        free(old);
+    }
+    bt_media("Pause"); /* Bluetooth: pause the phone, so the music does not keep playing into nothing */
+
+    char modes[2][48] = {"", ""};
+    int n_modes = playback_modes(rq, modes);
+    if (n_modes < 0) {
+        res.cancelled = true;
+        return res;
+    }
+
+    write_osd_metadata(rq);
     bool video_off = app_video_suspend();
     MpvState st = {.plpos = rq->playlist_start};
     cur_state = &st;
@@ -1066,19 +1096,7 @@ static PlayResult player_run_inner(const PlayRequest *rq) {
     if (rq->progress && st.have_dur) rq->progress(rq->ud, st.pos, st.dur, true, false);
     if (video_off) app_video_resume();
     if (!user_quit && !res.quality[0] && !res.goto_channel && !pact_result && res.exit_code != 0 && !st.have_dur) {
-        /* mpv's log says why: a server that never answered is worth saying (it is not the box) */
-        bool no_answer = false, http_error = false; /* an answer like 401/404 is not "did not answer" */
-        FILE *lf = fopen(mpv_log_path(), "r");
-        if (lf) {
-            char line[1024];
-            while (fgets(line, sizeof line, lf))
-                if (strstr(line, "][e][stream] Failed to open http") || strstr(line, "Connection timed out") || strstr(line, "Connection refused"))
-                    no_answer = true;
-                else if (strstr(line, "HTTP error")) http_error = true;
-            fclose(lf);
-        }
-        if (no_answer && !http_error) app_toast(T("The server did not send %s in time - check that it is running and the network"), rq->title ? rq->title : "videoen");
-        else app_toast(T("Could not play %s"), rq->title ? rq->title : "videoen");
+        explain_failure(rq);
     }
     return res;
 }

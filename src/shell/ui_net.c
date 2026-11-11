@@ -219,7 +219,7 @@ static void net_done(void *arg) {
 }
 
 static void net_refresh(Net *v) {
-    NetJob *j = calloc(1, sizeof *j);
+    NetJob *j = xcalloc(1, sizeof *j);
     j->v = v;
     for (int i = 0; i < v->n_now && j->n_look < 16; i++) { /* new IPs: look up the name in the same round */
         const char *ip = v->now[i].ip;
@@ -327,8 +327,8 @@ static void net_destroy(Screen *s) {
 }
 
 Screen *netwatch_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
-    Net *v = calloc(1, sizeof *v);
+    Screen *s = xcalloc(1, sizeof *s);
+    Net *v = xcalloc(1, sizeof *v);
     v->alive = true;
     s->name = "netwatch";
     s->st = v;

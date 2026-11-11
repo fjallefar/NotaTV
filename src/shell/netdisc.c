@@ -251,7 +251,7 @@ static void disc_done(void *arg) {
 }
 
 void netdisc_start(DiscKind kind, DiscDone cb, void *ud) {
-    Disc *d = calloc(1, sizeof *d);
+    Disc *d = xcalloc(1, sizeof *d);
     d->kind = kind;
     d->cb = cb;
     d->ud = ud;

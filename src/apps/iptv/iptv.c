@@ -62,7 +62,7 @@ static char *clean_name(const char *in) {
     while (k < 6 && ((p[k] >= 'A' && p[k] <= 'Z') || (p[k] >= '0' && p[k] <= '9'))) k++;
     if (k >= 2 && (p[k] == ':' || p[k] == '|')) { p += k + 1; }
     else if (k >= 2 && p[k] == ' ' && (p[k + 1] == '|' || p[k + 1] == '-') && p[k + 2] == ' ') p += k + 3;
-    char *out = malloc(strlen(p) + 1), *w = out;
+    char *out = xmalloc(strlen(p) + 1), *w = out;
     int depth = 0;
     for (; *p; p++) {
         if (*p == '[') { depth++; continue; }
@@ -83,7 +83,7 @@ static char *clean_name(const char *in) {
             if (n > l + 1 && !strcasecmp(out + n - l, suf[i])) { out[n - l] = 0; again = 1; break; }
         }
     }
-    if (!*out) { free(out); return strdup(in); }
+    if (!*out) { free(out); return xstrdup(in); }
     return out;
 }
 #define DNAME(c) ((c)->disp ? (c)->disp : (c)->name)
@@ -102,12 +102,8 @@ static void favs_load(void) {
     while (fgets(line, sizeof line, f)) {
         str_trim(line);
         if (!line[0]) continue;
-        char **nf = realloc(favs, sizeof(char *) * (n_favs + 1));
-        if (!nf) continue; /* out of memory: skip this favorite */
-        favs = nf;
-        char *ns = strdup(line);
-        if (!ns) continue;
-        favs[n_favs++] = ns;
+        favs = xrealloc(favs, sizeof(char *) * (n_favs + 1));
+        favs[n_favs++] = xstrdup(line);
     }
     fclose(f);
 }
@@ -136,12 +132,8 @@ static bool toggle_fav(const char *url) {
             favs_save();
             return false;
         }
-    char **nf = realloc(favs, sizeof(char *) * (n_favs + 1));
-    char *ns = nf ? strdup(url) : NULL;
-    if (!nf) return false;
-    favs = nf; /* the new array is valid even if the string failed - keep it */
-    if (!ns) return false; /* out of memory: a skipped favorite is acceptable */
-    favs[n_favs++] = ns;
+    favs = xrealloc(favs, sizeof(char *) * (n_favs + 1));
+    favs[n_favs++] = xstrdup(url);
     favs_save();
     return true;
 }
@@ -168,9 +160,9 @@ static void recent_load(void) {
         char *sv_a = NULL;
         char *a = strtok_r(line, "\t", &sv_a), *b = strtok_r(NULL, "\t", &sv_a), *c = strtok_r(NULL, "\t", &sv_a);
         if (!a || !b) continue;
-        recents[n_recent].name = strdup(a);
-        recents[n_recent].url = strdup(b);
-        recents[n_recent].logo = c && strcmp(c, "-") ? strdup(c) : NULL;
+        recents[n_recent].name = xstrdup(a);
+        recents[n_recent].url = xstrdup(b);
+        recents[n_recent].logo = c && strcmp(c, "-") ? xstrdup(c) : NULL;
         n_recent++;
     }
     fclose(f);
@@ -201,7 +193,7 @@ int iptv_recent(HomeItem **items) {
         if (!recent_clean[i] || strcmp(recent_clean_src[i] ? recent_clean_src[i] : "", recents[i].name)) {
             free(recent_clean[i]); free(recent_clean_src[i]);
             recent_clean[i] = clean_name(recents[i].name); /* older lines have the raw name */
-            recent_clean_src[i] = strdup(recents[i].name);
+            recent_clean_src[i] = xstrdup(recents[i].name);
         }
         recent_items[i].title = recent_clean[i];
         static char keys[12][16];
@@ -221,7 +213,7 @@ static char *attr(const char *line, const char *key) {
     p += strlen(pat);
     const char *e = strchr(p, '"');
     if (!e) return NULL;
-    return strndup(p, e - p);
+    return xstrndup(p, e - p);
 }
 
 typedef struct {
@@ -264,15 +256,10 @@ static int group_index(ParseOut *o, const char *g) {
         for (int i = 0; i < o->n_groups; i++) if (!strcmp(o->groups[i], g)) return i;
     }
     if (o->n_groups == o->cap_groups) {
-        int ncap = o->cap_groups ? o->cap_groups * 2 : 64;
-        char **ng = realloc(o->groups, sizeof(char *) * (size_t)ncap);
-        if (!ng) return -1; /* out of memory: keep the old array (caller treats -1 as a failed load) */
-        o->groups = ng;
-        o->cap_groups = ncap;
+        o->cap_groups = o->cap_groups ? o->cap_groups * 2 : 64;
+        o->groups = xrealloc(o->groups, sizeof(char *) * (size_t)o->cap_groups);
     }
-    char *ng = strdup(g);
-    if (!ng) return -1;
-    o->groups[o->n_groups] = ng;
+    o->groups[o->n_groups] = xstrdup(g);
     if (o->ghash_cap) {
         unsigned long j = str_hash(g) & (o->ghash_cap - 1);
         while (o->ghash[j]) j = (j + 1) & (o->ghash_cap - 1);
@@ -286,7 +273,7 @@ static void parse_m3u(const char *path, ParseOut *o) {
     if (!f) { snprintf(o->err, sizeof o->err, T("Could not read the playlist")); return; }
     size_t cap = 1 << 16;
     char *line = malloc(cap);
-    if (!line) { fclose(f); snprintf(o->err, sizeof o->err, T("Out of memory")); return; }
+    if (!line) { snprintf(o->err, sizeof o->err, T("Out of memory")); fclose(f); return; }
     char *pending = NULL, *grp = NULL;
     bool first = true;
     while (fgets(line, (int)cap, f)) {
@@ -301,21 +288,22 @@ static void parse_m3u(const char *path, ParseOut *o) {
             }
         }
         if (!line[0]) continue;
-        if (strncmp(line, "#EXTINF", 7) == 0) { free(pending); pending = strdup(line); continue; }
-        if (strncmp(line, "#EXTGRP:", 8) == 0) { free(grp); grp = strdup(line + 8); continue; }
+        if (strncmp(line, "#EXTINF", 7) == 0) { free(pending); pending = xstrdup(line); continue; }
+        if (strncmp(line, "#EXTGRP:", 8) == 0) { free(grp); grp = xstrdup(line + 8); continue; }
         if (line[0] == '#') continue;
         /* URL line. Xtream puts movies and series in the same playlist - we only show live channels */
         if (strstr(line, "/movie/") || strstr(line, "/series/")) { free(pending); pending = NULL; continue; }
-        if (o->n == o->cap) {
-            int ncap = o->cap ? o->cap * 2 : 256;
-            Channel *nc = realloc(o->ch, sizeof(Channel) * (size_t)ncap);
-            if (!nc) { snprintf(o->err, sizeof o->err, T("Out of memory")); break; } /* what was parsed is freed by the caller */
-            o->ch = nc;
-            o->cap = ncap;
+        if (o->n == o->cap) { /* out of memory: keep the channels read so far */
+            int nc = o->cap ? o->cap * 2 : 256;
+            Channel *nch = realloc(o->ch, sizeof(Channel) * (size_t)nc);
+            if (!nch) { SDL_Log("iptv: out of memory after %d channels", o->n); break; }
+            o->ch = nch;
+            o->cap = nc;
         }
         Channel *c = &o->ch[o->n];
         memset(c, 0, sizeof *c);
         c->url = strdup(line);
+        if (!c->url) break;
         const char *lv = strstr(line, "/live/");
         if (lv) { const char *sl = strrchr(lv, '/'); c->sid = sl ? atoi(sl + 1) : 0; }
         if (pending) {
@@ -337,19 +325,13 @@ static void parse_m3u(const char *path, ParseOut *o) {
             if (c->name && !c->name[0]) { free(c->name); c->name = attr(pending, "tvg-name"); }
         }
         if (!c->name) c->name = strdup(T("Channel"));
-        /* the strings feed free() later, but clean_name/group_index dereference them: on OOM drop the channel
-           (o->n was not raised, so the caller's free_channels never sees it) */
-        bool oom = !c->url || !c->name;
-        if (!oom) c->disp = clean_name(c->name);
+        c->disp = c->name ? clean_name(c->name) : NULL;
         if (!c->group || !c->group[0]) { free(c->group); c->group = strdup(grp ? grp : T("Other channels")); }
-        if (!oom && !c->group) oom = true;
-        if (!oom && group_index(o, c->group) < 0) oom = true;
-        if (oom) {
-            free(c->url); free(c->name); free(c->disp); free(c->logo); free(c->tvgid); free(c->group);
-            memset(c, 0, sizeof *c); /* o->n was not raised: the slot is never freed by the caller */
-            snprintf(o->err, sizeof o->err, T("Out of memory"));
+        if (!c->url || !c->name || !c->disp || !c->group) { /* out of memory: keep the channels read so far */
+            free(c->name); free(c->disp); free(c->url); free(c->logo); free(c->group); free(c->tvgid);
             break;
         }
+        group_index(o, c->group);
         o->n++;
         free(pending);
         pending = NULL;
@@ -531,8 +513,7 @@ static void countries_clear(void) {
 static void build_countries(void) {
     countries_clear();
     qsort(D.groups, D.n_groups, sizeof(char *), group_sort_cmp);
-    D.ui = malloc(sizeof(int) * (D.n_groups * 2 + 1));
-    if (!D.ui) goto oom;
+    D.ui = xmalloc(sizeof(int) * (D.n_groups * 2 + 1));
     D.n_ui = 0;
     for (int g = 0; g < D.n_groups; g++) {
         int l = country_len(D.groups[g]);
@@ -540,13 +521,9 @@ static void build_countries(void) {
             char code[8] = "";
             memcpy(code, D.groups[g], l);
             if (country_index(code) < 0) {
-                char **nc = realloc(D.countries, sizeof(char *) * (D.n_countries + 1));
-                if (!nc) goto oom; /* the old array is still valid; countries_clear frees it */
-                D.countries = nc; /* the old block is gone: D must point at the new one before any failure */
-                char *ns = str_dup(code);
-                if (!ns) goto oom;
-                D.countries[D.n_countries++] = ns;
-                D.ui[D.n_ui++] = -D.n_countries;
+                D.countries = xrealloc(D.countries, sizeof(char *) * (D.n_countries + 1));
+                D.countries[D.n_countries] = str_dup(code);
+                D.ui[D.n_ui++] = -(++D.n_countries);
             }
         }
         D.ui[D.n_ui++] = g;
@@ -556,10 +533,9 @@ static void build_countries(void) {
         D.n_ui = 0;
         for (int g = 0; g < D.n_groups; g++) D.ui[D.n_ui++] = g;
     }
-    D.ccount = calloc((size_t)D.n_countries + 1, sizeof(int));
-    D.cexp = calloc((size_t)D.n_countries + 1, sizeof(bool));
-    D.gcountry = malloc(sizeof(int) * (size_t)(D.n_groups + 1));
-    if (!D.ccount || !D.cexp || !D.gcountry) goto oom;
+    D.ccount = xcalloc(D.n_countries + 1, sizeof(int));
+    D.cexp = xcalloc(D.n_countries + 1, sizeof(bool));
+    D.gcountry = xmalloc(sizeof(int) * (D.n_groups + 1));
     for (int g = 0; g < D.n_groups; g++) D.gcountry[g] = -1;
     for (int ci = 0; D.n_countries >= 2 && ci < D.n_countries; ci++) {
         for (int c = 0; c < D.n_ch; c++) if (in_country(&D.ch[c], ci)) D.ccount[ci]++;
@@ -567,13 +543,7 @@ static void build_countries(void) {
         for (int g = 0; g < D.n_groups; g++)
             if (!strncmp(D.groups[g], D.countries[ci], n) && D.groups[g][n] == ':') D.gcountry[g] = ci;
     }
-    D.vis = malloc(sizeof(int) * (size_t)(D.n_ui + 1));
-    if (!D.vis) goto oom;
-    return;
-oom:
-    /* the channel list itself is fine: only the left column's groupings are gone */
-    countries_clear();
-    snprintf(D.status, sizeof D.status, T("Out of memory"));
+    D.vis = xmalloc(sizeof(int) * (D.n_ui + 1));
 }
 
 static void rebuild_vis(void) {
@@ -627,9 +597,9 @@ static void load_done(void *arg) {
         D.short_epg = !*cfg_get("iptv_epg", "") && with_sid > D.n_ch / 2;
         D.sepg_ok = D.sepg_fail = 0;
         free(D.gcount);
-        D.gcount = calloc(D.n_groups + 1, sizeof(int));
+        D.gcount = xcalloc(D.n_groups + 1, sizeof(int));
         { /* channels per group: one sorted copy of the group names and a binary search per channel */
-            int *ord = malloc(sizeof(int) * (size_t)(D.n_groups + 1));
+            int *ord = xmalloc(sizeof(int) * (size_t)(D.n_groups + 1));
             for (int g = 0; g < D.n_groups; g++) ord[g] = g;
             gsort_names = D.groups;
             qsort(ord, (size_t)D.n_groups, sizeof(int), gidx_cmp);
@@ -655,7 +625,7 @@ static void iptv_load(bool force) {
     if (D.loading) { free(url); return; }
     D.loading = true;
     snprintf(D.status, sizeof D.status, T("Loading channels…"));
-    LoadJob *j = calloc(1, sizeof *j);
+    LoadJob *j = xcalloc(1, sizeof *j);
     j->url = url;
     j->force = force;
     j->epoch = iptv_epoch;
@@ -706,7 +676,7 @@ static char *norm_name(const char *in) {
     const char *q = p + k;
     while (*q == ' ') q++;
     if (k > 0 && (*q == '|' || *q == ':' || *q == '-')) { p = q + 1; }
-    char *out = malloc(strlen(p) + 1), *w = out;
+    char *out = xmalloc(strlen(p) + 1), *w = out;
     for (; *p; p++) {
         unsigned char c = (unsigned char)*p;
         if (c >= 0x80) *w++ = (char)c;                 /* keep e.g. Arabic/æøå */
@@ -726,8 +696,8 @@ static char *norm_name(const char *in) {
 }
 
 static void map_add(EpgJob *j, const char *id, int idx) {
-    if (j->n_map == j->cap_map) { j->cap_map = j->cap_map ? j->cap_map * 2 : 64; j->map = realloc(j->map, sizeof(IdMap) * j->cap_map); }
-    j->map[j->n_map++] = (IdMap){strdup(id), idx};
+    if (j->n_map == j->cap_map) { j->cap_map = j->cap_map ? j->cap_map * 2 : 64; j->map = xrealloc(j->map, sizeof(IdMap) * j->cap_map); }
+    j->map[j->n_map++] = (IdMap){xstrdup(id), idx};
 }
 
 /* the entries added since the last sort are sorted and merged into the sorted part (not the whole map again) */
@@ -770,7 +740,7 @@ static void epg_channel(EpgJob *j, const char *el, const char *el_end) {
         if (!t || t > el_end) break;
         const char *te = strstr(t, "</display-name>");
         if (!te || te > el_end) break;
-        char *nm = strndup(t + 1, te - t - 1);
+        char *nm = xstrndup(t + 1, te - t - 1);
         xml_unescape(nm);
         char *n = norm_name(nm);
         free(nm);
@@ -831,7 +801,7 @@ static char *xml_attr(const char *tag, const char *end, const char *key) {
     p += strlen(pat);
     const char *e = strchr(p, '"');
     if (!e || e > end) return NULL;
-    return strndup(p, e - p);
+    return xstrndup(p, e - p);
 }
 
 static void epg_handle(EpgJob *j, const char *el, const char *el_end, time_t lo, time_t hi, time_t now) {
@@ -917,7 +887,7 @@ static bool epg_cache_load(EpgJob *j, const char *cpath, const struct stat *xs) 
     for (int i = 0; ok && i < j->n_ch; i++) {
         uint32_t n;
         if (fread(&n, 4, 1, f) != 1 || n > 100000) { ok = false; break; }
-        j->progs[i] = n ? calloc(n, sizeof(Prog)) : NULL;
+        j->progs[i] = n ? xcalloc(n, sizeof(Prog)) : NULL;
         if (n && !j->progs[i]) { ok = false; break; }
         j->cap_progs[i] = (int)n;
         for (uint32_t k = 0; k < n; k++) {
@@ -1012,11 +982,11 @@ static void epg_work(void *arg) {
         size_t rest = len - (p - buf);
         memmove(buf, p, rest);
         len = rest;
-        if (len == cap) {
+        if (len == cap) { /* one element bigger than the buffer: grow it, or stop if out of memory */
             char *nb = realloc(buf, cap * 2 + 1);
-            if (!nb) { j->oom = true; break; } /* out of memory: stop here, epg_done keeps the old guide */
-            cap *= 2;
+            if (!nb) { SDL_Log("iptv: out of memory in the guide (%zu bytes)", cap * 2); j->oom = true; break; } /* epg_done keeps the old guide */
             buf = nb;
+            cap *= 2;
         }
     }
     free(buf);
@@ -1074,22 +1044,22 @@ static void epg_start(void) {
     if (D.short_epg) { D.epg_msg[0] = 0; return; } /* fetched per channel, see epg_want */
     if (!D.epg_url || !*D.epg_url) { snprintf(D.epg_msg, sizeof D.epg_msg, T("No program guide - add a program guide link with Menu at the bottom")); return; }
     if (D.epg_loading || D.n_ch == 0) return;
-    EpgJob *j = calloc(1, sizeof *j);
-    j->url = strdup(D.epg_url);
+    EpgJob *j = xcalloc(1, sizeof *j);
+    j->url = xstrdup(D.epg_url);
     j->gen = D.gen;
     j->n_ch = D.n_ch;
-    j->progs = calloc(D.n_ch, sizeof(Prog *));
-    j->n_progs = calloc(D.n_ch, sizeof(int));
-    j->cap_progs = calloc(D.n_ch, sizeof(int));
-    j->names = calloc(D.n_ch, sizeof(char *));
-    j->tvgids = calloc(D.n_ch, sizeof(char *));
-    j->exact = calloc(D.n_ch, sizeof(bool));
+    j->progs = xcalloc(D.n_ch, sizeof(Prog *));
+    j->n_progs = xcalloc(D.n_ch, sizeof(int));
+    j->cap_progs = xcalloc(D.n_ch, sizeof(int));
+    j->names = xcalloc(D.n_ch, sizeof(char *));
+    j->tvgids = xcalloc(D.n_ch, sizeof(char *));
+    j->exact = xcalloc(D.n_ch, sizeof(bool));
     unsigned long hsh = 5381;
     for (int i = 0; i < D.n_ch; i++) {
         for (const char *q = D.ch[i].name; *q; q++) hsh = hsh * 33 + (unsigned char)*q;
         j->names[i] = norm_name(D.ch[i].name);
         if (D.ch[i].tvgid && *D.ch[i].tvgid) {
-            j->tvgids[i] = strdup(D.ch[i].tvgid);
+            j->tvgids[i] = xstrdup(D.ch[i].tvgid);
             map_add(j, D.ch[i].tvgid, i);
         }
     }
@@ -1097,8 +1067,8 @@ static void epg_start(void) {
     qsort(j->map, j->n_map, sizeof(IdMap), idmap_cmp);
     j->n_sorted = j->n_map;
     /* indexes sorted by tvg-id and by name (the strings do not change while the job runs) */
-    j->by_id = malloc(sizeof(int) * (size_t)(D.n_ch + 1));
-    j->by_name = malloc(sizeof(int) * (size_t)(D.n_ch + 1));
+    j->by_id = xmalloc(sizeof(int) * (size_t)(D.n_ch + 1));
+    j->by_name = xmalloc(sizeof(int) * (size_t)(D.n_ch + 1));
     for (int i = 0; i < D.n_ch; i++) {
         if (j->tvgids[i]) j->by_id[j->n_by_id++] = i;
         j->by_name[i] = i;
@@ -1121,9 +1091,7 @@ typedef struct { char *url; int ci, gen; } SepgJob;
 static char *b64dec(const char *s) {
     static const char tbl[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     size_t n = strlen(s);
-    char *out = malloc(n * 3 / 4 + 4);
-    if (!out) return NULL;
-    char *w = out;
+    char *out = xmalloc(n * 3 / 4 + 4), *w = out;
     unsigned v = 0;
     int bits = 0;
     for (; *s; s++) {
@@ -1139,7 +1107,7 @@ static char *b64dec(const char *s) {
 
 static void sepg_work(void *arg) {
     SepgJob *j = arg;
-    SepgRes *r = calloc(1, sizeof *r);
+    SepgRes *r = xcalloc(1, sizeof *r);
     r->ci = j->ci;
     r->gen = j->gen;
     static const char *const hdr[] = {"User-Agent: " IPTV_UA, NULL};
@@ -1147,8 +1115,8 @@ static void sepg_work(void *arg) {
     if (http_request("GET", j->url, hdr, NULL, &b, 8) && b.status == 200 && b.data) {
         cJSON *root = cJSON_Parse(b.data), *e;
         cJSON *arr = cJSON_GetObjectItem(root, "epg_listings");
-        r->p = calloc(cJSON_GetArraySize(arr) + 1, sizeof(Prog));
-        if (r->p) cJSON_ArrayForEach(e, arr) {
+        r->p = xcalloc(cJSON_GetArraySize(arr) + 1, sizeof(Prog));
+        cJSON_ArrayForEach(e, arr) {
             cJSON *t = cJSON_GetObjectItem(e, "title");
             cJSON *a = cJSON_GetObjectItem(e, "start_timestamp"), *z = cJSON_GetObjectItem(e, "stop_timestamp");
             time_t ta = cJSON_IsString(a) ? atol(a->valuestring) : cJSON_IsNumber(a) ? (time_t)a->valuedouble : 0;
@@ -1224,7 +1192,7 @@ static void epg_want(int gen, int ci) {
     const char *u = lv + 6, *p = strchr(u, '/'), *e = p ? strchr(p + 1, '/') : NULL;
     if (!p || !e) return;
     if (!sepg_lock) sepg_lock = SDL_CreateMutex();
-    SepgJob *j = calloc(1, sizeof *j);
+    SepgJob *j = xcalloc(1, sizeof *j);
     j->url = str_printf("%.*s/player_api.php?username=%.*s&password=%.*s&action=get_short_epg&stream_id=%d&limit=8",
                         (int)(lv - c->url), c->url, (int)(p - u), u, (int)(e - p - 1), p + 1, c->sid);
     j->ci = ci;
@@ -1299,7 +1267,7 @@ static void build_list(Iptv *v) {
     if (v->built_gen != D.gen) v->csel = 0; /* new channel list: the old index does not fit */
     if (v->gsel >= n_groups_ui()) { v->gsel = 0; v->csel = 0; }
     free(v->list);
-    v->list = malloc(sizeof(int) * (D.n_ch + n_favs + 1));
+    v->list = xmalloc(sizeof(int) * (D.n_ch + n_favs + 1));
     v->n_list = 0;
     if (v->gsel <= 1) { /* favorites (also the TV guide) in the user's own order */
         for (int k = 0; k < n_favs; k++)
@@ -1476,7 +1444,7 @@ static void draw_guide(Iptv *v, float cx, float cy, float cw, float rh) {
         const Prog *selp = row ? prog_at(c, v->gtime, 0) : NULL;
         tile_ch = c;
         bool any = false;
-        GuideProg *gp = c->n_progs > 0 ? malloc(sizeof *gp * (size_t)c->n_progs) : NULL;
+        GuideProg *gp = c->n_progs > 0 ? xmalloc(sizeof *gp * (size_t)c->n_progs) : NULL;
         time_t *tt = NULL;
         int ng = 0;
         if (gp) {
@@ -1681,7 +1649,7 @@ static bool pc_index(const PlayCtx *pc, int idx) {
 #define LOGO_FADES 8
 static void logo_fades(const char *path, int w, int h) {
     size_t n = (size_t)w * h * 4;
-    uint8_t *src = malloc(n), *dst = malloc(n);
+    uint8_t *src = xmalloc(n), *dst = malloc(n);
     FILE *f = src && dst ? fopen(path, "rb") : NULL;
     bool ok = f && fread(src, 1, n, f) == n;
     if (f) fclose(f);
@@ -1833,14 +1801,12 @@ static void play_list(int *list, int n, int start, int gen) {
     for (int i = 0; i < n; i++) if (list[i] < 0 || list[i] >= D.n_ch) return;
     if (start < 0 || start >= n) start = 0;
     const char *path = "/tmp/notatv-iptv.m3u";
-    FILE *f = fopen(path, "w");
-    if (!f) return;
-    fprintf(f, "#EXTM3U\n");
-    for (int i = 0; i < n; i++) {
-        Channel *c = &D.ch[list[i]];
-        fprintf(f, "#EXTINF:-1,%d %s\n%s\n", i + 1, DNAME(c), c->url);
-    }
-    fclose(f);
+    const char **names = xmalloc(sizeof *names * (size_t)n), **urls = xmalloc(sizeof *urls * (size_t)n);
+    for (int i = 0; i < n; i++) { names[i] = DNAME(&D.ch[list[i]]); urls[i] = D.ch[list[i]].url; }
+    bool wrote = m3u_write(path, n, names, urls);
+    free(names);
+    free(urls);
+    if (!wrote) return;
     PlayCtx pc = {list, n};
     recent_add(&D.ch[list[start]]);
     PlayRequest rq = {0};
@@ -2003,7 +1969,7 @@ static void iptv_tick(void) {
     for (int i = 0; i < n_rem; i++) {
         if (rem[i].stop <= now) { rem_drop(i); rem_save(); i--; continue; } /* over (the box was off or asleep) */
         if (rem[i].start - 60 > now) continue;
-        Remind *r = malloc(sizeof *r);
+        Remind *r = xmalloc(sizeof *r);
         *r = rem[i];
         memmove(&rem[i], &rem[i + 1], sizeof(Remind) * (size_t)(n_rem - i - 1)); /* moved to r */
         n_rem--;
@@ -2020,7 +1986,7 @@ static void iptv_tick(void) {
 static void url_entered(void *ud, const char *text) {
     (void)ud;
     if (!text) return;
-    char *t = strdup(text);
+    char *t = xstrdup(text);
     str_trim(t);
     cfg_set("iptv_url", t);
     free(t);
@@ -2030,7 +1996,7 @@ static void url_entered(void *ud, const char *text) {
 static void epg_entered(void *ud, const char *text) {
     (void)ud;
     if (!text) return;
-    char *t = strdup(text);
+    char *t = xstrdup(text);
     str_trim(t);
     cfg_set("iptv_epg", t);
     free(t);
@@ -2172,7 +2138,7 @@ const char *iptv_account_line(void) {
     if (!acc_info.busy && (acc_info.t == 0 || app_time() - acc_info.t > 300)) {
         char *url = xtream_url("player_api.php", NULL);
         if (url) {
-            AccJob *j = calloc(1, sizeof *j);
+            AccJob *j = xcalloc(1, sizeof *j);
             snprintf(j->key, sizeof j->key, "%s", key);
             snprintf(j->url, sizeof j->url, "%s", url);
             snprintf(j->user, sizeof j->user, "%s", us);
@@ -2242,7 +2208,7 @@ static char pend_server[200], pend_user[100];
 static void xt_pass(void *ud, const char *text) {
     (void)ud;
     if (!text) return;
-    XtJob *j = calloc(1, sizeof *j);
+    XtJob *j = xcalloc(1, sizeof *j);
     snprintf(j->acc.server, sizeof j->acc.server, "%s", pend_server);
     snprintf(j->acc.user, sizeof j->acc.user, "%s", pend_user);
     snprintf(j->acc.pass, sizeof j->acc.pass, "%s", text);
@@ -2395,7 +2361,7 @@ static void setup_done(void *ud, int idx) {
 static void play_current(Iptv *v) {
     if (v->built_gen != D.gen) build_list(v); /* called before the frame's rebuild: the old list is invalid */
     if (!v->n_list || v->csel < 0 || v->csel >= v->n_list) return;
-    int *copy = malloc(sizeof(int) * v->n_list);
+    int *copy = xmalloc(sizeof(int) * v->n_list);
     memcpy(copy, v->list, sizeof(int) * v->n_list);
     play_list(copy, v->n_list, v->csel, D.gen);
     free(copy);
@@ -2598,7 +2564,7 @@ static void iptv_destroy(Screen *s) {
 Screen *iptv_screen(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "iptv";
-    s->st = calloc(1, sizeof(Iptv));
+    s->st = xcalloc(1, sizeof(Iptv));
     s->enter = iptv_enter;
     s->update = iptv_update;
     s->draw = iptv_draw;

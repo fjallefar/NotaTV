@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.0.24
+
+> **In short:** Security and stability fixes from a code audit.
+> - TV 2 Play checks the video data from the network before decrypting it
+> - Live TV and the other apps handle low memory without crashing
+
+<!-- tldr:da
+Kort: Sikkerheds- og stabilitetsrettelser fra en kodegennemgang.
+- TV 2 Play tjekker videodata fra nettet, før de dekrypteres
+- Live TV og de andre apps tåler lav hukommelse uden at gå ned
+-->
+
+From the audit of 11/11 (`docs/audit-2026-11-11.md`, STATUS B1-B9). Not tested on a TV yet.
+Also includes pull request #1 from czingenberg (checked allocations in Live TV, Plex, Jellyfin, YouTube and the
+player, bounds checks in `wvserve`) - thank you!
+
+### System
+
+- Checked memory allocation everywhere (`xmalloc` and friends, header-only in `tv.h`, so apps need no new symbol).
+  Out of memory ends tvshell cleanly and the session starts it again; it is not counted as an app crash.
+- `shell_quote()` is shared and used for every path put into a shell command (TV 2, music pause/resume).
+- Screenshots from the phone page (developer mode) can only be written to `/tmp/<name>.bmp`.
+- Small clean-ups: one key table for the phone page and the UI test, `m3u_write()` for playlists, the player's
+  start-up split into smaller functions.
+
+### Apps
+
+- **TV 2 Play:** the video segment parser in `wvserve` checks every length against the data (a segment could make
+  it write past a 16-byte buffer); JSON to TV 2 is escaped; the token file is only replaced by a complete file.
+- **Live TV:** the playlist keeps what was read when memory runs out; if the program guide runs out of memory,
+  the old guide is kept and the box says so; line breaks in channel names can no longer shift the playlist.
+- **Jellyfin, Seerr:** JSON sent to the server is built with cJSON.
+- **All apps:** checked allocations; DRTV, Jellyfin, Twitch, TV 2, Plex and Weather share `json_util.h`.
+
 ## 1.0.23
 
 > **In short:** New app in the App Store: Peezy, for Plex, Jellyfin and Emby, based on Plezy.

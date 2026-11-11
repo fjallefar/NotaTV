@@ -27,22 +27,12 @@ using namespace wv;
 static uint32_t rd32(const uint8_t* p){return (p[0]<<24)|(p[1]<<16)|(p[2]<<8)|p[3];}
 static uint64_t rd64(const uint8_t* p){return ((uint64_t)rd32(p)<<32)|rd32(p+4);}
 
-// q..q+n skal ligge inde i boxen (end): segmentet kommer fra en CDN, saa alt skal graenses
-static bool fits(const uint8_t* q,const uint8_t* end,uint64_t n){
-  if(q<=end&&(uint64_t)(end-q)>=n) return true;
-  fprintf(stderr,"[serve] laesning uden for box\n"); return false;
-}
-static bool skip(const uint8_t*& q,const uint8_t* end,uint64_t n){
-  if(!fits(q,end,n)) return false;
-  q+=n; return true;
-}
-
 static const uint8_t* find_box(const uint8_t* p,const uint8_t* end,const char* type,
                                const uint8_t** pl,uint64_t* ps){
   while(p+8<=end){
     uint64_t sz=rd32(p); const char* t=(const char*)p+4; const uint8_t* hdr=p; uint32_t hs=8;
-    if(sz==1){sz=rd64(p+8);hs=16;} else if(sz==0) sz=end-p;
-    if(sz<hs||p+sz>end) break;
+    if(sz==1){ if(p+16>end) break; sz=rd64(p+8);hs=16;} else if(sz==0) sz=end-p;
+    if(sz<hs||sz>(uint64_t)(end-p)) break;
     if(!memcmp(t,type,4)){ if(pl)*pl=p+hs; if(ps)*ps=sz-hs; return hdr; }
     static const char* C[]={"moov","trak","mdia","minf","stbl","moof","traf","sinf","schi","mvex","edts",0};
     bool c=false; for(int i=0;C[i];i++) if(!memcmp(t,C[i],4)) c=true;
@@ -51,7 +41,7 @@ static const uint8_t* find_box(const uint8_t* p,const uint8_t* end,const char* t
     else if(!memcmp(t,"stsd",4)) cp=p+hs+8;
     else if(!memcmp(t,"encv",4)||!memcmp(t,"avc1",4)) cp=p+hs+78;   // video sample entry
     else if(!memcmp(t,"enca",4)||!memcmp(t,"mp4a",4)) cp=p+hs+28;   // audio sample entry
-    if(cp){ const uint8_t* r=find_box(cp,p+sz,type,pl,ps); if(r) return r; }
+    if(cp&&cp<=p+sz){ const uint8_t* r=find_box(cp,p+sz,type,pl,ps); if(r) return r; }
     p+=sz;
   }
   return nullptr;
@@ -66,12 +56,16 @@ static std::map<std::string,TrackKey> g_keys;  // repid -> KID
 static std::mutex g_keys_mtx;
 
 // --- init-segment: encv->avc1, enca->mp4a, sinf->free; udlaes tenc (KID,iv_size) ---
+// Segmenterne kommer fra CDN'et (data udefra): alle laengder tjekkes mod boksens stoerrelse.
 static void patch_init(std::vector<uint8_t>& b, const std::string& repid){
   const uint8_t* pl; uint64_t pz;
   const uint8_t* tenc=find_box(b.data(),b.data()+b.size(),"tenc",&pl,&pz);
-  if(tenc&&pz>=24){ TrackKey tk; tk.iv_size=pl[7]; tk.kid.assign(pl+8,pl+24);
-    std::lock_guard<std::mutex> lk(g_keys_mtx); g_keys[repid]=tk; }
-  else if(tenc) fprintf(stderr,"[serve] tenc for kort (%llu byte) - ingen KID\n",(unsigned long long)pz);
+  if(tenc){
+    // tenc: version/flags (4), reserved (2), isProtected (1), Per_Sample_IV_Size (1), KID (16)
+    if(pz<24||(pl[7]!=0&&pl[7]!=8&&pl[7]!=16)) fprintf(stderr,"[serve] ugyldig tenc for %s\n",repid.c_str());
+    else { TrackKey tk; tk.iv_size=pl[7]; tk.kid.assign(pl+8,pl+24);
+      std::lock_guard<std::mutex> lk(g_keys_mtx); g_keys[repid]=tk; }
+  }
   for(const char* e:{"encv","enca"}){ const uint8_t* x=find_box(b.data(),b.data()+b.size(),e,&pl,&pz);
     if(x) memcpy((void*)(x+4), e[3]=='v'?"avc1":"mp4a",4); }
   for(const char* s:{"sinf"}){ const uint8_t* x; while((x=find_box(b.data(),b.data()+b.size(),s,&pl,&pz))) { memcpy((void*)(x+4),"free",4);} }
@@ -80,49 +74,49 @@ static void patch_init(std::vector<uint8_t>& b, const std::string& repid){
 // --- media-segment: dekryptér alle samples in-place, omdoeb cenc-bokse ---
 static bool decrypt_segment(std::vector<uint8_t>& seg, const std::string& repid){
   TrackKey tk; { std::lock_guard<std::mutex> lk(g_keys_mtx); auto it=g_keys.find(repid); if(it==g_keys.end()){fprintf(stderr,"[serve] ingen KID for %s\n",repid.c_str());return false;} tk=it->second; }
+  if(tk.iv_size>16) return false;
   uint8_t* S0=seg.data(); uint8_t* SE=S0+seg.size();
-  const uint8_t *moofpl,*trunp,*sp; uint64_t z;
+  const uint8_t *moofpl,*trunp,*sp; uint64_t z,trunz,sencz;
   const uint8_t* moof=find_box(S0,SE,"moof",&moofpl,&z); if(!moof) return true;
   uint64_t moof_off=moof-S0;
-  if(!find_box(S0,SE,"trun",&trunp,&z)) return true;
-  const uint8_t* trun_end=trunp+z;            // trun's egen payload-graense (z bruges til flere bokse nedenfor)
-  if(tk.iv_size>16){fprintf(stderr,"[serve] ugyldig iv_size %u\n",(unsigned)tk.iv_size);return false;}
-  if(!fits(trunp,trun_end,8)) return false;
+  if(!find_box(S0,SE,"trun",&trunp,&trunz)) return true;
+  const uint8_t* TE=trunp+trunz;
+#define NEED(cur,end,k) do{ if((cur)>(end)||(uint64_t)((end)-(cur))<(uint64_t)(k)){ fprintf(stderr,"[serve] afkortet boks (%s)\n",repid.c_str()); return false; } }while(0)
+  NEED(trunp,TE,8);
   uint32_t trf=rd32(trunp)&0xffffff, n=rd32(trunp+4); const uint8_t* q=trunp+8; int32_t doff=0;
-  if(n>(1u<<22)){fprintf(stderr,"[serve] %u samples i trun - afvist\n",n);return false;} // foer vektoren allokeres
-  if(trf&0x1){ if(!fits(q,trun_end,4)) return false; doff=(int32_t)rd32(q);q+=4; }
-  if(trf&0x4){ if(!fits(q,trun_end,4)) return false; q+=4; }
-  uint32_t defsz=0; { const uint8_t* tfp; uint64_t tz; if(find_box(S0,SE,"tfhd",&tfp,&tz)){ uint32_t ff=rd32(tfp)&0xffffff; const uint8_t* r=tfp+8; if(ff&0x1)r+=8; if(ff&0x2)r+=4; if(ff&0x8)r+=4; if(ff&0x10&&fits(r,tfp+tz,4)){defsz=rd32(r);} } }
+  if(trf&0x1){NEED(q,TE,4);doff=(int32_t)rd32(q);q+=4;} if(trf&0x4){NEED(q,TE,4);q+=4;}
+  uint32_t per=4*(!!(trf&0x100)+!!(trf&0x200)+!!(trf&0x400)+!!(trf&0x800));
+  if(n>seg.size()||(uint64_t)n*per>(uint64_t)(TE-q)){fprintf(stderr,"[serve] trun for kort (%s)\n",repid.c_str());return false;}
+  uint32_t defsz=0; { const uint8_t* tfp; uint64_t tz; if(find_box(S0,SE,"tfhd",&tfp,&tz)){ const uint8_t* TFE=tfp+tz; NEED(tfp,TFE,8);
+      uint32_t ff=rd32(tfp)&0xffffff; const uint8_t* r=tfp+8; if(ff&0x1)r+=8; if(ff&0x2)r+=4; if(ff&0x8)r+=4;
+      if(ff&0x10){NEED(r,TFE,4);defsz=rd32(r);} } }
   std::vector<uint32_t> sizes(n,defsz);
-  // hvert flag flytter q videre: stop hvis en raekke samples ikke kan vaere inde i trun'en
-  for(uint32_t i=0;i<n;i++){
-    if(trf&0x100&&!skip(q,trun_end,4)) return false;
-    if(trf&0x200){ if(!fits(q,trun_end,4)) return false; sizes[i]=rd32(q); q+=4; }
-    if(trf&0x400&&!skip(q,trun_end,4)) return false;
-    if(trf&0x800&&!skip(q,trun_end,4)) return false;
-  }
-  const uint8_t* senc=find_box(S0,SE,"senc",&sp,&z); if(!senc) return true;
-  const uint8_t* senc_end=sp+z;                // senc's egen payload-graense
-  if(!fits(sp,senc_end,8)) return false;
+  for(uint32_t i=0;i<n;i++){ if(trf&0x100)q+=4; if(trf&0x200){sizes[i]=rd32(q);q+=4;} if(trf&0x400)q+=4; if(trf&0x800)q+=4; }
+  const uint8_t* senc=find_box(S0,SE,"senc",&sp,&sencz); if(!senc) return true;
+  const uint8_t* EE=sp+sencz;
+  NEED(sp,EE,8);
   uint32_t sfl=rd32(sp)&0xffffff, cnt=rd32(sp+4); const uint8_t* e=sp+8;
-  uint64_t off=moof_off+doff;
+  int64_t soff=(int64_t)moof_off+doff;
+  if(soff<0||(uint64_t)soff>seg.size()){fprintf(stderr,"[serve] data_offset uden for segmentet\n");return false;}
+  uint64_t off=(uint64_t)soff;
   std::lock_guard<std::mutex> lk(g_mtx);
   for(uint32_t i=0;i<n&&i<cnt;i++){
-    if(!fits(e,senc_end,tk.iv_size)) return false;
-    uint8_t iv[16]={0}; memcpy(iv,e,tk.iv_size); e+=tk.iv_size;
+    uint8_t iv[16]={0}; NEED(e,EE,tk.iv_size); memcpy(iv,e,tk.iv_size); e+=tk.iv_size;
     std::vector<cdm::SubsampleEntry> subs;
-    if(sfl&0x2){ if(!fits(e,senc_end,2)) return false; uint16_t sc=(e[0]<<8)|e[1]; e+=2; if(!fits(e,senc_end,(uint64_t)sc*6)) return false; for(uint16_t j=0;j<sc;j++){ cdm::SubsampleEntry s; s.clear_bytes=(e[0]<<8)|e[1]; s.cipher_bytes=rd32(e+2); e+=6; subs.push_back(s);} }
+    if(sfl&0x2){ NEED(e,EE,2); uint16_t sc=(e[0]<<8)|e[1]; e+=2; NEED(e,EE,(uint64_t)sc*6);
+      for(uint16_t j=0;j<sc;j++){ cdm::SubsampleEntry s; s.clear_bytes=(e[0]<<8)|e[1]; s.cipher_bytes=rd32(e+2); e+=6; subs.push_back(s);} }
     else { cdm::SubsampleEntry s; s.clear_bytes=0; s.cipher_bytes=sizes[i]; subs.push_back(s); }
     while(!subs.empty()&&subs.back().cipher_bytes==0) subs.pop_back();
-    uint32_t cover=0; bool anyc=false; for(auto&s:subs){cover+=s.clear_bytes+s.cipher_bytes; if(s.cipher_bytes)anyc=true;}
+    uint64_t cover=0; bool anyc=false; for(auto&s:subs){cover+=(uint64_t)s.clear_bytes+s.cipher_bytes; if(s.cipher_bytes)anyc=true;}
     if(!anyc){ off+=sizes[i]; continue; }
-    if(off+cover>seg.size()){fprintf(stderr,"[serve] off+cover>size\n");return false;}
+    if(off>seg.size()||cover>seg.size()-off){fprintf(stderr,"[serve] off+cover>size\n");return false;}
     std::vector<uint8_t> out;
-    if(g_cdm.decrypt(S0+off,cover,tk.kid.data(),16,iv,tk.iv_size,subs,out)&&out.size()==cover)
+    if(g_cdm.decrypt(S0+off,(uint32_t)cover,tk.kid.data(),16,iv,tk.iv_size,subs,out)&&out.size()==cover)
       memcpy(S0+off,out.data(),out.size());
     else { fprintf(stderr,"[serve] sample %u dekrypt fejl (%s)\n",i,repid.c_str()); return false; }
     off+=sizes[i];
   }
+#undef NEED
   for(const char* bx:{"senc","saiz","saio","sbgp","sgpd"}){ const uint8_t* x; uint64_t pz; const uint8_t* pl;
     while((x=find_box(S0,SE,bx,&pl,&pz))) memcpy((void*)(x+4),"free",4); }
   return true;
@@ -201,7 +195,8 @@ static double mpv_time_pos(){
   const char* cmd="{\"command\":[\"get_property\",\"time-pos\"]}\n";
   if(write(fd,cmd,strlen(cmd))<0){ close(fd); return -1; }
   char buf[512]; ssize_t n=read(fd,buf,sizeof buf-1); close(fd);
-  if(n<=0) return -1; buf[n]=0;
+  if(n<=0) return -1;
+  buf[n]=0;
   char* p=strstr(buf,"\"data\":"); if(!p) return -1;
   p+=7; while(*p==' ') p++;
   if(*p=='n') return -1;              // null
@@ -216,13 +211,24 @@ static double posfile_pos(){
   fclose(fp); return p;
 }
 
+// s som en JSON-streng med anfoerselstegn (audit 11/11 B6: vaerdier fra serveren kan ikke bryde JSON'en)
+static std::string json_quote(const std::string& s){
+  std::string o="\"";
+  for(unsigned char c:s){
+    if(c=='"'||c=='\\'){o+='\\';o+=(char)c;}
+    else if(c<0x20){char b[8];snprintf(b,sizeof b,"\\u%04x",c);o+=b;}
+    else o+=(char)c;
+  }
+  return o+"\"";
+}
+
 // TV2 play_web_Playback: token+guid -> Widevine MPD-url, licens-url, licens-token
 static bool resolve(const std::string& token,const std::string& guid,
                     std::string& mpd_url,std::string& lic_url,std::string& lic_token){
   g_guid=guid;
   std::string q="query q($guid:String!,$format:[Format]!,$drm:[Drm]!,$codec:[Codec],$resolution:[String],$dynamicRange:[DynamicRange],$deviceId:String!,$deviceDescription:String!){media(guid:$guid,deviceId:$deviceId,deviceDescription:$deviceDescription,capabilities:{format:$format,drm:$drm,codec:$codec,resolution:$resolution,dynamicRange:$dynamicRange},download:false){streams{format url drmLicense{drm url token}}concurrency{url body{token}}}}";
-  std::string body="{\"operationName\":\"q\",\"query\":"+std::string("\"")+q+"\",\"variables\":{"
-    "\"guid\":\""+guid+"\",\"deviceId\":\"00000000-0000-4000-0000-00000000\",\"deviceDescription\":\"Web\","
+  std::string body="{\"operationName\":\"q\",\"query\":"+json_quote(q)+",\"variables\":{"
+    "\"guid\":"+json_quote(guid)+",\"deviceId\":\"00000000-0000-4000-0000-00000000\",\"deviceDescription\":\"Web\","
     "\"format\":[\"DASH_MULTI_PERIOD\",\"DASH_SINGLE_PERIOD\"],\"drm\":[\"WIDEVINE\",\"NONE\"],"
     "\"codec\":[\"H264\"],\"resolution\":[\"720P\"],\"dynamicRange\":[\"SDR\"]}}";
   std::vector<std::string> h={"Content-Type: application/json","Client-Platform: Web","Client-Platform-Audience: PLAY",
@@ -250,8 +256,8 @@ static void conc_post(const char* action){
   double pos=g_pos.load();
   if(!strcmp(action,"UNLOCK")){ double f=posfile_pos(); if(f>pos) pos=f; }
   std::string pv=pos>=0?std::to_string((long long)(pos+0.5)):"null";
-  std::string body="{\"token\":\""+g_conc_token+"\",\"progress\":"+pv+",\"guid\":\""+g_guid+
-    "\",\"userAction\":null,\"concurrencyAction\":\""+action+"\"}";
+  std::string body="{\"token\":"+json_quote(g_conc_token)+",\"progress\":"+pv+",\"guid\":"+json_quote(g_guid)+
+    ",\"userAction\":null,\"concurrencyAction\":"+json_quote(action)+"}";
   std::vector<std::string> h={"Content-Type: application/json","Client-Platform: Web","Client-Platform-Audience: PLAY",
     "Client-Platform-AppVersion: 2026.11.7021017","Client-Platform-Class: chrome"};
   if(!g_access_token.empty()) h.push_back("Authorization: Bearer "+g_access_token);

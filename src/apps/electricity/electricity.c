@@ -207,7 +207,7 @@ static void tr_work(void *arg) {
     http_free(&b);
     free(url);
     if (!d) return;
-    j->out = calloc(MAX_TR, sizeof *j->out);
+    j->out = xcalloc(MAX_TR, sizeof *j->out);
     cJSON *r;
     cJSON_ArrayForEach(r, cJSON_GetObjectItem(d, "records")) {
         const char *gln = cJSON_GetStringValue(cJSON_GetObjectItem(r, "GLN_Number")),
@@ -259,7 +259,7 @@ static void tr_done(void *arg) {
 static void tr_tick(void) {
     const Grid *g = grid();
     if (!g || tr_fetching || (app_time() < tr_next && !strcmp(tr_key, g->gln))) return;
-    TrJob *j = calloc(1, sizeof *j);
+    TrJob *j = xcalloc(1, sizeof *j);
     j->gen = tr_gen;
     snprintf(j->gln, sizeof j->gln, "%s", g->gln);
     snprintf(j->code, sizeof j->code, "%s", g->code);
@@ -346,7 +346,7 @@ static void fetch_done(void *arg) {
 }
 static void el_fetch(void) {
     if (fetching) return;
-    Job *j = calloc(1, sizeof *j);
+    Job *j = xcalloc(1, sizeof *j);
     j->gen = el_gen;
     snprintf(j->area, sizeof j->area, "%s", area());
     time_t now = time(NULL), tom = now + 2 * 86400;
@@ -713,7 +713,7 @@ static void el_destroy(Screen *s) {
 static Screen *electricity_screen(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "electricity";
-    s->st = calloc(1, sizeof(ElView));
+    s->st = xcalloc(1, sizeof(ElView));
     s->enter = el_enter;
     s->update = el_update;
     s->draw = el_draw;

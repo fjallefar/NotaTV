@@ -146,10 +146,8 @@ static int rrect_outline_seg(float x, float y, float w, float h, float r, int se
     int n = 0;
     float cx[4] = {x + w - r, x + r, x + r, x + w - r};
     float cy[4] = {y + r, y + r, y + h - r, y + h - r};
-    float a0[4] = {-M_PI / 2, -M_PI, M_PI / 2, 0};
     /* order: top-right, top-left, bottom-left, bottom-right (counterclockwise) */
     float start[4] = {0, -M_PI / 2, -M_PI, M_PI / 2};
-    (void)a0;
     for (int k = 0; k < 4; k++) {
         for (int i = 0; i <= seg && n < maxp; i++) {
             float a = start[k] - (float)i / seg * (M_PI / 2);

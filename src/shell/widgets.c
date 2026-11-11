@@ -222,8 +222,8 @@ static bool kb_input(Screen *s, const InputEvent *ev) {
 }
 
 void keyboard_open(const char *title, const char *initial, bool password, KbDone cb, void *ud) {
-    Screen *s = calloc(1, sizeof *s);
-    Kb *k = calloc(1, sizeof *k);
+    Screen *s = xcalloc(1, sizeof *s);
+    Kb *k = xcalloc(1, sizeof *k);
     snprintf(k->title, sizeof k->title, "%s", title);
     if (initial) snprintf(k->text, sizeof k->text, "%s", initial);
     k->password = password;
@@ -284,7 +284,7 @@ static bool confirm_input(Screen *s, const InputEvent *ev) {
 
 void confirm_open(const char *title, const char *msg, const char *yes, const char *no, ConfirmDone cb, void *ud) {
     Screen *s = calloc(1, sizeof *s);
-    Confirm *c = calloc(1, sizeof *c);
+    Confirm *c = xcalloc(1, sizeof *c);
     snprintf(c->title, sizeof c->title, "%s", title);
     snprintf(c->msg, sizeof c->msg, "%s", msg ? msg : "");
     snprintf(c->yes, sizeof c->yes, "%s", yes ? yes : T("Yes"));
@@ -349,7 +349,7 @@ static bool notes_input(Screen *s, const InputEvent *ev) {
 void notes_open(const char *kicker, const char *title, const char *summary, const char *const *points, int n,
                 const char *yes, const char *no, ConfirmDone cb, void *ud) {
     Screen *s = calloc(1, sizeof *s);
-    Notes *c = calloc(1, sizeof *c);
+    Notes *c = xcalloc(1, sizeof *c);
     snprintf(c->kicker, sizeof c->kicker, "%s", kicker ? kicker : "");
     snprintf(c->title, sizeof c->title, "%s", title ? title : "");
     snprintf(c->summary, sizeof c->summary, "%s", summary ? summary : "");
@@ -424,8 +424,8 @@ static void nextup_destroy(Screen *s) {
 }
 
 void nextup_open(const char *poster, const char *title, const char *subtitle, int seconds, NextUpDone cb, void *ud) {
-    Screen *s = calloc(1, sizeof *s);
-    NextUp *n = calloc(1, sizeof *n);
+    Screen *s = xcalloc(1, sizeof *s);
+    NextUp *n = xcalloc(1, sizeof *n);
     n->poster = str_dup(poster);
     n->title = str_dup(title);
     n->subtitle = str_dup(subtitle);
@@ -520,10 +520,10 @@ static bool choice_input(Screen *s, const InputEvent *ev) {
 
 void choice_open(const char *title, const char *const *items, int n, int sel, ChoiceDone cb, void *ud) {
     if (n <= 0) return;
-    Screen *s = calloc(1, sizeof *s);
-    Choice *c = calloc(1, sizeof *c);
+    Screen *s = xcalloc(1, sizeof *s);
+    Choice *c = xcalloc(1, sizeof *c);
     snprintf(c->title, sizeof c->title, "%s", title);
-    c->items = calloc(n, sizeof(char *));
+    c->items = xcalloc(n, sizeof(char *));
     for (int i = 0; i < n; i++) c->items[i] = str_dup(items[i]);
     c->n = n;
     c->sel = sel >= 0 && sel < n ? sel : 0;

@@ -3,6 +3,7 @@
  * Playback via mpv/yt-dlp. Built as app.so (see src/apps/README.md); the descriptor nota_app is at the bottom. */
 #include "tv.h"
 #include "vendor/cJSON.h"
+#include "json_util.h"
 #include <curl/curl.h>
 #include <errno.h>
 #include <netdb.h>
@@ -80,7 +81,7 @@ static void treq_done(void *arg) {
 static void tw_submit(TReq *r) { job_submit(treq_work, treq_done, r); }
 
 static void tw_api(const char *path, void (*done)(void *, cJSON *, long), void *ud) {
-    TReq *r = calloc(1, sizeof *r);
+    TReq *r = xcalloc(1, sizeof *r);
     r->method = "GET";
     r->url = str_printf("https://api.twitch.tv/helix%s", path);
     r->done = done;
@@ -91,7 +92,7 @@ static void tw_api(const char *path, void (*done)(void *, cJSON *, long), void *
 }
 
 static void tw_form(const char *url, const char *body, void (*done)(void *, cJSON *, long), void *ud) {
-    TReq *r = calloc(1, sizeof *r);
+    TReq *r = xcalloc(1, sizeof *r);
     r->method = "POST";
     r->url = str_dup(url);
     r->body = str_dup(body);
@@ -103,10 +104,6 @@ static void tw_form(const char *url, const char *body, void (*done)(void *, cJSO
     tw_submit(r);
 }
 
-static char *js(cJSON *o, const char *k) {
-    cJSON *v = cJSON_GetObjectItem(o, k);
-    return cJSON_IsString(v) && v->valuestring[0] ? str_dup(v->valuestring) : NULL;
-}
 
 /* renewal: the refresh token can only be used once, so both are saved again */
 static void refreshed(void *ud, cJSON *json, long status) {
@@ -115,7 +112,7 @@ static void refreshed(void *ud, cJSON *json, long status) {
         treq_free(orig);
         return;
     }
-    char *at = status == 200 ? js(json, "access_token") : NULL, *rt = status == 200 ? js(json, "refresh_token") : NULL;
+    char *at = status == 200 ? json_dup(json, "access_token") : NULL, *rt = status == 200 ? json_dup(json, "refresh_token") : NULL;
     if (at) {
         cfg_set("tw_token", at);
         if (rt) cfg_set("tw_refresh", rt);
@@ -136,7 +133,7 @@ static void refreshed(void *ud, cJSON *json, long status) {
 static void refresh_then(TReq *r) {
     char *rt = url_encode(cfg_get("tw_refresh", ""));
     char *body = str_printf("grant_type=refresh_token&refresh_token=%s&client_id=%s", rt, tw_client());
-    TReq *f = calloc(1, sizeof *f);
+    TReq *f = xcalloc(1, sizeof *f);
     f->method = "POST";
     f->url = str_dup("https://id.twitch.tv/oauth2/token");
     f->body = body;
@@ -218,7 +215,7 @@ static void clear_items(Tw *v) {
     v->sy = 0;
 }
 static TItem *push_item(Tw *v) {
-    if (v->n == v->cap) { v->cap = v->cap ? v->cap * 2 : 32; v->it = realloc(v->it, sizeof(TItem) * v->cap); }
+    if (v->n == v->cap) { v->cap = v->cap ? v->cap * 2 : 32; v->it = xrealloc(v->it, sizeof(TItem) * v->cap); }
     TItem *t = &v->it[v->n++];
     memset(t, 0, sizeof *t);
     return t;
@@ -236,23 +233,23 @@ static void list_done(void *ud, cJSON *json, long status) {
         TItem *t = push_item(v);
         if (v->view == V_CATS) {
             t->kind = K_GAME;
-            t->id = js(o, "id");
-            t->name = js(o, "name");
+            t->id = json_dup(o, "id");
+            t->name = json_dup(o, "name");
             t->thumb = sized(cJSON_GetStringValue(cJSON_GetObjectItem(o, "box_art_url")), 285, 380);
         } else if (v->view == V_SEARCH) {
             t->kind = K_CHANNEL;
-            t->login = js(o, "broadcaster_login");
-            t->name = js(o, "display_name");
-            t->title = js(o, "title");
-            t->game = js(o, "game_name");
-            t->thumb = js(o, "thumbnail_url"); /* profilbillede */
+            t->login = json_dup(o, "broadcaster_login");
+            t->name = json_dup(o, "display_name");
+            t->title = json_dup(o, "title");
+            t->game = json_dup(o, "game_name");
+            t->thumb = json_dup(o, "thumbnail_url"); /* profilbillede */
             t->live = cJSON_IsTrue(cJSON_GetObjectItem(o, "is_live"));
         } else {
             t->kind = K_STREAM;
-            t->login = js(o, "user_login");
-            t->name = js(o, "user_name");
-            t->title = js(o, "title");
-            t->game = js(o, "game_name");
+            t->login = json_dup(o, "user_login");
+            t->name = json_dup(o, "user_name");
+            t->title = json_dup(o, "title");
+            t->game = json_dup(o, "game_name");
             t->thumb = sized(cJSON_GetStringValue(cJSON_GetObjectItem(o, "thumbnail_url")), 640, 360);
             cJSON *vc = cJSON_GetObjectItem(o, "viewer_count");
             t->viewers = cJSON_IsNumber(vc) ? vc->valueint : 0;
@@ -309,9 +306,9 @@ static void me_done(void *ud, cJSON *json, long status) {
     Tw *v = ud;
     if (v != live) return;
     cJSON *u = cJSON_GetArrayItem(cJSON_GetObjectItem(json, "data"), 0);
-    char *id = status == 200 ? js(u, "id") : NULL;
+    char *id = status == 200 ? json_dup(u, "id") : NULL;
     if (!id) { v->state = S_ERROR; snprintf(v->msg, sizeof v->msg, T("Could not load your Twitch profile (%ld)"), status); return; }
-    char *login = js(u, "login"), *name = js(u, "display_name");
+    char *login = json_dup(u, "login"), *name = json_dup(u, "display_name");
     cfg_set("tw_uid", id);
     cfg_set("tw_login", login ? login : "");
     cfg_set("tw_name", name ? name : (login ? login : ""));
@@ -333,9 +330,9 @@ static void token_done(void *ud, cJSON *json, long status) {
     Tw *v = ud;
     v->polling = false;
     if (v != live || v->state != S_CODE) return;
-    char *at = status == 200 ? js(json, "access_token") : NULL;
+    char *at = status == 200 ? json_dup(json, "access_token") : NULL;
     if (at) {
-        char *rt = js(json, "refresh_token");
+        char *rt = json_dup(json, "refresh_token");
         cfg_set("tw_token", at);
         cfg_set("tw_refresh", rt ? rt : "");
         free(rt);
@@ -344,7 +341,7 @@ static void token_done(void *ud, cJSON *json, long status) {
         tw_connect(v);
         return;
     }
-    char *m = js(json, "message");
+    char *m = json_dup(json, "message");
     if (m && !strcmp(m, "slow_down")) v->interval += 2;
     else if (!m || strcmp(m, "authorization_pending")) {
         v->state = S_ERROR;
@@ -356,7 +353,7 @@ static void token_done(void *ud, cJSON *json, long status) {
 static void device_done(void *ud, cJSON *json, long status) {
     Tw *v = ud;
     if (v != live) return;
-    char *dc = status == 200 ? js(json, "device_code") : NULL, *uc = js(json, "user_code"), *uri = js(json, "verification_uri");
+    char *dc = status == 200 ? json_dup(json, "device_code") : NULL, *uc = json_dup(json, "user_code"), *uri = json_dup(json, "verification_uri");
     if (dc && uc) {
         snprintf(v->device_code, sizeof v->device_code, "%s", dc);
         snprintf(v->user_code, sizeof v->user_code, "%s", uc);
@@ -367,7 +364,7 @@ static void device_done(void *ud, cJSON *json, long status) {
         v->poll_next = app_time() + v->interval;
         v->state = S_CODE;
     } else {
-        char *m = js(json, "message");
+        char *m = json_dup(json, "message");
         v->state = S_ERROR;
         snprintf(v->msg, sizeof v->msg, T("Could not start login: %s"), m ? m : (status ? T("error from Twitch") : T("no connection")));
         free(m);
@@ -835,8 +832,8 @@ static bool tw_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *twitch_screen(void) {
-    Screen *s = calloc(1, sizeof *s);
-    Tw *v = calloc(1, sizeof *v);
+    Screen *s = xcalloc(1, sizeof *s);
+    Tw *v = xcalloc(1, sizeof *v);
     s->name = "twitch";
     s->st = v;
     s->enter = tw_enter;

@@ -118,7 +118,7 @@ static void play(Session *se, const char *json) {
     const cJSON *meta = cJSON_GetObjectItemCaseSensitive(j, "meta");
     const cJSON *extra = cJSON_GetObjectItemCaseSensitive(j, "extra");
     int n = cJSON_GetArraySize(extra), k = 0;
-    const char **argv = calloc((size_t)n + 1, sizeof *argv);
+    const char **argv = xcalloc((size_t)n + 1, sizeof *argv);
     const cJSON *e;
     cJSON_ArrayForEach(e, extra) if (cJSON_IsString(e) && !strncmp(e->valuestring, "--", 2)) argv[k++] = e->valuestring;
     skip_parse(se, cJSON_GetObjectItemCaseSensitive(j, "skip"));
@@ -286,7 +286,7 @@ static void peezy_run(void) {
                 char *nl;
                 while ((nl = memchr(se.buf, '\n', se.len))) {
                     *nl = 0;
-                    char *line = strdup(se.buf);
+                    char *line = xstrdup(se.buf);
                     size_t used = (size_t)(nl + 1 - se.buf);
                     memmove(se.buf, nl + 1, se.len - used);
                     se.len -= used;
@@ -335,7 +335,7 @@ static void cn_destroy(Screen *s) { free(s->st); free(s); }
 static Screen *peezy_screen(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "peezy";
-    s->st = calloc(1, sizeof(PeezyView));
+    s->st = xcalloc(1, sizeof(PeezyView));
     s->update = cn_update;
     s->draw = cn_draw;
     s->input = cn_input;

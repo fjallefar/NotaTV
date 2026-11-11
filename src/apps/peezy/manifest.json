@@ -1,6 +1,6 @@
 {
   "id": "peezy",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "api": 2,
   "name": "Peezy",
   "desc": "Plex, Jellyfin and Emby - based on Plezy",

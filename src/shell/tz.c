@@ -151,7 +151,7 @@ static void zone_picked(void *ud, int idx) {
 static void open_zones(TzPick *p) {
     const TzCountry *c = &tz_countries[p->country];
     if (c->n == 1) { zone_picked(p, 0); return; }
-    char **items = calloc(c->n, sizeof *items);
+    char **items = xcalloc(c->n, sizeof *items);
     int sel = 0;
     const char *cur = cfg_get("tz_zone", "");
     for (int i = 0; i < c->n; i++) {
@@ -175,7 +175,7 @@ static void country_picked(void *ud, int idx) {
 }
 
 void tz_pick(void (*done)(void *ud, bool ok), void *ud) {
-    TzPick *p = calloc(1, sizeof *p);
+    TzPick *p = xcalloc(1, sizeof *p);
     p->done = done;
     p->ud = ud;
     const char *names[TZ_N_COUNTRIES];

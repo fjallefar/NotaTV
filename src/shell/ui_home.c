@@ -316,7 +316,7 @@ static void collect_continue(Home *h) {
     }
     free_continue(h);
     h->cont_app = app;
-    h->cont = calloc(na + 1, sizeof(HomeItem));
+    h->cont = xcalloc(na + 1, sizeof(HomeItem));
     for (int i = 0; i < na; i++) copy_item(&h->cont[h->n_cont++], a[i]);
     if (h->col2 >= h->n_cont) h->col2 = h->n_cont ? h->n_cont - 1 : 0;
     if (h->n_cont == 0 && h->row == 1) h->row = 0;
@@ -776,7 +776,7 @@ void home_begin_edit(void) { if (home_st) { home_st->editing = true; home_st->on
 Screen *home_screen(void) {
     Screen *s = calloc(1, sizeof *s);
     s->name = "home";
-    s->st = home_st = calloc(1, sizeof(Home));
+    s->st = home_st = xcalloc(1, sizeof(Home));
     s->enter = home_enter;
     s->resume = home_resume;
     s->update = home_update;

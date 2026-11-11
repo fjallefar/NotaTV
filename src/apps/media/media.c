@@ -65,7 +65,7 @@ static void scan_work(void *arg) {
         struct dirent *de;
         while (d && (de = readdir(d))) {
             if (de->d_name[0] == '.') continue;
-            s->e = realloc(s->e, sizeof(Entry) * (s->n + 1));
+            s->e = xrealloc(s->e, sizeof(Entry) * (s->n + 1));
             s->e[s->n++] = (Entry){str_dup(de->d_name), true, 0};
         }
         if (d) closedir(d);
@@ -81,7 +81,7 @@ static void scan_work(void *arg) {
             if (stat(full, &st) != 0) continue;
             bool dir = S_ISDIR(st.st_mode);
             if (!dir && !is_media(de->d_name)) continue;
-            s->e = realloc(s->e, sizeof(Entry) * (s->n + 1));
+            s->e = xrealloc(s->e, sizeof(Entry) * (s->n + 1));
             s->e[s->n++] = (Entry){str_dup(de->d_name), dir, (long long)st.st_size};
         }
         closedir(d);
@@ -271,8 +271,8 @@ static bool media_input(Screen *s, const InputEvent *ev) {
 }
 
 static Screen *media_at(const char *path) {
-    Screen *s = calloc(1, sizeof *s);
-    Media *m = calloc(1, sizeof *m);
+    Screen *s = xcalloc(1, sizeof *s);
+    Media *m = xcalloc(1, sizeof *m);
     m->root = path == NULL;
     if (path) snprintf(m->path, sizeof m->path, "%s", path);
     s->name = "media";

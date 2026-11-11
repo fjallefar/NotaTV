@@ -69,7 +69,7 @@ int subs_search(int tmdb, const char *query, int season, int episode, char ***la
     cJSON *root = ok && b.data ? cJSON_Parse(b.data) : NULL;
     http_free(&b);
     cJSON *d;
-    char **out = calloc(31, sizeof(char *));
+    char **out = xcalloc(31, sizeof(char *));
     int n = 0;
     cJSON_ArrayForEach(d, cJSON_GetObjectItem(root, "data")) {
         if (n >= 30) break;
