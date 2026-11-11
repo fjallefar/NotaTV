@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.27
+
+> **In short:** NotaTV can now count how many boxes are in use - anonymously, and you can turn it off.
+> - Once a day the box sends only its version number, nothing else
+> - Turn it off under Settings → System → Send anonymous usage count
+
+<!-- tldr:da
+Kort: NotaTV kan nu tælle, hvor mange bokse der er i brug - anonymt, og du kan slå det fra.
+- Én gang i døgnet sender boksen kun sit versionsnummer, intet andet
+- Slå det fra under Indstillinger → System → Send anonym brugstælling
+-->
+
+### System
+
+- **Anonymous usage count:** once a day (UTC) the box sends only its version number (e.g. `{"v":"1.0.27"}`) to
+  our own Cloudflare Worker, `notatv-stats.notaapp.workers.dev`. No box id, account, settings or name is sent, and
+  the Worker stores no IP address - only a count per day and version. The first try is about 2 minutes after
+  start, then once an hour until that day's ping has gone through. On by default; turn it off under
+  *Settings → System → Send anonymous usage count*. The Worker's code is in `server/stats`, and `PRIVACY.md`
+  lists it.
+
 ## 1.0.26
 
 > **In short:** The TV no longer turns itself back on after you turn it off.

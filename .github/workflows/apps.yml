@@ -51,30 +51,11 @@ jobs:
       - name: Where this is built
         run: echo "Building the apps on $ON in $TREE"
 
-      - name: Public DNS (GitHub's runner only)
-        # 11/11: the runners' own DNS (Azure) stopped answering for names outside GitHub for hours - apt, Buildroot's
-        # downloads and everything else failed with "Temporary failure resolving". Cloudflare and Google instead.
-        if: env.ON == 'github'
-        run: |
-          sudo mkdir -p /etc/systemd/resolved.conf.d
-          printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\nFallbackDNS=9.9.9.9 1.0.0.1\nDomains=~.\n' | sudo tee /etc/systemd/resolved.conf.d/public-dns.conf >/dev/null
-          sudo systemctl restart systemd-resolved
-          getent ahostsv4 archive.ubuntu.com | head -3; getent ahostsv6 archive.ubuntu.com | head -1
-          curl -4 -sI -m 15 http://archive.ubuntu.com/ubuntu/dists/noble/InRelease | head -1 || echo "IPv4 to Ubuntu failed"
-          curl -6 -sI -m 15 http://archive.ubuntu.com/ubuntu/dists/noble/InRelease | head -1 || echo "IPv6 to Ubuntu failed"
-          # the runners have no IPv6 route: everything over IPv4 (apt here, curl/wget in Buildroot prefer it via gai.conf)
-          echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4 >/dev/null
-          echo 'precedence ::ffff:0:0/96 100' | sudo tee -a /etc/gai.conf >/dev/null
-
       - name: Host packages (GitHub's runner only)
         if: env.ON == 'github'
-        timeout-minutes: 10
         run: |
-          # Azure's own Ubuntu mirror was unreachable from GitHub's runners for hours (11/11): Ubuntu's main archive
-          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#; s#http://azure.archive.ubuntu.com/ubuntu/#http://archive.ubuntu.com/ubuntu/#' \
-            /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 update -q
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y -q build-essential file wget curl cpio unzip rsync bc \
+          sudo apt-get update -q
+          sudo apt-get install -y -q build-essential file wget curl cpio unzip rsync bc \
             libncurses-dev libssl-dev python3 git xz-utils bzip2 zstd
 
       - name: Fetch the code into the build folder
