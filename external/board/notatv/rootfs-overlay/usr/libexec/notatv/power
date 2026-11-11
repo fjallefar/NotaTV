@@ -1,5 +1,11 @@
 #!/bin/sh
 # power: sleep | reboot | poweroff
+# "sleep" is soft: the Raspberry Pi kernels have no suspend (echo mem > /sys/power/state fails at
+# once), so the box stays on. It stops what is playing (music pauses, video quits back to the home
+# screen), turns the TV off (cec_tv_off), and answers the TV's power-status questions with standby
+# (/run/notatv/sleeping) until something happens. The flag is cleared by "power on" - which tvshell
+# runs at the first key press, and the phone page's "Turn on" runs too. Nothing here ever turns the
+# TV back on by itself.
 . /usr/libexec/notatv/lib.sh
 case "$1" in
 sleep)
@@ -8,16 +14,16 @@ sleep)
 	log "dvale"
 	[ -z "$CEC_NO_TV_OFF" ] && [ "$(cfg_get cec_tv_off 1)" = 1 ] && $H/cec tv-off >/dev/null 2>&1
 	$H/music pause
+	# video: quit the player back to the home screen (the same as a press of Back; ignored when nothing plays)
+	printf 'back\n' > $RUN/inbox-key.tmp 2>/dev/null && mv $RUN/inbox-key.tmp /tmp/notatv-inbox/_key 2>/dev/null
 	sync
-	# allow wakeup from USB (keyboard, remote, CEC adapter)
+	# USB wakeup only matters for a real suspend; keep it anyway for kernels that do support it
 	for w in /sys/bus/usb/devices/*/power/wakeup; do echo enabled > $w 2>/dev/null; done
-	echo mem > /sys/power/state 2>/dev/null || echo freeze > /sys/power/state 2>/dev/null
-	# --- woke up ---
-	log "vågnet"
+	;;
+on)
+	# the user woke the box (remote key, phone): answer the TV as active source again
 	rm -f $RUN/sleeping
 	$H/cec wake >/dev/null 2>&1 &
-	for p in /run/udhcpc.*.pid; do [ -f "$p" ] && kill -USR1 $(cat $p) 2>/dev/null; done
-	$H/music resume
 	;;
 reboot) $H/logs save; $H/clock save; sync # logs save: only with the troubleshooting log on
 	# after an update with a new kernel: start it once with tryboot (update, F3); otherwise a normal restart

@@ -1777,11 +1777,11 @@ msgstr "Når der ikke er trykket på en knap så længe, går boksen og TV'et i 
 msgid "Turn on"
 msgstr "Tænd"
 
-msgid "Turn on: the TV turns on and switches to the box. A box that sleeps is woken with the remote - the phone cannot reach it."
-msgstr "Tænd: TV'et tænder og skifter til boksen. En boks i dvale vækkes med fjernbetjeningen - telefonen kan ikke nå den."
+msgid "Turn on: the TV turns on and switches to the box. Sleep: playback stops and the TV turns off - the box stays on, and both the remote and \"Turn on\" here wake it again."
+msgstr "Tænd: TV'et tænder og skifter til boksen. Dvale: afspilning stopper og TV'et slukker - boksen bliver tændt, og både fjernbetjeningen og \"Tænd\" her vækker den igen."
 
-msgid "Put the box and the TV to sleep?"
-msgstr "Skal boksen og TV'et gå i dvale?"
+msgid "Stop playback and turn the TV off? (The box stays on)"
+msgstr "Skal afspilningen stoppes og TV'et slukkes? (Boksen bliver tændt)"
 
 msgid "Restart the box?"
 msgstr "Genstart boksen?"
@@ -1789,8 +1789,8 @@ msgstr "Genstart boksen?"
 msgid "The TV is turning on"
 msgstr "TV'et tænder"
 
-msgid "The box goes to sleep - wake it with the remote"
-msgstr "Boksen går i dvale - væk den med fjernbetjeningen"
+msgid "Sleep: playback stops and the TV turns off. Wake with a key on the box or the Turn on button here"
+msgstr "Dvale: afspilning stopper og TV'et slukker. Væk med en tast på boksen eller Tænd-knappen her"
 
 msgid "The box restarts - this page works again in about a minute"
 msgstr "Boksen genstarter - siden virker igen om cirka et minut"
