@@ -378,11 +378,14 @@ static void jf_streams(const JItem *j, JStreams *t) {
                 else if (text && msid) { /* a file next to the video: mpv gets it as a subtitle file */
                     char *cod = js(st, "Codec");
                     const char *fmt = cod && (!strcmp(cod, "ass") || !strcmp(cod, "ssa")) ? "ass" : cod && !strcmp(cod, "webvtt") ? "vtt" : "srt";
-                    t->subs = realloc(t->subs, sizeof(char *) * (t->n_subs + 1));
-                    t->subs[t->n_subs++] = str_printf("%s/Videos/%s/%s/Subtitles/%d/0/Stream.%s?ApiKey=%s", jf_url(), j->id, msid, idx, fmt, jf_token());
+                    char **ns = realloc(t->subs, sizeof(char *) * (t->n_subs + 1));
+                    char *u = NULL;
+                    if (ns) { t->subs = ns; u = str_printf("%s/Videos/%s/%s/Subtitles/%d/0/Stream.%s?ApiKey=%s", jf_url(), j->id, msid, idx, fmt, jf_token()); }
+                    free(cod);
+                    if (!u) continue; /* out of memory: skip this subtitle */
+                    t->subs[t->n_subs++] = u;
                     n_ext++;
                     if (idx == def_s) sel_ext = n_ext;
-                    free(cod);
                 }
             }
         }

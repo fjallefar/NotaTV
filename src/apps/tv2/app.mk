@@ -7,4 +7,4 @@ CFLAGS_tv2 := -DTV2_CLIENT_ID=\"$(shell cat $(SECRETS)/tv2-client-id 2>/dev/null
 APP_EXTRA += $(OUT)/tv2/wvserve
 $(OUT)/tv2/wvserve: tv2/wvserve/wvserve.cc tv2/wvserve/cdm_host.h $(wildcard tv2/wvserve/cdm/*.h)
 	mkdir -p $(@D)
-	$(CXX) -std=c++17 -O2 -Itv2/wvserve $(shell $(PKG_CONFIG) --cflags libcurl) -o $@ $< $(LDFLAGS) -lcurl -ldl -lpthread
+	$(CXX) -std=c++17 -O2 -Wall -Wextra -Itv2/wvserve $(shell $(PKG_CONFIG) --cflags libcurl) -o $@ $< $(LDFLAGS) -lcurl -ldl -lpthread

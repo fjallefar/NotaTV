@@ -102,8 +102,12 @@ static void favs_load(void) {
     while (fgets(line, sizeof line, f)) {
         str_trim(line);
         if (!line[0]) continue;
-        favs = realloc(favs, sizeof(char *) * (n_favs + 1));
-        favs[n_favs++] = strdup(line);
+        char **nf = realloc(favs, sizeof(char *) * (n_favs + 1));
+        if (!nf) continue; /* out of memory: skip this favorite */
+        favs = nf;
+        char *ns = strdup(line);
+        if (!ns) continue;
+        favs[n_favs++] = ns;
     }
     fclose(f);
 }
@@ -132,8 +136,12 @@ static bool toggle_fav(const char *url) {
             favs_save();
             return false;
         }
-    favs = realloc(favs, sizeof(char *) * (n_favs + 1));
-    favs[n_favs++] = strdup(url);
+    char **nf = realloc(favs, sizeof(char *) * (n_favs + 1));
+    char *ns = nf ? strdup(url) : NULL;
+    if (!nf) return false;
+    favs = nf; /* the new array is valid even if the string failed - keep it */
+    if (!ns) return false; /* out of memory: a skipped favorite is acceptable */
+    favs[n_favs++] = ns;
     favs_save();
     return true;
 }
@@ -256,10 +264,15 @@ static int group_index(ParseOut *o, const char *g) {
         for (int i = 0; i < o->n_groups; i++) if (!strcmp(o->groups[i], g)) return i;
     }
     if (o->n_groups == o->cap_groups) {
-        o->cap_groups = o->cap_groups ? o->cap_groups * 2 : 64;
-        o->groups = realloc(o->groups, sizeof(char *) * (size_t)o->cap_groups);
+        int ncap = o->cap_groups ? o->cap_groups * 2 : 64;
+        char **ng = realloc(o->groups, sizeof(char *) * (size_t)ncap);
+        if (!ng) return -1; /* out of memory: keep the old array (caller treats -1 as a failed load) */
+        o->groups = ng;
+        o->cap_groups = ncap;
     }
-    o->groups[o->n_groups] = strdup(g);
+    char *ng = strdup(g);
+    if (!ng) return -1;
+    o->groups[o->n_groups] = ng;
     if (o->ghash_cap) {
         unsigned long j = str_hash(g) & (o->ghash_cap - 1);
         while (o->ghash[j]) j = (j + 1) & (o->ghash_cap - 1);
@@ -273,6 +286,7 @@ static void parse_m3u(const char *path, ParseOut *o) {
     if (!f) { snprintf(o->err, sizeof o->err, T("Could not read the playlist")); return; }
     size_t cap = 1 << 16;
     char *line = malloc(cap);
+    if (!line) { fclose(f); snprintf(o->err, sizeof o->err, T("Out of memory")); return; }
     char *pending = NULL, *grp = NULL;
     bool first = true;
     while (fgets(line, (int)cap, f)) {
@@ -292,7 +306,13 @@ static void parse_m3u(const char *path, ParseOut *o) {
         if (line[0] == '#') continue;
         /* URL line. Xtream puts movies and series in the same playlist - we only show live channels */
         if (strstr(line, "/movie/") || strstr(line, "/series/")) { free(pending); pending = NULL; continue; }
-        if (o->n == o->cap) { o->cap = o->cap ? o->cap * 2 : 256; o->ch = realloc(o->ch, sizeof(Channel) * o->cap); }
+        if (o->n == o->cap) {
+            int ncap = o->cap ? o->cap * 2 : 256;
+            Channel *nc = realloc(o->ch, sizeof(Channel) * (size_t)ncap);
+            if (!nc) { snprintf(o->err, sizeof o->err, T("Out of memory")); break; } /* what was parsed is freed by the caller */
+            o->ch = nc;
+            o->cap = ncap;
+        }
         Channel *c = &o->ch[o->n];
         memset(c, 0, sizeof *c);
         c->url = strdup(line);
@@ -314,12 +334,22 @@ static void parse_m3u(const char *path, ParseOut *o) {
             c->group = attr(pending, "group-title");
             char *chno = attr(pending, "tvg-chno");
             if (chno) { c->num = atoi(chno); free(chno); }
-            if (!c->name[0]) { free(c->name); c->name = attr(pending, "tvg-name"); }
+            if (c->name && !c->name[0]) { free(c->name); c->name = attr(pending, "tvg-name"); }
         }
         if (!c->name) c->name = strdup(T("Channel"));
-        c->disp = clean_name(c->name);
+        /* the strings feed free() later, but clean_name/group_index dereference them: on OOM drop the channel
+           (o->n was not raised, so the caller's free_channels never sees it) */
+        bool oom = !c->url || !c->name;
+        if (!oom) c->disp = clean_name(c->name);
         if (!c->group || !c->group[0]) { free(c->group); c->group = strdup(grp ? grp : T("Other channels")); }
-        group_index(o, c->group);
+        if (!oom && !c->group) oom = true;
+        if (!oom && group_index(o, c->group) < 0) oom = true;
+        if (oom) {
+            free(c->url); free(c->name); free(c->disp); free(c->logo); free(c->tvgid); free(c->group);
+            memset(c, 0, sizeof *c); /* o->n was not raised: the slot is never freed by the caller */
+            snprintf(o->err, sizeof o->err, T("Out of memory"));
+            break;
+        }
         o->n++;
         free(pending);
         pending = NULL;
@@ -334,7 +364,7 @@ static void parse_m3u(const char *path, ParseOut *o) {
     free(o->ghash);
     o->ghash = NULL;
     o->ghash_cap = 0;
-    if (o->n == 0) snprintf(o->err, sizeof o->err, T("No channels found in the playlist"));
+    if (o->n == 0 && !o->err[0]) snprintf(o->err, sizeof o->err, T("No channels found in the playlist"));
 }
 
 static char **gsort_names;
@@ -489,12 +519,20 @@ static bool in_country(const Channel *c, int ci) {
     return !strncmp(c->group, code, n) && c->group[n] == ':';
 }
 
-static void build_countries(void) {
+/* the left column's own lists: drop them all and start from nothing (also the way out of an OOM) */
+static void countries_clear(void) {
     for (int i = 0; i < D.n_countries; i++) free(D.countries[i]);
     free(D.countries); free(D.ccount); free(D.cexp); free(D.gcountry); free(D.ui); free(D.vis);
     D.countries = NULL; D.n_countries = 0;
+    D.ccount = NULL; D.cexp = NULL; D.gcountry = NULL; D.ui = NULL; D.vis = NULL;
+    D.n_ui = D.n_vis = 0;
+}
+
+static void build_countries(void) {
+    countries_clear();
     qsort(D.groups, D.n_groups, sizeof(char *), group_sort_cmp);
     D.ui = malloc(sizeof(int) * (D.n_groups * 2 + 1));
+    if (!D.ui) goto oom;
     D.n_ui = 0;
     for (int g = 0; g < D.n_groups; g++) {
         int l = country_len(D.groups[g]);
@@ -502,9 +540,13 @@ static void build_countries(void) {
             char code[8] = "";
             memcpy(code, D.groups[g], l);
             if (country_index(code) < 0) {
-                D.countries = realloc(D.countries, sizeof(char *) * (D.n_countries + 1));
-                D.countries[D.n_countries] = str_dup(code);
-                D.ui[D.n_ui++] = -(++D.n_countries);
+                char **nc = realloc(D.countries, sizeof(char *) * (D.n_countries + 1));
+                if (!nc) goto oom; /* the old array is still valid; countries_clear frees it */
+                D.countries = nc; /* the old block is gone: D must point at the new one before any failure */
+                char *ns = str_dup(code);
+                if (!ns) goto oom;
+                D.countries[D.n_countries++] = ns;
+                D.ui[D.n_ui++] = -D.n_countries;
             }
         }
         D.ui[D.n_ui++] = g;
@@ -514,9 +556,10 @@ static void build_countries(void) {
         D.n_ui = 0;
         for (int g = 0; g < D.n_groups; g++) D.ui[D.n_ui++] = g;
     }
-    D.ccount = calloc(D.n_countries + 1, sizeof(int));
-    D.cexp = calloc(D.n_countries + 1, sizeof(bool));
-    D.gcountry = malloc(sizeof(int) * (D.n_groups + 1));
+    D.ccount = calloc((size_t)D.n_countries + 1, sizeof(int));
+    D.cexp = calloc((size_t)D.n_countries + 1, sizeof(bool));
+    D.gcountry = malloc(sizeof(int) * (size_t)(D.n_groups + 1));
+    if (!D.ccount || !D.cexp || !D.gcountry) goto oom;
     for (int g = 0; g < D.n_groups; g++) D.gcountry[g] = -1;
     for (int ci = 0; D.n_countries >= 2 && ci < D.n_countries; ci++) {
         for (int c = 0; c < D.n_ch; c++) if (in_country(&D.ch[c], ci)) D.ccount[ci]++;
@@ -524,7 +567,13 @@ static void build_countries(void) {
         for (int g = 0; g < D.n_groups; g++)
             if (!strncmp(D.groups[g], D.countries[ci], n) && D.groups[g][n] == ':') D.gcountry[g] = ci;
     }
-    D.vis = malloc(sizeof(int) * (D.n_ui + 1));
+    D.vis = malloc(sizeof(int) * (size_t)(D.n_ui + 1));
+    if (!D.vis) goto oom;
+    return;
+oom:
+    /* the channel list itself is fine: only the left column's groupings are gone */
+    countries_clear();
+    snprintf(D.status, sizeof D.status, T("Out of memory"));
 }
 
 static void rebuild_vis(void) {
@@ -549,8 +598,13 @@ static void load_done(void *arg) {
         free(j);
         return;
     }
-    if (j->out.err[0] && j->out.n == 0) {
+    if (j->out.err[0]) {
+        /* nothing readable (or the parse ran out of memory): keep the old list and drop the partial one */
         snprintf(D.status, sizeof D.status, "%s", j->out.err);
+        free_channels(j->out.ch, j->out.n);
+        for (int i = 0; i < j->out.n_groups; i++) free(j->out.groups[i]);
+        free(j->out.groups);
+        free(j->out.epg);
     } else {
         free_channels(D.ch, D.n_ch);
         for (int i = 0; i < D.n_groups; i++) free(D.groups[i]);
@@ -635,6 +689,7 @@ typedef struct {
     Prog **progs;
     int *n_progs, *cap_progs; /* capacity: arrays are doubled (before: realloc for every program) */
     bool ok, downloaded;
+    bool oom;         /* ran out of memory: the old guide is kept (see epg_done) */
     int total;
     unsigned long names_hash; /* the channel list: the cache only fits the same list */
 } EpgJob;
@@ -799,6 +854,7 @@ static void epg_handle(EpgJob *j, const char *el, const char *el_end, time_t lo,
     const char *te = strstr(t, "</title>");
     if (!te || te > el_end) return;
     char *title = strndup(t, te - t);
+    if (!title) return;
     xml_unescape(title);
     time_t nd = prog_dist(a, b, now);
     /* the same tvg-id can be used by several channels: m points to the first; go through all */
@@ -819,16 +875,23 @@ static void epg_handle(EpgJob *j, const char *el, const char *el_end, time_t lo,
                 if (d > wd) { wd = d; worst = q; }
             }
             if (nd >= wd) continue;
+            char *nt = used ? strdup(title) : title;
+            if (!nt) continue; /* out of memory: keep the guide as it is */
             free(j->progs[ci][worst].title);
-            j->progs[ci][worst] = (Prog){a, b, used ? strdup(title) : title};
+            j->progs[ci][worst] = (Prog){a, b, nt};
             used = true;
             continue;
         }
         if (j->n_progs[ci] == j->cap_progs[ci]) {
-            j->cap_progs[ci] = j->cap_progs[ci] ? j->cap_progs[ci] * 2 : 32;
-            j->progs[ci] = realloc(j->progs[ci], sizeof(Prog) * (size_t)j->cap_progs[ci]);
+            int ncap = j->cap_progs[ci] ? j->cap_progs[ci] * 2 : 32;
+            Prog *np = realloc(j->progs[ci], sizeof(Prog) * (size_t)ncap);
+            if (!np) continue; /* out of memory: skip this entry (the EPG_MAX_* caps make it non-fatal) */
+            j->progs[ci] = np;
+            j->cap_progs[ci] = ncap;
         }
-        j->progs[ci][j->n_progs[ci]++] = (Prog){a, b, used ? strdup(title) : title};
+        char *nt = used ? strdup(title) : title;
+        if (!nt) continue; /* out of memory: skip this entry (title is freed below while !used) */
+        j->progs[ci][j->n_progs[ci]++] = (Prog){a, b, nt};
         used = true;
         j->total++;
     }
@@ -923,6 +986,7 @@ static void epg_work(void *arg) {
     time_t now = time(NULL), lo = now - EPG_PAST, hi = now + EPG_AHEAD;
     size_t cap = 1 << 20, len = 0;
     char *buf = malloc(cap + 1);
+    if (!buf) { j->oom = true; gzclose(gz); return; } /* epg_done keeps the old guide and says so */
     int n;
     while ((n = gzread(gz, buf + len, (unsigned)(cap - len))) > 0) {
         len += n;
@@ -948,10 +1012,16 @@ static void epg_work(void *arg) {
         size_t rest = len - (p - buf);
         memmove(buf, p, rest);
         len = rest;
-        if (len == cap) { cap *= 2; buf = realloc(buf, cap + 1); }
+        if (len == cap) {
+            char *nb = realloc(buf, cap * 2 + 1);
+            if (!nb) { j->oom = true; break; } /* out of memory: stop here, epg_done keeps the old guide */
+            cap *= 2;
+            buf = nb;
+        }
     }
     free(buf);
     gzclose(gz);
+    if (j->oom) return; /* a partial guide is not installed (epg_done says what happened) */
     for (int i = 0; i < j->n_ch; i++)
         if (j->n_progs[i] > 1) qsort(j->progs[i], j->n_progs[i], sizeof(Prog), prog_cmp);
     j->ok = true;
@@ -962,6 +1032,7 @@ static void epg_done(void *arg) {
     EpgJob *j = arg;
     D.epg_loading = false;
     if (!j->downloaded) snprintf(D.epg_msg, sizeof D.epg_msg, T("Program guide: could not be downloaded"));
+    else if (j->oom) snprintf(D.epg_msg, sizeof D.epg_msg, T("Program guide: out of memory")); /* j->ok stays false: the old guide is kept */
     else if (j->total == 0) snprintf(D.epg_msg, sizeof D.epg_msg, T("Program guide: no channels matched"));
     else {
         int with = 0;
@@ -1050,12 +1121,14 @@ typedef struct { char *url; int ci, gen; } SepgJob;
 static char *b64dec(const char *s) {
     static const char tbl[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     size_t n = strlen(s);
-    char *out = malloc(n * 3 / 4 + 4), *w = out;
+    char *out = malloc(n * 3 / 4 + 4);
+    if (!out) return NULL;
+    char *w = out;
     unsigned v = 0;
     int bits = 0;
     for (; *s; s++) {
         const char *p = strchr(tbl, *s);
-        if (!p || !*s) { if (*s == '=') break; continue; }
+        if (!p) { if (*s == '=') break; continue; }
         v = (v << 6) | (unsigned)(p - tbl);
         bits += 6;
         if (bits >= 8) { bits -= 8; *w++ = (char)((v >> bits) & 0xff); }
@@ -1075,13 +1148,15 @@ static void sepg_work(void *arg) {
         cJSON *root = cJSON_Parse(b.data), *e;
         cJSON *arr = cJSON_GetObjectItem(root, "epg_listings");
         r->p = calloc(cJSON_GetArraySize(arr) + 1, sizeof(Prog));
-        cJSON_ArrayForEach(e, arr) {
+        if (r->p) cJSON_ArrayForEach(e, arr) {
             cJSON *t = cJSON_GetObjectItem(e, "title");
             cJSON *a = cJSON_GetObjectItem(e, "start_timestamp"), *z = cJSON_GetObjectItem(e, "stop_timestamp");
             time_t ta = cJSON_IsString(a) ? atol(a->valuestring) : cJSON_IsNumber(a) ? (time_t)a->valuedouble : 0;
             time_t tz = cJSON_IsString(z) ? atol(z->valuestring) : cJSON_IsNumber(z) ? (time_t)z->valuedouble : 0;
             if (!ta || !tz || !cJSON_IsString(t)) continue;
-            r->p[r->n++] = (Prog){ta, tz, b64dec(t->valuestring)};
+            char *ti = b64dec(t->valuestring);
+            if (!ti) continue; /* out of memory: skip the entry (a NULL title crashes the reminder code) */
+            r->p[r->n++] = (Prog){ta, tz, ti};
         }
         cJSON_Delete(root);
     } else {

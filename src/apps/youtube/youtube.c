@@ -253,7 +253,9 @@ static bool subs_has(const char *id) {
 
 static void subs_add(const char *id, const char *name) {
     if (!id || !*id || subs_has(id)) return;
-    subs = realloc(subs, sizeof(Sub) * (n_subs + 1));
+    Sub *ns = realloc(subs, sizeof(Sub) * (n_subs + 1));
+    if (!ns) return; /* out of memory: skip this subtitle */
+    subs = ns;
     snprintf(subs[n_subs].id, sizeof subs[0].id, "%s", id);
     snprintf(subs[n_subs].name, sizeof subs[0].name, "%s", name && *name ? name : id);
     n_subs++;
