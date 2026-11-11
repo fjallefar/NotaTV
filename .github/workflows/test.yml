@@ -45,7 +45,7 @@ jobs:
         run: |
           curl -fsSL "https://www.libsdl.org/release/SDL3-$SDL3_VERSION.tar.gz" | tar -xz # where Buildroot fetches it
           cmake -S "SDL3-$SDL3_VERSION" -B sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/sdl3" \
-            -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+            -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DSDL_X11=OFF -DSDL_WAYLAND=OFF -DSDL_UNIX_CONSOLE_BUILD=ON # headless: only the offscreen driver
           cmake --build sdl-build
           cmake --install sdl-build
       - name: Run every screen with ASan and UBSan
