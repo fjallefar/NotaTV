@@ -149,8 +149,19 @@ static void received(struct cec_msg *m) {
         return;
     case CEC_MSG_SET_STREAM_PATH:
         cec_ops_set_stream_path(m, &pa);
-        if (pa == phys_addr() && !sleeping()) claim_active();
-        else active = false;
+        if (pa == phys_addr()) {
+            /* the TV switched to our input = the user woke the box: end soft sleep
+               (also clears /run/notatv/sleeping so power-status answers "on" again) */
+            if (sleeping()) {
+                unlink(SLEEPING);
+                pid_t wp = fork();
+                if (wp == 0) { execl(HELPER, HELPER, "wake", (char *)NULL); _exit(127); }
+                if (wp < 0) logmsg("%s: wake failed (%s)", dev, strerror(errno));
+                active = true;
+                return;
+            }
+            claim_active();
+        } else active = false;
         return;
     case CEC_MSG_ACTIVE_SOURCE:
         cec_ops_active_source(m, &pa);

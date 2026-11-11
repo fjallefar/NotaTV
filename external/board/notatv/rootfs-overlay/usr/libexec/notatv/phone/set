@@ -40,17 +40,20 @@ fi
 [ -n "$(getval _ping)" ] && reply "200 OK" "OK"
 
 # power: turn on the TV (and wake the screen), sleep, restart. The reply goes out before the box sleeps/restarts.
-# The phone cannot wake a sleeping box: the network sleeps with it (the remote wakes it).
+# Sleep is soft (the box stays on, playback stops, the TV goes off): this page keeps working, so the
+# phone can wake it again with "on" (or a remote key on the box).
 H=/usr/libexec/notatv
 case "$(getval _power)" in
 on)
 	printf '1\n' > $IN/.w.tmp && mv $IN/.w.tmp $IN/_wake
+	# power on: clears the sleep flag and wakes the TV (cec wake); tv-on also powers on TVs that are off
 	$H/cec tv-on >/dev/null 2>&1 </dev/null &
+	$H/power on >/dev/null 2>&1 </dev/null &
 	reply "200 OK" "The TV is turning on" ;;
 sleep)
 	toast "$(printf 'Sleep from the phone page (%%s)\037%s' "$FROM")"
 	( sleep 2; $H/power sleep ) >/dev/null 2>&1 </dev/null &
-	reply "200 OK" "The box goes to sleep - wake it with the remote" ;;
+	reply "200 OK" "Sleep: playback stops and the TV turns off. Wake with a key on the box or the Turn on button here" ;;
 reboot)
 	toast "$(printf 'Restarting from the phone page (%%s)\037%s' "$FROM")"
 	( sleep 2; $H/power reboot ) >/dev/null 2>&1 </dev/null &

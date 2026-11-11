@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 void home_begin_edit(void); /* ui_home.c */
 
@@ -16,6 +17,35 @@ static double sleep_at;
 static bool sleep_warned;
 static const int sleep_mins[] = {0, 15, 30, 60, 90, 120};
 #define N_SLEEP (int)(sizeof sleep_mins / sizeof sleep_mins[0])
+
+/* soft sleep ("power sleep", /run/notatv/sleeping): the box stays on, the TV is off. A key press
+ * wakes it: clear the flag and answer the TV as active source again (the flag itself is only an
+ * agreement with cecd - the shell is what sees the key presses). Fires when the flag is set AND a
+ * key has been pressed after the sleep began - never just because the flag exists. */
+void soft_sleep_wake(void) {
+    static double seen_at; /* when the flag was first seen set (0 = not sleeping) */
+    static double last_activity;
+    static double next_check;
+    bool s = access("/run/notatv/sleeping", F_OK) == 0;
+    double now = app_time(), act = input_last_activity();
+    if (s) {
+        if (!seen_at) {
+            seen_at = now;
+            last_activity = act; /* the key that may already have arrived counts as before the sleep */
+        } else if (now - seen_at < 3) {
+            /* "power sleep" itself sends Back through the inbox to stop playback, and that is a key press too
+               (input_push): what happens in the first seconds is part of going to sleep, not a wake-up */
+            last_activity = act;
+        } else if (act > last_activity && now >= next_check) {
+            seen_at = 0;
+            next_check = now + 2; /* one power on per event, not one per key repeat */
+            run_cmd("%s/power on &", helper_path());
+        }
+    } else {
+        seen_at = 0;
+        last_activity = act;
+    }
+}
 
 void quick_tick(void) {
     if (sleep_at <= 0) return;
