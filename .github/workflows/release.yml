@@ -39,7 +39,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release
+  group: release-builds # renamed 11/11: a run stuck at GitHub (webhook incident) blocked the old group "release"
   cancel-in-progress: false
 
 env:
