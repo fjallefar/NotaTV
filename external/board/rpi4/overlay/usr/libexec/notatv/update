@@ -30,6 +30,10 @@
 #   notatv-slot.txt switched. A kernel that does not start: a power cycle starts the old set, and the boot step
 #   puts the old files back ("Undo last update") - no new flash. State in /.notatv-kernel-try.
 . /usr/libexec/notatv/lib.sh
+# "Update NotaTV" runs us from tvshell, which has umask 077: every folder an update added (mkdir -p in place)
+# became root-only, e.g. /usr/libexec/notatv/media - mediarun's user "media" could not start mpv, ffprobe or
+# UxPlay, so nothing played after the update. Folders get the image's 0755 (dir_repair fixes boxes already hit).
+umask 022
 
 ASSET=notatv-rpi4-update.tar.gz
 DL=/data/notatv/update          # download + unpacked package
@@ -174,6 +178,19 @@ place() {
 	mkdir -p "$d" || return 1
 	[ -L "$2" ] && { rm -f "$2" || return 1; }
 	mv -f "$1" "$2"
+}
+
+# dir_repair PKG (the package's rootfs): open the folders an earlier update made root-only (umask 077, see the top).
+# Only a folder that is 0700 here, 0755 in the package and has a file below it that everyone may read: a folder
+# that is 0700 on purpose stays (e.g. /root - the image's device table; in the package it only holds symlinks).
+# find -xdev never leaves the root filesystem and never goes through a symlink. Prints each folder it opened.
+dir_repair() {
+	(cd "$1" && find . -type f -perm -004) | sed -n 's,^\./\(.*\)/[^/]*$,\1,p' |
+		awk -F/ '{ p = $1; print p; for (i = 2; i <= NF; i++) { p = p "/" $i; print p } }' | sort -u > $DL/open.list
+	find / -xdev -type d -perm 700 | sed 's,^/,,' | grep -xF -f $DL/open.list | while IFS= read -r d; do
+		[ -d "$1/$d" ] && [ ! -L "$1/$d" ] && [ "$(ls -ldn "$1/$d" | cut -c1-10)" = drwxr-xr-x ] || continue
+		chmod 755 "/$d" && echo "/$d"
+	done
 }
 
 # ---------------------------------------------------------------- kernel sets
@@ -523,6 +540,8 @@ install() {
 	sync
 	commit "$VER" || { rm -rf $BK; discard 1; die "The update could not be installed - nothing was changed"; }
 	apply || die "Restart the box to finish the update"
+	n=$(dir_repair $N/rootfs | wc -l)
+	[ "$n" -gt 0 ] && log "update: $n folders were root-only (made by an earlier update) - now 0755"
 	rm -rf $DL; sync
 	[ "$(current)" = "$VER" ] || die "The update could not be installed"
 	echo 0 > $VERIFY; sync
