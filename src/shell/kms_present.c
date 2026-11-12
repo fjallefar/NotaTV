@@ -22,10 +22,13 @@
 #include <fcntl.h>
 #include <gbm.h>
 #include <glob.h>
+#include <linux/i2c-dev.h>
+#include <linux/i2c.h>
 #include <stdint.h>
 #include <poll.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -59,6 +62,9 @@ static struct {
     GLint u_tex, u_par;
     float y420_par;
     uint32_t y420_id;     /* display_y420_id of the TV (main.c asks once per TV whether the picture came) */
+    int card;             /* /dev/dri/card<N> and HDMI-A-<hdmi> (0: not HDMI): the connector's DDC bus for scdc_report */
+    uint32_t hdmi;
+    Uint64 scdc_at;       /* > 0: read the TV's SCDC back then (a mode above 340 MHz was set, see scdc_report) */
     uint32_t p_fb, p_crtc, p_sx, p_sy, p_sw, p_sh, p_cx, p_cy, p_cw, p_ch;
     Buf buf[NBUF];
     SDL_Texture *ui;  /* SDL draws the UI here (ordinary GPU texture) */
@@ -145,6 +151,7 @@ static bool find_output(void) {
                 uint32_t crtc = use ? conn_crtc(fd, res, cn, &cur) : 0;
                 if (crtc) {
                     K.fd = fd; K.conn = cn->connector_id; K.crtc = crtc;
+                    K.card = c; K.hdmi = cn->connector_type == DRM_MODE_CONNECTOR_HDMIA ? cn->connector_type_id : 0;
                     display_signature(K.sig, sizeof K.sig); /* after the probe above */
                     bool no_4k60 = false;
                     if (pass == 0 && display_pick_mode(y420_failed ? -1 : fd, cn, &K.mode, &no_4k60)) {
@@ -239,9 +246,45 @@ static int probe_thread(void *ud) {
     return 0;
 }
 
+/* ---------- HDMI 2.0: did the TV take it? ----------
+   Above 340 MHz (4K60 RGB) the kernel writes TMDS_Config (scrambling + 1/40 clock ratio) into the TV's SCDC and
+   writes it again every second until the TV reports that it descrambles. A TV that does not keep it shows nothing -
+   e.g. a TCL TV that holds hot-plug low on its input while it is on: its SCDC stays reset, 4K60 RGB is black, 4K60
+   4:2:0 and everything up to 340 MHz work. No software can see a picture, but this register says why there is none:
+   read it back over the connector's DDC bus (i2c-dev, see /etc/modules-load.d) and write it in the log. Only a log
+   line: a TV in standby or on another input may not keep it either, and works once it shows the box. The way out
+   for a TV that really refuses: hdmi20=0 in notatv.conf (drm_util.c). */
+static void scdc_report(void) {
+    char p[300], link[256];
+    snprintf(p, sizeof p, "/sys/class/drm/card%d-HDMI-A-%u/ddc", K.card, K.hdmi);
+    ssize_t n = K.hdmi ? readlink(p, link, sizeof link - 1) : -1;
+    if (n <= 0) return;
+    link[n] = 0;
+    const char *bus = strrchr(link, '/');
+    snprintf(p, sizeof p, "/dev/%s", bus ? bus + 1 : link);
+    int fd = open(p, O_RDWR | O_CLOEXEC);
+    if (fd < 0) { SDL_Log("kms: kan ikke læse tv'ets SCDC (%s: %s)", p, strerror(errno)); return; }
+    uint8_t reg[2] = {0x20, 0x21}, val[2] = {0, 0}; /* TMDS_Config, Scrambler_Status */
+    bool ok = true;
+    for (int i = 0; i < 2 && ok; i++) {
+        struct i2c_msg msg[2] = {{.addr = 0x54, .flags = 0, .len = 1, .buf = &reg[i]},
+                                 {.addr = 0x54, .flags = I2C_M_RD, .len = 1, .buf = &val[i]}};
+        struct i2c_rdwr_ioctl_data d = {.msgs = msg, .nmsgs = 2};
+        ok = ioctl(fd, I2C_RDWR, &d) == 2;
+    }
+    close(fd);
+    if (!ok) SDL_Log("kms: tv'ets SCDC svarer ikke (%s)", p);
+    else if ((val[0] & 3) == 3)
+        SDL_Log("kms: HDMI 2.0 slået til i tv'et (SCDC 0x%02x, scrambling %s)", val[0], val[1] & 1 ? "modtages" : "ikke meldt endnu");
+    else
+        SDL_Log("kms: tv'et har ikke slået HDMI 2.0 til (SCDC 0x%02x) - er der intet billede i %s, når tv'et viser boksen, "
+                "så sæt hdmi20=0 i notatv.conf", val[0], K.mode.name);
+}
+
 bool kms_present_display_changed(void) {
     if (!K.on) return false;
     if (K.reinit) return true;
+    if (K.scdc_at && SDL_GetTicks() >= K.scdc_at) { K.scdc_at = 0; scdc_report(); }
     char s[sizeof K.sig];
     display_signature(s, sizeof s);
     static char pending[sizeof K.sig];
@@ -684,8 +727,11 @@ void kms_present_frame(SDL_Renderer *ren) {
     drmModeAtomicFree(rq);
     if (K.modeset) {
         K.modeset = false;
-        if (!r) SDL_Log("kms: skærmen sat til %s@%.2f", K.mode.name, display_mode_hz(&K.mode));
-        else {
+        if (!r) {
+            SDL_Log("kms: skærmen sat til %s@%.2f", K.mode.name, display_mode_hz(&K.mode));
+            /* the kernel has asked the TV to switch on scrambling (and repeats it every second): look in a moment */
+            K.scdc_at = display_needs_hdmi20(&K.mode) ? SDL_GetTicks() + 3000 : 0;
+        } else {
             SDL_Log("kms: skærmtilstand %s fejlede: %s", K.mode.name, strerror(-r));
             if (K.y420) { /* the packed buffers only fit 4:2:0: set everything up again without it */
                 y420_failed = true;

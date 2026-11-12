@@ -212,6 +212,8 @@ Then update under *Settings → System → Update NotaTV*. If it says "Restart t
 
 **Torn frames?** Set `kms_finish=1` in `/data/notatv/notatv.conf` and restart.
 
+**Black screen on a 4K TV since 1.0.28?** From 1.0.28 the menus run in 4K at 60 Hz when the TV offers it. In RGB that is HDMI 2.0, and the TV must switch on "scrambling" when the box asks over HDMI (SCDC). Some TVs do not on some inputs (e.g. a TCL TV that holds the hot-plug line low while it is on) and show nothing. `/tmp/tvshell.log` then says `tv'et har ikke slået HDMI 2.0 til`. Set `hdmi20=0` in `/data/notatv/notatv.conf` and restart: the box stays at or below 340 MHz - 4K60 as YCbCr 4:2:0 if the TV offers it (choose *Keep*), otherwise 1080p60. Films in 4K at 24/25/30 Hz still play in 4K. No picture to turn on SSH with? The Pi 4's second HDMI port never uses 4K60 RGB: plug the TV in there, turn on *Developer mode (SSH)*, set it, and move the cable back.
+
 **Playback, YouTube or AirPlay stopped working after 1.0.21?** Since 1.0.21 they run as the user `media` instead of root. Set `media_user=0` in `/data/notatv/notatv.conf` and restart to check whether that is the cause (and tell us). Nothing but TV 2 Play played after a fresh 1.0.21 install on Wi-Fi: update to 1.0.22, which fixes it.
 
 **Logs on the box** (with *Developer mode (SSH)*; readable by root only, tokens and passwords masked):

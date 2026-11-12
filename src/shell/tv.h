@@ -333,6 +333,8 @@ bool display_pick_mode(int fd, const struct _drmModeConnector *c, struct _drmMod
 double display_mode_hz(const struct _drmModeModeInfo *m);
 uint32_t display_y420_id(void); /* checksum of the EDID of the TV last checked for 4:2:0 */
 bool display_is_y420(const struct _drmModeModeInfo *m); /* the 4K60 4:2:0 mode (1920x2160 packed, see drm_util.c) */
+bool display_hdmi20(void); /* modes above 340 MHz allowed (hdmi20 in notatv.conf, default 1) */
+bool display_needs_hdmi20(const struct _drmModeModeInfo *m); /* above 340 MHz: the TV must switch on scrambling (SCDC) */
 /* OpenSubtitles */
 int subs_search(int tmdb, const char *query, int season, int episode, char ***labels);
 char *subs_fetch(int idx);
