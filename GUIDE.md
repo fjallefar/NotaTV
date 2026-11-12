@@ -212,6 +212,10 @@ Then update under *Settings → System → Update NotaTV*. If it says "Restart t
 
 **Torn frames?** Set `kms_finish=1` in `/data/notatv/notatv.conf` and restart.
 
+**Black screen on a 4K TV since 1.0.28?** From 1.0.28 the menus run in 4K at 60 Hz when the TV offers it. In RGB that is HDMI 2.0, and the TV must switch on "scrambling" when the box asks over HDMI (SCDC). Some TVs do not on some inputs and show nothing. From 1.0.30 the box reads that back: if the TV did not switch it on, it asks "Can you see this?" and switches back after 15 seconds without an answer (4K60 as YCbCr 4:2:0 if the TV offers it, otherwise 1080p60). Choose *Switch back*, or let it happen twice, and the box remembers it for that TV. To turn 4K60 RGB off for every TV: `hdmi20=0` in `/data/notatv/notatv.conf` and restart. Films in 4K at 24/25/30 Hz still play in 4K. No picture to turn on SSH with? The Pi 4's second HDMI port never uses 4K60 RGB: plug the TV in there, turn on *Developer mode (SSH)*, set it, and move the cable back.
+
+**The TV keeps saying a device was connected, or the box only shows a picture sometimes?** Some TVs (e.g. a TCL) hold the HDMI hot-plug line low while they are on. Up to 1.0.29 the box then saw no TV, and every short blip on the line made it announce itself again over HDMI-CEC. From 1.0.30 a TV that answers on HDMI counts as connected. If it causes trouble on your TV, add `vc4.notatv_ddc_detect=0` to the active `cmdline.txt` on the boot partition (after an update it is the one in `nota-a/` or `nota-b/`, see `notatv-slot.txt`) and tell us. An old `vc4.force_hotplug=1` is no longer needed: remove it from the root `cmdline.txt`, which an update copies into the new kernel set.
+
 **Playback, YouTube or AirPlay stopped working after 1.0.21?** Since 1.0.21 they run as the user `media` instead of root. Set `media_user=0` in `/data/notatv/notatv.conf` and restart to check whether that is the cause (and tell us). Nothing but TV 2 Play played after a fresh 1.0.21 install on Wi-Fi: update to 1.0.22, which fixes it.
 
 **Logs on the box** (with *Developer mode (SSH)*; readable by root only, tokens and passwords masked):

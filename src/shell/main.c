@@ -337,43 +337,57 @@ void app_home(void) {
     if (t && t->resume) t->resume(t);
 }
 
-/* ---------- 4K60 as YCbCr 4:2:0: does the TV show it? ----------
-   No software can see whether a TV accepts a signal, so the first time a TV gets 4:2:0 the box asks, as a PC does
-   after a resolution change: "Keep" must be chosen within 15 s, otherwise (no picture, nobody can answer) the box
-   switches back to the ordinary signal and never uses 4:2:0 on that TV again (y420_bad). Asked once per TV. */
-static uint32_t y420_asked;   /* the TV asked about (or already confirmed) */
-static double y420_deadline;  /* > 0: waiting for an answer until then */
-static Screen *y420_dlg;
-static int y420_answer;       /* 0 none yet, 1 keep, 2 switch back */
-static void y420_done(void *ud, bool yes) { (void)ud; y420_answer = yes ? 1 : 2; }
+/* ---------- a new HDMI signal: does the TV show it? ----------
+   No software can see whether a TV accepts a signal, so the box asks, as a PC does after a resolution change: "Keep"
+   must be chosen within 15 s, otherwise (no picture, nobody can answer) the box switches back and never uses that
+   signal on that TV again. Asked once per TV (EDID checksum) and kind:
+   - "y420": the first time a TV gets 4K60 as YCbCr 4:2:0 (y420_ok / y420_bad)
+   - "hdmi20": 4K60 RGB was set, but the TV's SCDC says it did not switch on HDMI 2.0 (kms_present.c, scdc_report;
+     hdmi20_ok / hdmi20_bad). Without it the TV gets 4:2:0 or 1080p60 (drm_util.c). No answer here only counts
+     until restart the first time (hdmi20_try): the TV may have been in standby when the box looked. */
+static uint32_t mode_asked;      /* the TV asked about (or already confirmed) ... */
+static const char *mode_kind;    /* ... and for which signal */
+static double mode_deadline;     /* > 0: waiting for an answer until then */
+static Screen *mode_dlg;
+static int mode_answer;          /* 0 none yet, 1 keep, 2 switch back */
+static void mode_done(void *ud, bool yes) { (void)ud; mode_answer = yes ? 1 : 2; }
 
-static void y420_check(double now) {
-    uint32_t id = kms_present_y420_id();
-    char ids[16];
+static void mode_check(double now) {
+    uint32_t yid = kms_present_y420_id(), hid = kms_present_hdmi20_doubt();
+    const char *kind = yid ? "y420" : hid ? "hdmi20" : NULL;
+    uint32_t id = yid ? yid : hid;
+    char ids[16], key[16];
     snprintf(ids, sizeof ids, "%08x", id);
-    if (id && id != y420_asked) {
-        y420_asked = id;
-        y420_deadline = 0;
-        if (strcmp(cfg_get("y420_ok", ""), ids)) {
-            y420_answer = 0;
+    if (id && (id != mode_asked || kind != mode_kind)) {
+        mode_asked = id;
+        mode_kind = kind;
+        mode_deadline = 0;
+        snprintf(key, sizeof key, "%s_ok", kind);
+        if (strcmp(cfg_get(key, ""), ids)) {
+            mode_answer = 0;
             confirm_open(T("Can you see this?"),
                          T("The TV now gets 4K at 60 Hz in a format it asks for. Choose Keep. If nothing is chosen within 15 seconds, the box switches back."),
-                         T("Keep"), T("Switch back"), y420_done, NULL);
-            y420_dlg = app_top();
-            y420_deadline = now + 15;
+                         T("Keep"), T("Switch back"), mode_done, NULL);
+            mode_dlg = app_top();
+            mode_deadline = now + 15;
         }
     }
-    if (y420_deadline <= 0 || (!y420_answer && now < y420_deadline)) return;
-    y420_deadline = 0;
-    if (!y420_answer && app_top() == y420_dlg) app_pop();
-    if (y420_answer == 1 && id) {
-        cfg_set("y420_ok", ids);
-        SDL_Log("4:2:0: bekræftet på tv %s", ids);
+    if (mode_deadline <= 0 || (!mode_answer && now < mode_deadline)) return;
+    mode_deadline = 0;
+    if (!mode_answer && app_top() == mode_dlg) app_pop();
+    if (!id || kind != mode_kind) return; /* the TV or the signal changed meanwhile */
+    snprintf(key, sizeof key, "%s_%s", kind, mode_answer == 1 ? "ok" : "bad");
+    if (!mode_answer && !strcmp(kind, "hdmi20")) {
+        /* no answer to HDMI 2.0: maybe black, maybe a TV in standby when the box looked - remembered the 2nd time */
+        display_hdmi20_off(id);
+        if (strcmp(cfg_get("hdmi20_try", ""), ids)) { cfg_set("hdmi20_try", ids); key[0] = 0; }
+    }
+    if (key[0]) cfg_set(key, ids);
+    if (mode_answer == 1) {
+        SDL_Log("%s: bekræftet på tv %s", kind, ids);
         return;
     }
-    if (!id) return; /* the TV changed meanwhile */
-    SDL_Log("4:2:0: %s på tv %s - skifter tilbage", y420_answer ? "fravalgt" : "intet svar", ids);
-    cfg_set("y420_bad", ids);
+    SDL_Log("%s: %s på tv %s - skifter tilbage", kind, mode_answer ? "fravalgt" : "intet svar", ids);
     if (app_video_suspend()) app_video_resume();
 }
 
@@ -1230,7 +1244,7 @@ int main(int argc, char **argv) {
             disp_check_t = now;
             if (kms_present_display_changed() && app_video_suspend()) app_video_resume();
         }
-        y420_check(now);
+        mode_check(now);
         float dt = (float)(now - last);
         if (dt > 0.1f) dt = 0.1f;
         last = now;

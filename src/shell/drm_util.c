@@ -321,11 +321,55 @@ static bool hz_near(const drmModeModeInfo *m, double hz) {
     return !(m->flags & DRM_MODE_FLAG_INTERLACE) && fabs(mode_hz(m) - hz) < 0.6;
 }
 
-static const drmModeModeInfo *largest_at(const drmModeConnector *c, double hz, int only_w, int only_h) {
+/* HDMI 2.0: above 340 MHz (4K50/60 in RGB) the TV must switch on scrambling when the kernel asks over SCDC. A TV
+   that does not (e.g. a TCL that holds hot-plug low on its input while it is on, so its SCDC stays reset) shows
+   nothing at all in such a mode. kms_present.c reads the TV's SCDC back 3 s after setting such a mode; if the TV
+   did not switch it on, main.c asks "Can you see this?". "Switch back" gives that TV hdmi20_bad=<id> (a checksum
+   of its EDID, as y420_bad). No answer within 15 s: without HDMI 2.0 until restart, and hdmi20_bad the second time
+   (a TV in standby at the check cannot answer either, so once is not enough). Without HDMI 2.0 the menus and frame rate match stay at or below 340 MHz:
+   4K60 then comes as 4:2:0 where the TV offers it (297 MHz, see y420_mode), otherwise 1080p60. Films in 4K at
+   24/25/30 Hz are 297 MHz and stay 4K. hdmi20=0 in notatv.conf does the same for every TV. */
+#define HDMI14_MAX_KHZ 340000
+static uint32_t g_edid_id; /* the EDID checksum of the TV display_pick_mode last looked at (0: none) */
+uint32_t display_edid_id(void) { return g_edid_id; }
+
+static uint32_t edid_checksum(int fd, uint32_t conn) {
+    uint32_t h = 0;
+    drmModeObjectProperties *pr = drmModeObjectGetProperties(fd, conn, DRM_MODE_OBJECT_CONNECTOR);
+    for (uint32_t k = 0; pr && k < pr->count_props && !h; k++) {
+        drmModePropertyRes *p = drmModeGetProperty(fd, pr->props[k]);
+        if (p && !strcmp(p->name, "EDID") && pr->prop_values[k]) {
+            drmModePropertyBlobRes *b = drmModeGetPropertyBlob(fd, (uint32_t)pr->prop_values[k]);
+            if (b) {
+                h = 2166136261u;
+                for (uint32_t i = 0; i < b->length; i++) h = (h ^ ((const uint8_t *)b->data)[i]) * 16777619u;
+            }
+            drmModeFreePropertyBlob(b);
+        }
+        drmModeFreeProperty(p);
+    }
+    drmModeFreeObjectProperties(pr);
+    return h;
+}
+
+static uint32_t g_hdmi20_off; /* a TV without HDMI 2.0 until restart (display_hdmi20_off) */
+void display_hdmi20_off(uint32_t id) { g_hdmi20_off = id; }
+
+bool display_hdmi20(void) {
+    if (!cfg_int("hdmi20", 1)) return false;
+    if (g_edid_id && g_edid_id == g_hdmi20_off) return false;
+    char id[16];
+    snprintf(id, sizeof id, "%08x", g_edid_id);
+    return !g_edid_id || strcmp(cfg_get("hdmi20_bad", ""), id);
+}
+bool display_needs_hdmi20(const drmModeModeInfo *m) { return m->clock > HDMI14_MAX_KHZ && !display_is_y420(m); }
+
+static const drmModeModeInfo *largest_at(const drmModeConnector *c, double hz, int only_w, int only_h, bool hdmi20) {
     const drmModeModeInfo *best = NULL;
     for (int i = 0; i < c->count_modes; i++) {
         const drmModeModeInfo *m = &c->modes[i];
         if (!hz_near(m, hz) || (only_w && (m->hdisplay != only_w || m->vdisplay != only_h))) continue;
+        if (!hdmi20 && m->clock > HDMI14_MAX_KHZ) continue;
         if (!best) { best = m; continue; }
         long a = (long)m->hdisplay * m->vdisplay, b = (long)best->hdisplay * best->vdisplay;
         bool mp = m->type & DRM_MODE_TYPE_PREFERRED, bp = best->type & DRM_MODE_TYPE_PREFERRED;
@@ -402,10 +446,13 @@ bool display_pick_mode(int fd, const drmModeConnector *c, drmModeModeInfo *out, 
     const drmModeModeInfo *pref = &c->modes[0];
     for (int i = 0; i < c->count_modes; i++)
         if (c->modes[i].type & DRM_MODE_TYPE_PREFERRED) { pref = &c->modes[i]; break; }
-    const drmModeModeInfo *m = largest_at(c, 60, 3840, 2160);
-    if (!m && (hz_near(pref, 60) || hz_near(pref, 50))) m = pref;
-    if (!m) m = largest_at(c, 60, 0, 0);
-    if (!m) m = largest_at(c, 50, 0, 0);
+    if (fd >= 0) g_edid_id = edid_checksum(fd, c->connector_id); /* fd < 0: the same TV as the last call */
+    bool hdmi20 = display_hdmi20();
+    if (fd >= 0 && !hdmi20 && cfg_int("hdmi20", 1)) SDL_Log("drm: HDMI 2.0 (4K60 RGB) virkede ikke på dette tv - bruges ikke");
+    const drmModeModeInfo *m = largest_at(c, 60, 3840, 2160, hdmi20);
+    if (!m && (hz_near(pref, 60) || hz_near(pref, 50)) && (hdmi20 || pref->clock <= HDMI14_MAX_KHZ)) m = pref;
+    if (!m) m = largest_at(c, 60, 0, 0, hdmi20);
+    if (!m) m = largest_at(c, 50, 0, 0, hdmi20);
     if (!m) m = pref;
     *out = *m;
     bool uhd = m->hdisplay >= 3840 && (hz_near(m, 60) || hz_near(m, 50));
@@ -416,7 +463,7 @@ bool display_pick_mode(int fd, const drmModeConnector *c, drmModeModeInfo *out, 
             return true;
         }
     }
-    for (int i = 0; i < c->count_modes; i++)
+    for (int i = 0; hdmi20 && i < c->count_modes; i++) /* without HDMI 2.0: no hint about the TV's input */
         if (c->modes[i].hdisplay >= 3840 && m->hdisplay < 3840) *no_4k60 = true;
     return true;
 }
@@ -436,6 +483,7 @@ static int rate_fit(double hz, double want) {
 bool display_mode_for(int w, int h, double want, char *out, size_t n) {
     int best_fit = 99;
     double best_hz = 0;
+    bool hdmi20 = display_hdmi20();
     for (int card = 0; card < 4; card++) {
         char path[32];
         snprintf(path, sizeof path, "/dev/dri/card%d", card);
@@ -450,6 +498,7 @@ bool display_mode_for(int w, int h, double want, char *out, size_t n) {
                 for (int m = 0; m < c->count_modes; m++) {
                     const drmModeModeInfo *mi = &c->modes[m];
                     if (mi->hdisplay != w || mi->vdisplay != h || (mi->flags & DRM_MODE_FLAG_INTERLACE)) continue;
+                    if (!hdmi20 && mi->clock > HDMI14_MAX_KHZ) continue;
                     double hz = mode_hz(mi);
                     int fit = rate_fit(hz, want);
                     /* the same fit: the lower rate (a 2x multiple before 5x) */

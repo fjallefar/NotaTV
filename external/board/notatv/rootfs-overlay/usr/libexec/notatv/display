@@ -15,10 +15,14 @@ for st in $D/*/state; do
 		incon && /^\toutput_format=/ { sub(/^\toutput_format=/, ""); fmt[cname] = $0 }
 		incrtc && /^\tmode: "/ {
 			# mode: "NAME": vrefresh clock hdisp hss hse htotal vdisp vss vse vtotal ...
-			n = split($0, f, " ")
-			clock = f[4]; ht = f[8]; vt = f[12]
-			hz = (ht > 0 && vt > 0) ? clock * 1000.0 / (ht * vt) : f[3]
-			res[crname] = f[5] "x" f[9]; rate[crname] = sprintf("%.3f", hz)
+			# the numbers after the name: it may hold spaces ("3840x2160 (4:2:0)", whose timing is 1920 wide)
+			t = $0; sub(/^.*": /, "", t)
+			n = split(t, f, " ")
+			clock = f[2]; ht = f[6]; vt = f[10]
+			hz = (ht > 0 && vt > 0) ? clock * 1000.0 / (ht * vt) : f[1]
+			y4[crname] = f[3] == 1920 && f[7] == 2160 && clock == 297000 # packed 4:2:0 (see drm_util.c)
+			w = y4[crname] ? 3840 : f[3]
+			res[crname] = w "x" f[7]; rate[crname] = sprintf("%.3f", hz)
 		}
 		END {
 			for (c in use) {
@@ -27,7 +31,7 @@ for st in $D/*/state; do
 				line = c
 				if (mon != "") line = line " · " mon
 				if (res[r] != "") line = line " · " res[r] " @ " rate[r] " Hz"
-				print line "|" cs[c] "|" bpc[c] "|" fmt[c] "|" c
+				print line "|" cs[c] "|" bpc[c] "|" (y4[r] ? "YCbCr 4:2:0" : fmt[c]) "|" c
 				exit
 			}
 		}' "$st")

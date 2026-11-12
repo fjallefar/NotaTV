@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.0.30
+
+> **In short:** TVs that hide their HDMI hot-plug signal now get a stable picture, and playback works again after updates.
+> - A TV that keeps saying "a device was connected" (e.g. some TCL models) now sees the box as one steady device
+> - If a TV cannot take 4K60 RGB, the box notices it and switches to a signal the TV shows
+> - Fixes playback, YouTube and AirPlay that stopped after updating from the menu
+
+<!-- tldr:da
+Kort: Tv'er, der skjuler deres HDMI-hotplug-signal, får nu et stabilt billede, og afspilning virker igen efter opdateringer.
+- Et tv, der hele tiden siger "der er tilsluttet et apparat" (fx nogle TCL), ser nu boksen som ét fast apparat
+- Kan et tv ikke tage 4K60 RGB, opdager boksen det og skifter til et signal, tv'et viser
+- Retter afspilning, YouTube og AirPlay, der holdt op efter en opdatering fra menuen
+-->
+
+### System
+
+- **TVs that hold hot-plug low:** some TVs (e.g. a TCL "Beyond TV" on HDMI 2) keep the HDMI hot-plug line low while
+  they are on and only blip it. The kernel then said "disconnected" (the box showed nothing), and every blip took the
+  box's HDMI-CEC address away and gave it back, so it announced itself again and again and the TV kept saying that a
+  device had been connected. New kernel patch 0005: a TV that answers on the HDMI DDC bus counts as connected. The
+  hot-plug interrupt still works (unlike `vc4.force_hotplug=1`, which is no longer needed). `vc4.notatv_ddc_detect=0`
+  turns it off.
+- **4K60 RGB that the TV does not take:** above 340 MHz the TV must switch on HDMI 2.0 scrambling when the box asks.
+  The box now reads that back from the TV 3 seconds after setting such a mode and writes it in the log. If the TV did
+  not switch it on, it asks "Can you see this?"; without *Keep* in 15 seconds it switches back to 4K60 as 4:2:0 (or
+  1080p60). *Switch back*, or no answer twice, is remembered for that TV. `hdmi20=0` in notatv.conf keeps every TV at
+  or below 340 MHz.
+- **A TV that appears or changes** now always gets a full mode set (the output off, then on), so HDMI 2.0 is set up
+  again for it. Before, a mode that was already set was kept, and a TV that had not been there stayed black.
+- **Updates from the menu made new folders root-only** (tvshell's umask), e.g. `/usr/libexec/notatv/media`: mpv,
+  ffprobe, yt-dlp and UxPlay could not start, so nothing played. New folders get 0755 again, and the update opens the
+  ones earlier updates closed.
+- *Settings → System → Display* showed "297000x2200" in the 4:2:0 mode; it now says 3840x2160 @ 60 Hz, YCbCr 4:2:0.
+
+Thanks to dennispedersenmedia for the diagnosis and pull requests #4, #5 and #6.
+
 ## 1.0.29
 
 > **In short:** 4K at 60 Hz now also works on TVs whose HDMI input only takes 4K60 as YCbCr 4:2:0.

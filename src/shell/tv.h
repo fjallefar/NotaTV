@@ -122,6 +122,7 @@ bool kms_present_display_changed(void); /* every few seconds: true = the display
 bool kms_present_last_mode(int *w, int *h); /* size of the mode the menus last ran in */
 bool kms_present_y420(void);               /* the menus run in 4K60 as packed YCbCr 4:2:0 (SDR only) */
 uint32_t kms_present_y420_id(void);        /* that TV's EDID checksum (0 = not in 4:2:0) */
+uint32_t kms_present_hdmi20_doubt(void);  /* EDID checksum of a TV that did not switch on HDMI 2.0 (0: none) */
 const char *kms_present_rgb_mode(void);    /* while they do: "WxH@R" mpv uses when no other mode fits, else "" */
 bool kms_present_copy_shown(SDL_Renderer *ren); /* the frame on screen into the current target; false = copy K.ui */
 void kms_present_frame(SDL_Renderer *ren); /* debugging: count since the last call */ /* draw the UI in HDR10 (PQ/BT.2020) when the TV is always in HDR */
@@ -333,6 +334,10 @@ bool display_pick_mode(int fd, const struct _drmModeConnector *c, struct _drmMod
 double display_mode_hz(const struct _drmModeModeInfo *m);
 uint32_t display_y420_id(void); /* checksum of the EDID of the TV last checked for 4:2:0 */
 bool display_is_y420(const struct _drmModeModeInfo *m); /* the 4K60 4:2:0 mode (1920x2160 packed, see drm_util.c) */
+bool display_hdmi20(void); /* modes above 340 MHz allowed (hdmi20 in notatv.conf, default 1; not on a TV in hdmi20_bad) */
+uint32_t display_edid_id(void); /* EDID checksum of the TV display_pick_mode last looked at (0: none) */
+void display_hdmi20_off(uint32_t id); /* no HDMI 2.0 for that TV until restart */
+bool display_needs_hdmi20(const struct _drmModeModeInfo *m); /* above 340 MHz: the TV must switch on scrambling (SCDC) */
 /* OpenSubtitles */
 int subs_search(int tmdb, const char *query, int season, int episode, char ***labels);
 char *subs_fetch(int idx);

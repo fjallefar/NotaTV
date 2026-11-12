@@ -1,0 +1,53 @@
+From: NotaTV
+Subject: [PATCH] drm/vc4: hdmi: a sink that answers on DDC is connected, also with hot-plug low
+
+Some TVs hold hot-plug low on their input while they are on and showing it:
+a TCL TV ("Beyond TV", HDMI 2) raises it only in standby. The EDID answers
+on DDC and the TV shows what it gets, but the connector was "disconnected",
+so userspace showed nothing (tvshell 1.0.28+ goes headless), and every short
+hot-plug blip invalidated and set the CEC physical address again, so the box
+announced itself over CEC again and again ("a device was connected" on the
+TV). When hot-plug is low, probe DDC (drm_probe_ddc, one byte at 0x50): an
+answer means a sink is there; with nothing plugged in the read is not
+acknowledged. Unlike force_hotplug the hot-plug interrupt still works, so a
+TV that wakes up gets its link retrained. vc4.notatv_ddc_detect=0 turns it
+off.
+---
+--- a/drivers/gpu/drm/vc4/vc4_hdmi.c
++++ b/drivers/gpu/drm/vc4/vc4_hdmi.c
+@@ -132,6 +132,24 @@
+ module_param(notatv_y420, bool, 0644);
+ MODULE_PARM_DESC(notatv_y420, "Send packed 1920x2160 modes as 4K YCbCr 4:2:0 (NotaTV)");
+ 
++/*
++ * NotaTV: some TVs hold hot-plug low on their input while they are on and
++ * showing it - a TCL TV ("Beyond TV", HDMI 2) raises it only in standby.
++ * The EDID still answers on DDC and the TV shows what it gets (up to
++ * 340 MHz; its SCDC stays reset), but with hot-plug alone the box saw no TV
++ * and showed nothing. A sink whose EDID answers on DDC is connected; with
++ * nothing plugged in the read is not acknowledged. force_hotplug did the
++ * same but also ignores the hot-plug interrupt, so a TV that wakes up got no
++ * link retraining (vc4_hdmi_reset_link).
++ * Hot-plug alone also flapped the CEC physical address with every short
++ * hot-plug blip (invalidated when low, set again when high): the box then
++ * announced itself again each time, and the TV kept saying that a device
++ * had been connected. A sink that answers keeps its address.
++ */
++static bool notatv_ddc_detect = true;
++module_param(notatv_ddc_detect, bool, 0644);
++MODULE_PARM_DESC(notatv_ddc_detect, "Treat a sink that answers on DDC as connected even with hot-plug low (NotaTV)");
++
+ static u8 notatv_y420_vic_for(struct vc4_hdmi *vc4_hdmi,
+ 			      const struct drm_display_mode *mode)
+ {
+@@ -544,6 +562,10 @@
+ 			status = connector_status_connected;
+ 	}
+ 
++	if (status == connector_status_disconnected && notatv_ddc_detect &&
++	    drm_probe_ddc(vc4_hdmi->ddc))
++		status = connector_status_connected;
++
+ 	vc4_hdmi_handle_hotplug(vc4_hdmi, ctx, status);
+ 	pm_runtime_put(&vc4_hdmi->pdev->dev);
+ 
