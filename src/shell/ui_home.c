@@ -744,11 +744,13 @@ static bool home_input(Screen *s, const InputEvent *ev) {
             TileGeo tg = tile_geo(h, h->col);
             app_set_origin(tg.cx - tg.w / 2, tg.cy - tg.h / 2 - 6, tg.w, tg.h, tg.r);
             Screen *sc2 = vis[h->col]->open ? vis[h->col]->open() : NULL;
+            if (sc2) stats_app_enter(vis[h->col]->id);
             if (sc2) app_push(sc2);
         } else if (h->col2 < h->n_cont && h->cont_app && h->cont_app->row_open) {
             float iw = 420, ih = 236, sc = 1.07f;
             float x = MARGIN + h->col2 * (iw + 32) - h->sx2, y = APPS_Y + (grid_rows() - 1) * TILE_PITCH + 244 - home_shift(h);
             app_set_origin(x - iw * (sc - 1) / 2, y - ih * (sc - 1) / 2 - 4, iw * sc, ih * sc, 18);
+            stats_app_enter(h->cont_app->id);
             h->cont_app->row_open(&h->cont[h->col2], h->col2);
         }
         return true;

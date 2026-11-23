@@ -1,5 +1,53 @@
 # Changelog
 
+## 1.0.31
+
+> **In short:** Five new apps, photos in the screensaver, your own viewing statistics, notifications on the TV and a lighter load on the Raspberry Pi 4.
+> - New apps in the App Store: Immich, Home Assistant, Cameras, Channels (your own TV channels) and Retro games
+> - The screensaver can show your Immich photos, and Settings shows what you watch (only kept on the box)
+> - The menus use less of the graphics chip, and rest at 30 frames a second when nobody uses the box
+
+<!-- tldr:da
+Kort: Fem nye apps, billeder i pauseskærmen, din egen forbrugsstatistik, beskeder på tv'et og mindre belastning af Raspberry Pi 4.
+- Nye apps i App Store: Immich, Home Assistant, Kameraer, Kanaler (dine egne tv-kanaler) og Retrospil
+- Pauseskærmen kan vise dine Immich-billeder, og Indstillinger viser, hvad du ser (gemmes kun på boksen)
+- Menuerne bruger mindre af grafikchippen og hviler på 30 billeder i sekundet, når ingen bruger boksen
+-->
+
+### New apps (App Store)
+
+- **Immich** 1.0.0: your photos and videos from your own Immich server - On this day, Recent, Albums, People, full
+  screen with a slideshow (Play), videos in the player. Sign in with the server address and an API key.
+- **Home Assistant** 1.0.0: lights, switches, climate, covers and scenes by room, brightness and temperature. Only the
+  REST API with a long-lived access token, no open port on the box. Notifications: an automation sets the helper
+  `input_text.notatv_notify` to a text, and the TV shows it.
+- **Cameras** 1.0.0: cameras from Home Assistant and your own RTSP cameras, live on OK. Doorbell: choose a sensor and a
+  camera, and a small live picture shows in the corner when someone rings.
+- **Channels** 1.0.0: your Plex and Jellyfin movies and shows as TV channels that are already running (all movies,
+  genres, decades, series with many episodes), zap with up and down.
+- **Retro games** 1.0.0: your own NES, Game Boy, Game Boy Advance and PlayStation games with RetroArch and free cores
+  (FCEUmm, mGBA, PCSX ReARMed), box art from libretro-thumbnails. Home on the remote stops a game.
+
+### System
+
+- **Screensaver with photos:** random Immich photos that glide slowly and fade every 20 seconds, with the clock in a
+  corner that moves (burn-in). *Settings → System → Photos in the screensaver*. Without Immich: the clock as before.
+- **Your viewing:** *Settings → System → Your viewing* shows hours watched, time per app and the most watched series and
+  channels per week, month, year. Logged by the system, only on the box (two years), never sent. Signing out of an app
+  deletes its lines; *Keep viewing statistics* off deletes everything.
+- **Notifications** (`app_notify`): a small card at the top right, also over the screensaver; during video in the
+  player's message line.
+- **Pi 4 graphics:** solid areas share the text's GPU call where they can (home screen 71 -> 60 GPU calls a frame, Home
+  Assistant 42 -> 28), the background is drawn without blending, and after 20 seconds without a key the menus draw 30
+  instead of 60 frames a second (the first key brings 60 back at once). *Show FPS* now also logs GPU calls and overdraw.
+- For apps: `app_run_fullscreen` (a program that takes the display), library sharing between Plex/Jellyfin and
+  Channels, `app_request_redraw` now works.
+
+### Apps
+
+- **Plex** 1.0.12, **Jellyfin** 1.0.11: share the library with Channels.
+- **TV 2 Play** 1.0.10: the background is drawn once instead of every frame (smoother scrolling on a Pi 4).
+
 ## 1.0.30
 
 > **In short:** TVs that hide their HDMI hot-plug signal now get a stable picture, and playback works again after updates.

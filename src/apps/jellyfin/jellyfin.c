@@ -2235,6 +2235,60 @@ static const Item jf_items[] = {
      .locked = jf_signed_out},
 };
 
+/* ---------- the whole library for Channels (LibraryIface, runs in a job) ---------- */
+static int jf_library(LibItem **out) {
+    *out = NULL;
+    if (!*jf_url() || !*jf_token() || !*jf_uid()) return 0;
+    char base[512], tok[256];
+    snprintf(base, sizeof base, "%s", jf_url());
+    snprintf(tok, sizeof tok, "%s", jf_token());
+    char *path = str_printf("/Users/%s/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=Genres,ProductionYear"
+                            "&EnableImages=false&EnableUserData=false&Limit=50000", jf_uid());
+    cJSON *r = jf_get_sync("GET", path, NULL, 90);
+    free(path);
+    /* series genres: episodes usually have none of their own */
+    path = str_printf("/Users/%s/Items?Recursive=true&IncludeItemTypes=Series&Fields=Genres&EnableImages=false&Limit=20000", jf_uid());
+    cJSON *series = jf_get_sync("GET", path, NULL, 60);
+    free(path);
+    int n = 0;
+    const cJSON *it;
+    cJSON_ArrayForEach(it, cJSON_GetObjectItem(r, "Items")) {
+        const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(it, "Id"));
+        double dur = json_num(it, "RunTimeTicks") / 1e7;
+        if (!id || dur < 60 || n >= 50000) continue;
+        *out = xrealloc(*out, sizeof **out * (n + 1));
+        LibItem *li = &(*out)[n++];
+        memset(li, 0, sizeof *li);
+        const char *name = cJSON_GetStringValue(cJSON_GetObjectItem(it, "Name"));
+        const char *type = cJSON_GetStringValue(cJSON_GetObjectItem(it, "Type"));
+        snprintf(li->title, sizeof li->title, "%s", name ? name : "");
+        li->movie = type && !strcmp(type, "Movie");
+        li->dur = dur;
+        li->year = (int)json_num(it, "ProductionYear");
+        const char *g = cJSON_GetStringValue(cJSON_GetArrayItem(cJSON_GetObjectItem(it, "Genres"), 0));
+        if (!li->movie) {
+            const char *sn = cJSON_GetStringValue(cJSON_GetObjectItem(it, "SeriesName"));
+            const char *sid = cJSON_GetStringValue(cJSON_GetObjectItem(it, "SeriesId"));
+            snprintf(li->series, sizeof li->series, "%s", sn ? sn : "");
+            li->season = (int)json_num(it, "ParentIndexNumber");
+            li->episode = (int)json_num(it, "IndexNumber");
+            const cJSON *s;
+            if (!g && sid) cJSON_ArrayForEach(s, cJSON_GetObjectItem(series, "Items")) {
+                const char *x = cJSON_GetStringValue(cJSON_GetObjectItem(s, "Id"));
+                if (x && !strcmp(x, sid)) { g = cJSON_GetStringValue(cJSON_GetArrayItem(cJSON_GetObjectItem(s, "Genres"), 0)); break; }
+            }
+        }
+        snprintf(li->genre, sizeof li->genre, "%s", g ? g : "");
+        snprintf(li->url, sizeof li->url, "%s/Videos/%s/stream?static=true&ApiKey=%s", base, id, tok);
+    }
+    cJSON_Delete(r);
+    cJSON_Delete(series);
+    explicit_bzero(tok, sizeof tok);
+    return n;
+}
+static bool jf_signed_in(void) { return *jf_url() && *jf_token() && *jf_uid(); }
+static const LibraryIface jf_lib_iface = {jf_signed_in, jf_library};
+
 /* installed/uninstalled: give the "Play on" thread a new snapshot now (it stops when the app is gone) */
 static void jellyfin_app_apply(void) { next_conf = 0; jellyfin_remote_tick(); }
 const NotaApp nota_app = {
@@ -2244,4 +2298,5 @@ const NotaApp nota_app = {
     .row = jellyfin_row, .row_refresh = jellyfin_row_refresh, .row_open = jellyfin_row_open,
     .open = jellyfin_screen, .tick = jellyfin_remote_tick, .apply = jellyfin_app_apply, .forget = jellyfin_forget,
     .settings = jf_items, .n_settings = sizeof jf_items / sizeof jf_items[0],
+    .iface = &jf_lib_iface,
 };

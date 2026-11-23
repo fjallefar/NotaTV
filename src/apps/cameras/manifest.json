@@ -1,0 +1,20 @@
+{
+  "id": "cameras",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Cameras",
+  "desc": "Live pictures from your cameras and who is at the door",
+  "icon": "play",
+  "c1": [70, 70, 80],
+  "c2": [30, 30, 36],
+  "fg": [255, 255, 255],
+  "order": 87,
+  "default": false,
+  "changes": {
+    "summary": "Cameras on NotaTV",
+    "points": [
+      "Cameras from Home Assistant and your own RTSP cameras",
+      "A small live picture when someone rings the doorbell"
+    ]
+  }
+}

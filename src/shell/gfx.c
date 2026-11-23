@@ -44,6 +44,52 @@ Color color_mix(Color a, Color b, float t) {
 static SDL_Renderer *R;
 /* debugging (shown together with FPS): draw calls and new textures since last time */
 static int st_geom, st_tex_new, st_imgs;
+/* P6: the real GPU draw calls. SDL puts draws after each other into one call while the texture stays the same;
+   a new texture, a clip change or another render target starts a new one. st_batch counts those starts */
+static int st_batch;
+static const void *bt_last = (const void *)-1;
+static inline void bt_note(const void *t) { if (t != bt_last) { st_batch++; bt_last = t; } }
+static inline void bt_break(void) { bt_last = (const void *)-1; }
+/* P3: the Pi 4's GPU is limited by fill rate - how many pixels are painted per frame. od_area sums the painted area
+   per kind (logged with Show FPS as overdraw = painted / screen pixels) */
+enum { OD_SOLID, OD_TEX, OD_9GRID, OD_N };
+static double od_area[OD_N];
+static void od_geom(int kind, const SDL_Vertex *v, int nv) {
+    if (nv <= 0) return;
+    float x0 = v[0].position.x, x1 = x0, y0 = v[0].position.y, y1 = y0;
+    for (int i = 1; i < nv; i++) {
+        if (v[i].position.x < x0) x0 = v[i].position.x;
+        if (v[i].position.x > x1) x1 = v[i].position.x;
+        if (v[i].position.y < y0) y0 = v[i].position.y;
+        if (v[i].position.y > y1) y1 = v[i].position.y;
+    }
+    od_area[kind] += (double)(x1 - x0) * (y1 - y0);
+}
+static void od_rect(int kind, const SDL_FRect *d) { od_area[kind] += d ? (double)d->w * d->h : (double)UI_W * UI_H; }
+void gfx_overdraw(double *solid, double *tex, double *grid) {
+    double px = (double)UI_W * UI_H;
+    *solid = od_area[OD_SOLID] / px; *tex = od_area[OD_TEX] / px; *grid = od_area[OD_9GRID] / px;
+    memset(od_area, 0, sizeof od_area);
+}
+#define RGEO(t, v, nv, ...) (st_geom++, bt_note(t), od_geom((t) ? OD_TEX : OD_SOLID, v, nv), SDL_RenderGeometry(R, t, v, nv, __VA_ARGS__))
+#define RTEX(t, src, dst) (bt_note(t), od_rect(OD_TEX, dst), SDL_RenderTexture(R, t, src, dst))
+#define RTEX9(t, src, a, b, c, d, sc, dst) (bt_note(t), od_rect(OD_9GRID, dst), SDL_RenderTexture9Grid(R, t, src, a, b, c, d, sc, dst))
+int gfx_batches(void) { int b = st_batch; st_batch = 0; return b; }
+/* every text atlas has a white 4 x 4 block at (0,0). A solid fill right after text from that atlas is drawn with the
+   atlas and the white block instead of no texture - same picture, but SDL can put the fill and the text around it into
+   one GPU call (on the home screen fills and text alternate: about 70 -> 40 calls a frame) */
+static SDL_Texture *bt_white_tex;
+static float bt_white_uv;
+static void solid_geom(SDL_Vertex *v, int nv, const int *idx, int ni) {
+    SDL_Texture *t = NULL;
+    if (bt_white_tex && bt_last == bt_white_tex) {
+        t = bt_white_tex;
+        SDL_SetTextureColorMod(t, 255, 255, 255); /* the text before it colored the atlas */
+        SDL_SetTextureAlphaMod(t, 255);
+        for (int i = 0; i < nv; i++) v[i].tex_coord = (SDL_FPoint){bt_white_uv, bt_white_uv};
+    }
+    RGEO(t, v, nv, idx, ni);
+}
 /* time per frame in texture work (slow-frame log): glyph uploads, image uploads, mip passes; counts */
 static Uint64 ft_glyph, ft_glyph_up, ft_img, ft_mip; static int fn_glyph, fn_img, fn_mip;
 void gfx_frame_times(double *glyph_ms, double *img_ms, double *mip_ms, int *n_glyph, int *n_img, int *n_mip) {
@@ -125,12 +171,14 @@ static inline SDL_FColor fcol(Color c) {
 static inline float snap(float v) { return roundf(v * g_scale) / g_scale; }
 
 /* ---------- Primitiver ---------- */
+static void solid_geom(SDL_Vertex *v, int nv, const int *idx, int ni);
+/* as geometry, not SDL_RenderFillRect: a fill-rect command always starts a new GPU call (P6) */
 void fill_rect(float x, float y, float w, float h, Color c) {
     if (c.a == 0 || w <= 0 || h <= 0) return;
-    c = out_col(c);
-    SDL_SetRenderDrawColor(R, c.r, c.g, c.b, c.a);
-    SDL_FRect rc = {x, y, w, h};
-    SDL_RenderFillRect(R, &rc);
+    SDL_FColor f = fcol(c);
+    SDL_Vertex v[4] = {{{x, y}, f, {0, 0}}, {{x + w, y}, f, {0, 0}}, {{x + w, y + h}, f, {0, 0}}, {{x, y + h}, f, {0, 0}}};
+    static const int idx[6] = {0, 1, 2, 0, 2, 3};
+    solid_geom(v, 4, idx, 6);
 }
 
 #define MAXV 512
@@ -206,7 +254,7 @@ void fill_rrect(float x, float y, float w, float h, float r, Color c) {
     int ni, nv = rrect_mesh(x, y, w, h, r, vx, vy, ibuf, &ni);
     SDL_FColor fc = fcol(c);
     for (int i = 0; i < nv; i++) vbuf[i] = (SDL_Vertex){{vx[i], vy[i]}, fc, {0, 0}};
-    st_geom++, SDL_RenderGeometry(R, NULL, vbuf, nv, ibuf, ni);
+    solid_geom(vbuf, nv, ibuf, ni);
 }
 
 void fill_rrect_vgrad(float x, float y, float w, float h, float r, Color top, Color bot) {
@@ -215,7 +263,7 @@ void fill_rrect_vgrad(float x, float y, float w, float h, float r, Color top, Co
     int ni, nv = rrect_mesh(x, y, w, h, r, vx, vy, ibuf, &ni);
     for (int i = 0; i < nv; i++)
         vbuf[i] = (SDL_Vertex){{vx[i], vy[i]}, fcol(color_mix(top, bot, (vy[i] - y) / h)), {0, 0}};
-    st_geom++, SDL_RenderGeometry(R, NULL, vbuf, nv, ibuf, ni);
+    solid_geom(vbuf, nv, ibuf, ni);
 }
 
 void stroke_rrect(float x, float y, float w, float h, float r, float t, Color c) {
@@ -239,7 +287,7 @@ void stroke_rrect(float x, float y, float w, float h, float r, float t, Color c)
         ibuf[ni++] = a; ibuf[ni++] = b; ibuf[ni++] = cc;
         ibuf[ni++] = b; ibuf[ni++] = d; ibuf[ni++] = cc;
     }
-    st_geom++, SDL_RenderGeometry(R, NULL, vbuf, 2 * n, ibuf, ni);
+    solid_geom(vbuf, 2 * n, ibuf, ni);
 }
 
 /* Vertical gradient without banding: computed once as a texture with ordered dithering - also in
@@ -280,13 +328,19 @@ void fill_vgrad_dither(float x, float y, float w, float h, Color top, Color bot)
             }
         }
         dg_tex = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, W, H);
-        if (dg_tex) { SDL_UpdateTexture(dg_tex, NULL, px, W * 4); SDL_SetTextureScaleMode(dg_tex, SDL_SCALEMODE_NEAREST); }
+        if (dg_tex) {
+            SDL_UpdateTexture(dg_tex, NULL, px, W * 4);
+            SDL_SetTextureScaleMode(dg_tex, SDL_SCALEMODE_NEAREST);
+            /* every pixel is opaque: no blending, so the GPU does not read what is underneath (P3 - the background
+               covers the whole screen in nearly every app, every frame) */
+            SDL_SetTextureBlendMode(dg_tex, SDL_BLENDMODE_NONE);
+        }
         free(px);
         dg_gen = g_generation; dg_w = W; dg_h = H; dg_top = top; dg_bot = bot; dg_hdr = g_hdr;
     }
     if (!dg_tex) { fill_vgrad(x, y, w, h, top, bot); return; }
     SDL_FRect dst = {x, y, w, h};
-    SDL_RenderTexture(R, dg_tex, NULL, &dst);
+    RTEX(dg_tex, NULL, &dst);
 }
 
 void fill_vgrad(float x, float y, float w, float h, Color top, Color bot) {
@@ -294,7 +348,7 @@ void fill_vgrad(float x, float y, float w, float h, Color top, Color bot) {
     SDL_Vertex v[4] = {{{x, y}, a, {0, 0}}, {{x + w, y}, a, {0, 0}},
                        {{x + w, y + h}, b, {0, 0}}, {{x, y + h}, b, {0, 0}}};
     int idx[6] = {0, 1, 2, 0, 2, 3};
-    st_geom++, SDL_RenderGeometry(R, NULL, v, 4, idx, 6);
+    solid_geom(v, 4, idx, 6);
 }
 
 void fill_hgrad(float x, float y, float w, float h, Color l, Color r) {
@@ -302,7 +356,7 @@ void fill_hgrad(float x, float y, float w, float h, Color l, Color r) {
     SDL_Vertex v[4] = {{{x, y}, a, {0, 0}}, {{x + w, y}, b, {0, 0}},
                        {{x + w, y + h}, b, {0, 0}}, {{x, y + h}, a, {0, 0}}};
     int idx[6] = {0, 1, 2, 0, 2, 3};
-    st_geom++, SDL_RenderGeometry(R, NULL, v, 4, idx, 6);
+    solid_geom(v, 4, idx, 6);
 }
 
 void fill_circle(float cx, float cy, float rad, Color c) {
@@ -312,7 +366,7 @@ void fill_circle(float cx, float cy, float rad, Color c) {
 void fill_tri(float x1, float y1, float x2, float y2, float x3, float y3, Color c) {
     SDL_FColor f = fcol(c);
     SDL_Vertex v[3] = {{{x1, y1}, f, {0, 0}}, {{x2, y2}, f, {0, 0}}, {{x3, y3}, f, {0, 0}}};
-    st_geom++, SDL_RenderGeometry(R, NULL, v, 3, NULL, 0);
+    solid_geom(v, 3, NULL, 0);
 }
 
 /* a soft shadow as one texture per (radius, spread), drawn as a 9-grid: one draw call instead of 6 overlapping
@@ -363,7 +417,7 @@ void draw_glow(float x, float y, float w, float h, float r, float spread, Color 
     SDL_SetTextureColorMod(t, o.r, o.g, o.b);
     SDL_SetTextureAlphaModFloat(t, alpha > 1 ? 1 : alpha);
     st_geom++;
-    SDL_RenderTexture9Grid(R, t, NULL, cc, cc, cc, cc, 1.0f, &d);
+    RTEX9(t, NULL, cc, cc, cc, cc, 1.0f, &d);
 }
 
 void draw_shadow(float x, float y, float w, float h, float r, float spread, float alpha) {
@@ -374,7 +428,7 @@ void draw_shadow(float x, float y, float w, float h, float r, float spread, floa
         SDL_FRect d = {x - si, y - si + spread * 0.35f, w + 2 * si, h + 2 * si};
         SDL_SetTextureAlphaModFloat(t, alpha);
         st_geom++;
-        SDL_RenderTexture9Grid(R, t, NULL, c, c, c, c, 1.0f, &d);
+        RTEX9(t, NULL, c, c, c, c, 1.0f, &d);
         return;
     }
     const int layers = 6;
@@ -396,11 +450,11 @@ void clip_push(float x, float y, float w, float h) {
         rc = out;
     }
     if (clip_n < 16) clip_stack[clip_n++] = rc;
-    SDL_SetRenderClipRect(R, &rc);
+    bt_break(), SDL_SetRenderClipRect(R, &rc);
 }
 void clip_pop(void) {
     if (clip_n > 0) clip_n--;
-    SDL_SetRenderClipRect(R, clip_n ? &clip_stack[clip_n - 1] : NULL);
+    bt_break(), SDL_SetRenderClipRect(R, clip_n ? &clip_stack[clip_n - 1] : NULL);
 }
 
 /* ---------- Layers: something that rarely changes is drawn once into a texture ----------
@@ -423,12 +477,12 @@ bool layer_begin(Layer *l) {
         l->gen = g_generation;
     }
     l->prev = SDL_GetRenderTarget(R);
-    SDL_SetRenderTarget(R, l->tex);
+    bt_break(), SDL_SetRenderTarget(R, l->tex);
     SDL_SetRenderDrawColor(R, 0, 0, 0, 0);
     SDL_RenderClear(R);
     return true;
 }
-void layer_end(Layer *l) { SDL_SetRenderTarget(R, l->prev); }
+void layer_end(Layer *l) { bt_break(), SDL_SetRenderTarget(R, l->prev); }
 void layer_set_opaque(Layer *l, bool on) { if (l) l->opaque = on; }
 void layer_draw(Layer *l, float x, float y, float alpha) {
     if (!layer_valid(l)) return;
@@ -436,7 +490,7 @@ void layer_draw(Layer *l, float x, float y, float alpha) {
     SDL_SetTextureBlendMode(l->tex, l->opaque && alpha >= 1 ? SDL_BLENDMODE_NONE : SDL_BLENDMODE_BLEND);
     SDL_SetTextureAlphaModFloat(l->tex, alpha);
     SDL_FRect d = {x, y, (float)l->w, (float)l->h};
-    SDL_RenderTexture(R, l->tex, NULL, &d);
+    RTEX(l->tex, NULL, &d);
 }
 void layer_free(Layer *l) {
     if (!l) return;
@@ -475,9 +529,9 @@ bool gfx_drift_begin(float x, float y, float w, float h) {
         st_tex_new++;
     }
     drift_prev = SDL_GetRenderTarget(R);
-    SDL_SetRenderTarget(R, drift_tex);
+    bt_break(), SDL_SetRenderTarget(R, drift_tex);
     SDL_SetRenderViewport(R, NULL);
-    SDL_SetRenderClipRect(R, NULL);
+    bt_break(), SDL_SetRenderClipRect(R, NULL);
     SDL_SetRenderDrawColor(R, 0, 0, 0, 0);
     SDL_RenderClear(R);
     SDL_SetRenderScale(R, g_scale, g_scale);
@@ -492,11 +546,11 @@ void gfx_drift_end(float ox, float oy) {
     if (!drift_on) return;
     drift_on = false;
     SDL_SetRenderViewport(R, NULL);
-    SDL_SetRenderTarget(R, drift_prev);
+    bt_break(), SDL_SetRenderTarget(R, drift_prev);
     SDL_FRect src = {0, 0, ceilf(drift_area.w * g_scale), ceilf(drift_area.h * g_scale)};
     SDL_FRect dst = {drift_area.x + ox, drift_area.y + oy, src.w / g_scale, src.h / g_scale};
     SDL_SetTextureAlphaModFloat(drift_tex, 1);
-    SDL_RenderTexture(R, drift_tex, &src, &dst);
+    RTEX(drift_tex, &src, &dst);
 }
 
 /* ---------- Text ---------- */
@@ -520,7 +574,10 @@ typedef struct {
     Kern kern[KERN_HASH];
     bool kused[KERN_HASH];
     float scale, ascent, lineh;
+    bool white; /* the white block is in the texture */
 } Atlas;
+#define WHITE_RES 6 /* (0,0)-(5,5): the white 4 x 4 block and its margin - glyphs never go there */
+static void atlas_pen_reset(Atlas *a) { a->pen_x = WHITE_RES; a->pen_y = 0; a->row_h = WHITE_RES; }
 static unsigned long atlas_tick;
 
 static stbtt_fontinfo fonts[F_COUNT];
@@ -595,13 +652,14 @@ static void atlas_flush_all(void) {
             SDL_Texture *nt = SDL_CreateTexture(R, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, a->sz, a->sz);
             if (nt) {
                 SDL_Texture *was = SDL_GetRenderTarget(R);
-                SDL_SetRenderTarget(R, nt);
+                bt_break(), SDL_SetRenderTarget(R, nt);
                 SDL_SetTextureBlendMode(a->tex, SDL_BLENDMODE_NONE);
                 SDL_SetTextureColorMod(a->tex, 255, 255, 255);
                 SDL_SetTextureAlphaMod(a->tex, 255);
                 SDL_FRect r = {0, 0, (float)a->tex_sz, (float)a->tex_sz};
-                SDL_RenderTexture(R, a->tex, &r, &r);
-                SDL_SetRenderTarget(R, was);
+                RTEX(a->tex, &r, &r);
+                bt_break(), SDL_SetRenderTarget(R, was);
+                if (bt_white_tex == a->tex) bt_white_tex = NULL;
                 SDL_DestroyTexture(a->tex);
                 SDL_SetTextureBlendMode(nt, SDL_BLENDMODE_BLEND);
                 SDL_SetTextureScaleMode(nt, SDL_SCALEMODE_LINEAR);
@@ -611,7 +669,7 @@ static void atlas_flush_all(void) {
             } else { /* no memory for a bigger one: start over at the old size */
                 atlas_drop_pending(a);
                 memset(a->used, 0, sizeof a->used);
-                a->pen_x = a->pen_y = a->row_h = 0;
+                atlas_pen_reset(a);
                 a->sz = a->tex_sz;
                 continue;
             }
@@ -623,6 +681,11 @@ static void atlas_flush_all(void) {
             SDL_SetTextureBlendMode(a->tex, SDL_BLENDMODE_BLEND);
             SDL_SetTextureScaleMode(a->tex, SDL_SCALEMODE_LINEAR);
             st_tex_new++;
+            static const uint32_t white[16] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
+                                               0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
+                                               0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
+            SDL_Rect wr = {0, 0, 4, 4};
+            a->white = SDL_UpdateTexture(a->tex, &wr, white, 16);
         }
         for (int i = 0; i < a->n_pend; i++) {
             GlyphUp *u = &a->pend[i];
@@ -636,7 +699,12 @@ static void atlas_flush_all(void) {
 }
 #define IMG_UP_BUDGET (2L << 20) /* image bytes uploaded per frame (more only for the first one) */
 static long g_up_bytes;
-void gfx_frame_begin(void) { atlas_flush_all(); g_up_bytes = 0; }
+void gfx_frame_begin(void) {
+    bt_white_tex = NULL; /* nothing from the last frame: the batches start over */
+    bt_break();
+    atlas_flush_all();
+    g_up_bytes = 0;
+}
 
 /* ---- text sizes learned across starts: their atlases are made in idle time after start (a new atlas costs
    5-15 ms on a Pi 4 - otherwise that lands in the frame where an app opens) ---- */
@@ -728,7 +796,7 @@ static Atlas *atlas_get_px(FontId f, int px) {
                 a->tex = NULL;
                 atlas_drop_pending(a);
                 memset(a->used, 0, sizeof a->used);
-                a->pen_x = a->pen_y = a->row_h = 0;
+                atlas_pen_reset(a);
                 a->gen = g_generation;
             }
             return a;
@@ -737,6 +805,7 @@ static Atlas *atlas_get_px(FontId f, int px) {
     if (n_atlas == MAX_ATLAS) { /* throw out the least recently used (not the oldest: that may be on screen) */
         int k = 0;
         for (int i = 1; i < n_atlas; i++) if (atlases[i]->last_used < atlases[k]->last_used) k = i;
+        if (bt_white_tex == atlases[k]->tex) bt_white_tex = NULL;
         if (atlases[k]->tex && atlases[k]->gen == g_generation) SDL_DestroyTexture(atlases[k]->tex);
         atlas_drop_pending(atlases[k]);
         free(atlases[k]->pend);
@@ -749,6 +818,7 @@ static Atlas *atlas_get_px(FontId f, int px) {
     a->px = px; a->font = f; a->gen = g_generation; a->last_used = atlas_tick;
     a->sz = px <= ATLAS_SMALL_PX ? 256 : 512; /* a new 1024 x 1024 texture costs 4-5 ms on a Pi 4, 512 x 512 about 1 ms */
     a->scale = stbtt_ScaleForPixelHeight(&fonts[f], (float)px);
+    atlas_pen_reset(a);
     int asc, desc, gap;
     stbtt_GetFontVMetrics(&fonts[f], &asc, &desc, &gap);
     a->ascent = asc * a->scale;
@@ -797,7 +867,7 @@ static Glyph *glyph_get(Atlas *a, uint32_t cp) {
                     SDL_Log("atlas fuld: font %d px %d", a->font, a->px);
                     atlas_drop_pending(a);
                     memset(a->used, 0, sizeof a->used);
-                    a->pen_x = a->pen_y = a->row_h = 0;
+                    atlas_pen_reset(a);
                     return glyph_get(a, cp);
                 }
                 Uint64 gt0 = SDL_GetTicksNS();
@@ -910,9 +980,10 @@ static void draw_run(Atlas *a, float x, float y, Color c, const char *s, const c
                 SDL_SetTextureAlphaMod(a->tex, c.a);
                 colored = a->tex;
             }
+            if (a->white && a->tex_sz == a->sz) { bt_white_tex = a->tex; bt_white_uv = 2.0f / (float)a->tex_sz; }
             SDL_FRect src = {g->x, g->y, g->w, g->h};
             SDL_FRect dst = {roundf(pen + g->xoff) / g_scale, (base + g->yoff) / g_scale, g->w / g_scale, g->h / g_scale};
-            SDL_RenderTexture(R, a->tex, &src, &dst);
+            RTEX(a->tex, &src, &dst);
         }
         pen += g->adv;
         prev = g->fb ? 0 : g->glyph;
@@ -1617,14 +1688,14 @@ static void draw_tex_rrect(SDL_Texture *t, float x, float y, float w, float h, f
         SDL_Vertex v[4] = {{{x, y}, fc, {u0, v0}}, {{x + w, y}, fc, {u1, v0}},
                            {{x + w, y + h}, fc, {u1, v1}}, {{x, y + h}, fc, {u0, v1}}};
         int idx[6] = {0, 1, 2, 0, 2, 3};
-        st_geom++, SDL_RenderGeometry(R, t, v, 4, idx, 6);
+        RGEO(t, v, 4, idx, 6);
         return;
     }
     float vx[64], vy[64];
     int ni, nv = rrect_mesh(x, y, w, h, r, vx, vy, ibuf, &ni);
     for (int i = 0; i < nv; i++)
         vbuf[i] = (SDL_Vertex){{vx[i], vy[i]}, fc, {u0 + (vx[i] - x) / w * (u1 - u0), v0 + (vy[i] - y) / h * (v1 - v0)}};
-    st_geom++, SDL_RenderGeometry(R, t, vbuf, nv, ibuf, ni);
+    RGEO(t, vbuf, nv, ibuf, ni);
 }
 
 /* an app's tile picture, first found of: icon.png in its installed package, the picture downloaded from the App
@@ -1700,8 +1771,8 @@ static SDL_Texture *img_tex_sized(Image *im, float dw, float dh) {
             SDL_Rect clip;
             bool clipped = SDL_RenderClipEnabled(R);
             if (clipped) SDL_GetRenderClipRect(R, &clip);
-            SDL_SetRenderTarget(R, m);
-            SDL_SetRenderClipRect(R, NULL);
+            bt_break(), SDL_SetRenderTarget(R, m);
+            bt_break(), SDL_SetRenderClipRect(R, NULL);
             SDL_SetRenderDrawColor(R, 0, 0, 0, 0);
             SDL_RenderClear(R);
             SDL_BlendMode bm;
@@ -1709,10 +1780,10 @@ static SDL_Texture *img_tex_sized(Image *im, float dw, float dh) {
             SDL_SetTextureBlendMode(t, SDL_BLENDMODE_NONE); /* a copy, alpha included */
             SDL_SetTextureAlphaModFloat(t, 1);
             SDL_SetTextureColorModFloat(t, 1, 1, 1);
-            SDL_RenderTexture(R, t, NULL, NULL);
+            RTEX(t, NULL, NULL);
             SDL_SetTextureBlendMode(t, bm);
-            SDL_SetRenderTarget(R, prev);
-            if (clipped) SDL_SetRenderClipRect(R, &clip);
+            bt_break(), SDL_SetRenderTarget(R, prev);
+            if (clipped) bt_break(), SDL_SetRenderClipRect(R, &clip);
             im->mip[k] = m;
             st_tex_new++;
             img_mem_update(im);
@@ -1881,7 +1952,7 @@ void draw_icon(IconId id, float cx, float cy, float s, Color c) {
             {{cx + h * 0.55f, cy}, f, {0, 0}}, {{cx - h * 0.55f + w * 1.6f, cy + h * 0.85f}, f, {0, 0}},
             {{cx - h * 0.55f, cy + h * 0.85f}, f, {0, 0}}, {{cx + h * 0.55f - w * 1.6f, cy}, f, {0, 0}}};
         int idx[12] = {0, 1, 5, 1, 2, 5, 5, 2, 3, 5, 3, 4};
-        st_geom++, SDL_RenderGeometry(R, NULL, v, 6, idx, 12);
+        solid_geom(v, 6, idx, 12);
         break;
     }
     case ICON_YOUTUBE:
@@ -1936,7 +2007,7 @@ void draw_icon(IconId id, float cx, float cy, float s, Color c) {
             SDL_Vertex v[4] = {{{x1 - t, y1 + t}, f, {0, 0}}, {{x1 + t, y1 - t}, f, {0, 0}},
                                {{x2 + t, y2 - t}, f, {0, 0}}, {{x2 - t, y2 + t}, f, {0, 0}}};
             int idx[6] = {0, 1, 2, 0, 2, 3};
-            st_geom++, SDL_RenderGeometry(R, NULL, v, 4, idx, 6);
+            solid_geom(v, 4, idx, 6);
         }
         break;
     case ICON_POWER:
@@ -1978,7 +2049,7 @@ void draw_icon(IconId id, float cx, float cy, float s, Color c) {
         SDL_Vertex v[6] = {{{ax, ay - t}, f, {0, 0}}, {{ax, ay + t}, f, {0, 0}}, {{bx, by - t * 1.6f}, f, {0, 0}},
                            {{bx, by + t * 1.4f}, f, {0, 0}}, {{ex, ey - t}, f, {0, 0}}, {{ex + t, ey + t}, f, {0, 0}}};
         int idx[12] = {0, 1, 3, 0, 3, 2, 2, 3, 5, 2, 5, 4};
-        st_geom++, SDL_RenderGeometry(R, NULL, v, 6, idx, 12);
+        solid_geom(v, 6, idx, 12);
         break;
     }
     case ICON_LOCK:

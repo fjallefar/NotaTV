@@ -3135,6 +3135,83 @@ static void plex_row_open(const HomeItem *it, int idx) { (void)idx; if (it->key)
 static void plex_app_apply(void) {
     plex_client_id(); /* made here on the main thread, never first from a worker */
 }
+/* ---------- the whole library for Channels (LibraryIface, runs in a job) ---------- */
+static cJSON *lib_get(const PSrv *sv, const char *path) {
+    char *url = str_printf("%s%s%sX-Plex-Token=%s", sv->uri, path, strchr(path, '?') ? "&" : "?", sv->token);
+    const char *hdr[] = {"Accept: application/json", NULL};
+    HttpBuf b;
+    memset(&b, 0, sizeof b);
+    cJSON *j = NULL;
+    if (http_request("GET", url, hdr, NULL, &b, 60) && b.status == 200 && b.data) j = cJSON_Parse(b.data);
+    http_free(&b);
+    free(url);
+    return j;
+}
+static const char *lib_str(const cJSON *o, const char *k) {
+    const char *v = cJSON_GetStringValue(cJSON_GetObjectItem(o, k));
+    return v ? v : "";
+}
+static const char *lib_first_genre(const cJSON *o) {
+    return lib_str(cJSON_GetArrayItem(cJSON_GetObjectItem(o, "Genre"), 0), "tag");
+}
+static int plex_library(LibItem **out) {
+    *out = NULL;
+    int n = 0;
+    PSrv srv[MAX_SRV];
+    int ns = nS;
+    memcpy(srv, S, sizeof S); /* a copy: the list can change on the main thread meanwhile */
+    for (int si = 0; si < ns; si++) {
+        const PSrv *sv = &srv[si];
+        if (!sv->enabled || !sv->uri[0]) continue;
+        cJSON *secs = lib_get(sv, "/library/sections");
+        const cJSON *d;
+        cJSON_ArrayForEach(d, cJSON_GetObjectItem(cJSON_GetObjectItem(secs, "MediaContainer"), "Directory")) {
+            const char *type = lib_str(d, "type"), *key = lib_str(d, "key");
+            char hid[40];
+            snprintf(hid, sizeof hid, ",%s,", key);
+            if (strstr(sv->hidden, hid) || (strcmp(type, "movie") && strcmp(type, "show"))) continue;
+            bool movie = !strcmp(type, "movie");
+            /* shows first: the episodes have no genre of their own */
+            char path[96];
+            cJSON *shows = NULL;
+            if (!movie) { snprintf(path, sizeof path, "/library/sections/%s/all?type=2", key); shows = lib_get(sv, path); }
+            snprintf(path, sizeof path, "/library/sections/%s/all?type=%d", key, movie ? 1 : 4);
+            cJSON *all = lib_get(sv, path);
+            const cJSON *m;
+            cJSON_ArrayForEach(m, cJSON_GetObjectItem(cJSON_GetObjectItem(all, "MediaContainer"), "Metadata")) {
+                const char *part = lib_str(cJSON_GetArrayItem(cJSON_GetObjectItem(cJSON_GetArrayItem(cJSON_GetObjectItem(m, "Media"), 0), "Part"), 0), "key");
+                double dur = json_num(m, "duration") / 1000;
+                if (!*part || dur < 60 || n >= 50000) continue;
+                *out = xrealloc(*out, sizeof **out * (n + 1));
+                LibItem *it = &(*out)[n++];
+                memset(it, 0, sizeof *it);
+                snprintf(it->title, sizeof it->title, "%s", lib_str(m, "title"));
+                it->movie = movie;
+                it->dur = dur;
+                it->year = (int)json_num(m, "year");
+                snprintf(it->url, sizeof it->url, "%s%s?X-Plex-Token=%s", sv->uri, part, sv->token);
+                if (movie) snprintf(it->genre, sizeof it->genre, "%s", lib_first_genre(m));
+                else {
+                    snprintf(it->series, sizeof it->series, "%s", lib_str(m, "grandparentTitle"));
+                    it->season = (int)json_num(m, "parentIndex");
+                    it->episode = (int)json_num(m, "index");
+                    const char *gk = lib_str(m, "grandparentRatingKey");
+                    const cJSON *sh;
+                    cJSON_ArrayForEach(sh, cJSON_GetObjectItem(cJSON_GetObjectItem(shows, "MediaContainer"), "Metadata"))
+                        if (!strcmp(lib_str(sh, "ratingKey"), gk)) { snprintf(it->genre, sizeof it->genre, "%s", lib_first_genre(sh)); break; }
+                }
+            }
+            cJSON_Delete(all);
+            cJSON_Delete(shows);
+        }
+        cJSON_Delete(secs);
+    }
+    explicit_bzero(srv, sizeof srv);
+    return n;
+}
+static bool plex_signed_in(void) { return n_enabled() > 0; }
+static const LibraryIface plex_lib_iface = {plex_signed_in, plex_library};
+
 const NotaApp nota_app = {
     NOTA_API, "plex", "Plex", N_("Movies and shows from your Plex server"), APP_VERSION, 20, 0,
     ICON_PLEX, {40, 40, 44, 255}, {22, 22, 26, 255}, {229, 160, 13, 255},
@@ -3142,4 +3219,5 @@ const NotaApp nota_app = {
     .settings = plex_items, .n_settings = sizeof plex_items / sizeof plex_items[0],
     .row_title = N_("Continue watching"), .shelf_label = N_("CONTINUE IN PLEX"),
     .row = plex_ondeck, .row_refresh = plex_refresh_ondeck, .row_open = plex_row_open,
+    .iface = &plex_lib_iface,
 };

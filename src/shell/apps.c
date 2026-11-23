@@ -463,6 +463,7 @@ void app_uninstall(const NotaApp *a) {
     gen++;
     if (a->apply) a->apply();
     if (a->forget) a->forget();
+    stats_forget(a->id);
     home_hidden_forget(a->id);
     for (int i = 0; a->settings && i < a->n_settings; i++) {
         const char *key = a->settings[i].key;

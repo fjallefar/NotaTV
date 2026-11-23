@@ -1,6 +1,6 @@
 {
   "id": "plex",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "api": 2,
   "name": "Plex",
   "desc": "Movies and shows from your Plex server",
@@ -11,10 +11,9 @@
   "order": 20,
   "default": true,
   "changes": {
-    "summary": "Safer with servers on your network",
+    "summary": "Your library can become TV channels",
     "points": [
-      "The subtitle help text points to Settings → Language and subtitles",
-      "A server address found on the network is only used when plex.tv lists it for your server"
+      "The Channels app can make TV channels from your Plex movies and shows"
     ]
   }
 }

@@ -1,0 +1,46 @@
+# NotaTV app "retro" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "All"
+msgstr "Alle"
+
+msgid "No games found"
+msgstr "Ingen spil fundet"
+
+msgid "Play your own NES, Game Boy and PlayStation games"
+msgstr "Spil dine egne NES-, Game Boy- og PlayStation-spil"
+
+msgid "Put your own games on a USB drive or a network drive, or in %s/roms. NES, Game Boy, Game Boy Advance and PlayStation games are found by themselves."
+msgstr "Læg dine egne spil på et USB-drev eller et netværksdrev, eller i %s/roms. NES-, Game Boy-, Game Boy Advance- og PlayStation-spil findes af sig selv."
+
+msgid "Retro games"
+msgstr "Retrospil"
+
+msgid "Retro games need a newer NotaTV"
+msgstr "Retrospil kræver en nyere NotaTV"
+
+msgid "RetroArch is missing"
+msgstr "RetroArch mangler"
+
+msgid "The game stopped - see /tmp/retroarch.log"
+msgstr "Spillet stoppede - se /tmp/retroarch.log"
+
+msgid "This package was built without RetroArch. Update the app from the App Store."
+msgstr "Denne pakke er bygget uden RetroArch. Opdatér appen fra App Store."
+
+msgid "This system is not in the package"
+msgstr "Denne konsol er ikke med i pakken"
+
+msgid "Retro games on NotaTV"
+msgstr "Retrospil på NotaTV"
+
+msgid "NES, Game Boy, Game Boy Advance and PlayStation with RetroArch"
+msgstr "NES, Game Boy, Game Boy Advance og PlayStation med RetroArch"
+
+msgid "Your own games from USB or network drives, with box art"
+msgstr "Dine egne spil fra USB- eller netværksdrev, med coverbilleder"
+
+msgid "Update NotaTV to use this app"
+msgstr "Opdatér NotaTV for at bruge denne app"

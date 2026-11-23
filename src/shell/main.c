@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <linux/kd.h>
 #include <math.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -78,7 +79,8 @@ void app_quit(void) { running = false; }
 float app_boot_time(void) { return boot_time; }
 int app_cfg_gen(void) { return ext_cfg_gen; }
 void app_cfg_changed(void) { ext_cfg_gen++; }
-void app_request_redraw(void) {}
+static double redraw_req_t = -100;
+void app_request_redraw(void) { redraw_req_t = app_time(); } /* something changed: full frame rate for a moment (P7) */
 
 static void toast_set(const char *fmt, va_list ap) {
     vsnprintf(toast_msg, sizeof toast_msg, fmt, ap);
@@ -939,6 +941,7 @@ static int script_wait;
 static void script_step(void) {
     if (!script_pos || !*script_pos) return;
     if (script_wait > 0) { script_wait--; return; }
+    if (script_pos[0] == 's' && script_pos[1] == ':') return; /* a screenshot: taken by the next frame that is drawn */
     char cmd[256];
     char *end = strchr(script_pos, ';');
     size_t n = end ? (size_t)(end - script_pos) : strlen(script_pos);
@@ -1034,21 +1037,29 @@ static void draw_toast(void) {
     text_draw(F_BOLD, 28, UI_W / 2, y + 16, color_alpha(C_TEXT, a), AL_CENTER, toast_msg);
 }
 
-static void draw_screensaver(float a) {
-    fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(255 * a)));
-    double t = app_time() - ss_t;
-    float x = UI_W / 2 + sinf((float)t * 0.05f) * 600, y = UI_H / 2 + sinf((float)t * 0.037f + 1) * 300;
-    time_t now = time(NULL);
-    struct tm tm;
-    localtime_r(&now, &tm);
-    char clk[16], date[64];
-    strftime(clk, sizeof clk, "%H:%M", &tm);
-    static const char *days[] = {N_("Sunday"), N_("Monday"), N_("Tuesday"), N_("Wednesday"), N_("Thursday"), N_("Friday"), N_("Saturday")};
-    static const char *mon[] = {N_("January"), N_("February"), N_("March"), N_("April"), N_("May"), N_("June"), N_("July"),
-                                N_("August"), N_("September"), N_("October"), N_("November"), N_("December")};
-    snprintf(date, sizeof date, T("%1$s, %3$s %2$d"), T(days[tm.tm_wday]), tm.tm_mday, T(mon[tm.tm_mon]));
-    text_draw(F_SEMI, 120, x, y - 90, RGBA(255, 255, 255, (uint8_t)(150 * a)), AL_CENTER, clk);
-    text_draw(F_REG, 36, x, y + 50, RGBA(255, 255, 255, (uint8_t)(110 * a)), AL_CENTER, date);
+static void draw_screensaver(float a) { screensaver_draw(a, app_time() - ss_t); } /* screensaver.c */
+
+/* ---------- P7: fewer frames while nobody uses the box ----------
+   After IDLE_S seconds without a key, and only when nothing on screen is moving because of us (no screen sliding in,
+   no toast/notification, no screensaver - it has its own pace), every other frame is skipped: 30 instead of 60
+   frames a second, so the GPU does half the work (heat, power). Animations keep running (at 30 fps); a key press
+   wakes the loop at once - the wait is a poll on the input devices - and the next frame is drawn normally. */
+#define IDLE_S 20.0
+static bool idle_skip_frame(double now) {
+    static unsigned long n;
+    static bool logged;
+    bool calm = now - fmax(input_last_activity(), 0) > IDLE_S && now - redraw_req_t > 1.0 && now - toast_t > 3.6 &&
+                !notify_active() && !screensaver && ss_fade < 0.003f && close_t < 0.01f && ui_dim < 0.003f &&
+                depth && stack[depth - 1]->anim >= 0.995f && !show_fps() && cfg_int("idle_30fps", 1);
+    if (!calm) { if (logged) { SDL_Log("idle: 60 fps igen"); logged = false; } return false; }
+    if (!logged) { SDL_Log("idle: ingen taster i %.0f s - 30 fps", IDLE_S); logged = true; }
+    if (++n % 2 == 0) return false; /* this one is drawn */
+    struct pollfd p[38];
+    int fds[38];
+    int nf = input_fds(fds, 38);
+    for (int i = 0; i < nf; i++) p[i] = (struct pollfd){fds[i], POLLIN, 0};
+    poll(p, (nfds_t)nf, 16); /* about one frame, shorter when a key comes */
+    return true;
 }
 
 /* ---------- FPS display (Settings → Advanced → Show FPS) ---------- */
@@ -1066,12 +1077,17 @@ static void fps_tick(void) {
         if (win_t0 > 0) {
             fps_now = (float)(frames / (now - win_t0));
             fps_worst_ms = (float)(worst * 1000);
-            int geom, tex_new, imgs;
+            int geom, tex_new, imgs, batches = gfx_batches();
+            double od_s, od_t, od_g;
+            gfx_overdraw(&od_s, &od_t, &od_g);
             gfx_stats(&geom, &tex_new, &imgs);
+            Screen *ts = app_top();
             if (show_fps())
-                SDL_Log("fps: %.1f, langsomste %.0f ms, cpu/billede %.1f ms, tegnekald/billede %d, billeder/billede %d, nye teksturer %d",
+                SDL_Log("fps: %.1f, langsomste %.0f ms, cpu/billede %.1f ms, tegnekald/billede %d, GPU-kald/billede %d, overdraw %.1f (flader %.1f, billeder/tekst %.1f, skygger %.1f), billeder/billede %d, nye teksturer %d (%s)",
                         fps_now, fps_worst_ms, draw_ms_sum / (frames ? frames : 1), geom / (frames ? frames : 1),
-                        imgs / (frames ? frames : 1), tex_new);
+                        batches / (frames ? frames : 1), (od_s + od_t + od_g) / (frames ? frames : 1), od_s / (frames ? frames : 1),
+                        od_t / (frames ? frames : 1), od_g / (frames ? frames : 1), imgs / (frames ? frames : 1), tex_new,
+                        ts && ts->name ? ts->name : "?");
             draw_ms_sum = 0;
         }
         win_t0 = now; frames = 0; worst = 0;
@@ -1094,7 +1110,7 @@ static void draw_frame(void) {
     else if (ui_rt) SDL_SetRenderTarget(ren, ui_rt);
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
-    if (screensaver && ss_fade >= 0.999f) { draw_screensaver(1); return; }
+    if (screensaver && ss_fade >= 0.999f) { draw_screensaver(1); notify_draw(); return; }
     int top = depth - 1;
     Screen *ts = stack[top];
     if (ts->anim < 0.995f && top > 0 && tx_ensure()) {
@@ -1136,6 +1152,7 @@ static void draw_frame(void) {
     draw_fps();
     if (ui_dim > 0.003f) fill_rect(0, 0, UI_W, UI_H, RGBA(0, 0, 0, (uint8_t)(ui_dim * 255)));
     if (ss_fade > 0.003f) draw_screensaver(ss_fade);
+    notify_draw(); /* also over the screensaver */
 }
 
 static void set_kd_graphics(void) {
@@ -1182,6 +1199,7 @@ int main(int argc, char **argv) {
     if (!SDL_Init(SDL_INIT_EVENTS)) { SDL_Log("SDL_Init: %s", SDL_GetError()); return 1; }
     t0 = SDL_GetTicks() / 1000.0;
     cfg_load();
+    stats_init();
     debug_log_apply(); /* troubleshooting log on: logs go to <data>/logs */
     lang_init(); /* language (before anything is shown) */
     tz_init();  /* time zone from the settings (before anything shows the clock) */
@@ -1293,6 +1311,8 @@ int main(int argc, char **argv) {
         if (!screensaver && ss_minutes > 0 && now - fmax(input_last_activity(), 0) > ss_minutes * 60.0 && depth >= 1) {
             screensaver = true;
             ss_t = now;
+            screensaver_begin();
+            stats_pause(true); /* idle time in an app does not count */
         }
 
         double ph2 = app_time();
@@ -1309,8 +1329,14 @@ int main(int argc, char **argv) {
             ss_fade = p * p * (3 - 2 * p);
         } else {
             ss_fade = anim_to(ss_fade, 0, dt, 16); /* quick fade back to the UI */
+            static bool ss_photos_left;
+            if (ss_fade > 0.003f) ss_photos_left = true;
+            stats_pause(false);
+            if (depth <= 1) stats_app_leave(); /* back on the home screen */
+            else if (ss_photos_left) { ss_photos_left = false; screensaver_end(); }
         }
         if (!ren) continue;
+        if (idle_skip_frame(now)) continue;
         double t_draw = app_time();
         double ph3 = t_draw;
         frame_no++;
@@ -1348,7 +1374,7 @@ int main(int argc, char **argv) {
             FILE *b = fopen("/tmp/notatv-boottime", "w");
             if (b) { fprintf(b, "%.2f\n", boot_time); fclose(b); }
         }
-        bool ss_idle = screensaver && ss_fade >= 0.999f; /* full frame rate while it glides in/out */
+        bool ss_idle = screensaver && ss_fade >= 0.999f && !screensaver_animated(); /* full frame rate while it glides in/out */
         if (!target_mode) SDL_Delay(ss_idle ? 50 : 1);
         else if (ss_idle) SDL_Delay(100);
         img_cache_trim();

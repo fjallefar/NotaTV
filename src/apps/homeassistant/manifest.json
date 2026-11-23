@@ -1,0 +1,20 @@
+{
+  "id": "homeassistant",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Home Assistant",
+  "desc": "Lights, heat and scenes in your home - and its messages on the TV",
+  "icon": "tv",
+  "c1": [65, 189, 245],
+  "c2": [20, 110, 180],
+  "fg": [255, 255, 255],
+  "order": 86,
+  "default": false,
+  "changes": {
+    "summary": "Home Assistant on NotaTV",
+    "points": [
+      "Lights, switches, climate and scenes by room",
+      "Messages from your automations on the TV"
+    ]
+  }
+}

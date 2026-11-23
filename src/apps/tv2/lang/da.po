@@ -308,11 +308,11 @@ msgstr "Søg…"
 msgid "Clear history"
 msgstr "Ryd historik"
 
-msgid "A reserve address for the Widevine download"
-msgstr "En reserveadresse til Widevine"
 
-msgid "If Raspberry Pi's main archive is down, Widevine is fetched from their other archive"
-msgstr "Er Raspberry Pis hovedarkiv nede, hentes Widevine fra deres andet arkiv"
 
-msgid "Messages on empty screens are centered under their heading"
-msgstr "Beskeder på tomme skærme står centreret under overskriften"
+
+msgid "Smoother scrolling"
+msgstr "Mere flydende rulning"
+
+msgid "The background is drawn once instead of every frame, so the Raspberry Pi 4 has more time for scrolling"
+msgstr "Baggrunden tegnes én gang i stedet for i hvert billede, så Raspberry Pi 4 har mere tid til at rulle"

@@ -785,7 +785,9 @@ PlayResult player_run(const PlayRequest *rq) {
     char *qmusic = str_printf("%s/music", helper_path()), *qm = shell_quote(qmusic);
     free(qmusic);
     run_cmd("%s pause >/dev/null 2>&1 &", qm);
+    double t_play = app_time();
     PlayResult res = player_run_inner(rq);
+    if (!res.cancelled) stats_played(rq->title, rq->subtitle, app_time() - t_play);
     pact.n = 0;
     run_cmd("%s resume >/dev/null 2>&1 &", qm);
     free(qm);

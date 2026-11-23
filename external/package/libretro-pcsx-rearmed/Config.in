@@ -1,0 +1,5 @@
+config BR2_PACKAGE_LIBRETRO_PCSX_REARMED
+	bool "libretro-pcsx-rearmed"
+	help
+	  PCSX ReARMed (GPL-2.0) libretro core: PlayStation 1, with the
+	  ARM64 dynarec. For the app "retro".

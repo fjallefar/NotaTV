@@ -363,11 +363,11 @@ msgstr "Afsnit, markér sæsonen som set"
 msgid "Play, mark as watched"
 msgstr "Afspil, markér som set"
 
-msgid "The subtitle help text points to Settings → Language and subtitles"
-msgstr "Hjælpeteksten om undertekster peger på Indstillinger → Sprog og undertekster"
 
-msgid "A server address found on the network is only used when plex.tv lists it for your server"
-msgstr "En serveradresse fundet på netværket bruges kun, når plex.tv har den på listen for din server"
 
-msgid "Safer with servers on your network"
-msgstr "Sikrere med servere på dit netværk"
+
+msgid "Your library can become TV channels"
+msgstr "Dit bibliotek kan blive til tv-kanaler"
+
+msgid "The Channels app can make TV channels from your Plex movies and shows"
+msgstr "Kanaler-appen kan lave tv-kanaler af dine film og serier i Plex"

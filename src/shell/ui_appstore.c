@@ -397,7 +397,7 @@ static void installed_menu(void *ud, int idx) {
     const NotaApp *a = app_find(pending_id);
     if (!a || idx < 0 || idx > 2) return;
     switch (menu_kind[idx]) {
-    case M_OPEN: { Screen *sc = a->open ? a->open() : NULL; if (sc) app_push(sc); break; }
+    case M_OPEN: { Screen *sc = a->open ? a->open() : NULL; if (sc) { stats_app_enter(a->id); app_push(sc); } break; }
     case M_UPDATE: { const CatApp *c = appcat_find(a->id); if (c) ask_update(a, c); break; }
     default: {
         char t[160];

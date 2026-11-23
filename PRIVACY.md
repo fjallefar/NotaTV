@@ -25,6 +25,11 @@ The box only contacts outside services when you use a feature, with one exceptio
 | netflix.com (public top 10 data file) | Seerr → Netflix top 10 |
 | Your Flimmertv server (local network), TMDB images | Flimmer |
 | Your IPTV provider | Live TV |
+| Your Immich server | Immich, and the screensaver's photos when Immich is signed in |
+| Your Home Assistant (REST API with your access token) | Home Assistant (every 4 s while the app is open; the notification helper every 5 s while it is installed), Cameras |
+| Your RTSP cameras | Cameras (a snapshot every few seconds while the app is open, live on OK) |
+| Your Plex and Jellyfin servers | Channels (the whole library, at most every 6 hours, kept in memory only) |
+| raw.githubusercontent.com (libretro-thumbnails) | Retro games: box art by the game's file name |
 | radio-browser.info and the radio stations' own servers | Radio (station lists, logos, the stream) |
 | api.open-meteo.com, geocoding-api.open-meteo.com | Weather (every 20 minutes; the town search) |
 | api.energidataservice.dk | Electricity price (prices at startup, every 6 hours and at 13:15; grid tariffs every 6 hours) |
@@ -35,3 +40,5 @@ The box only contacts outside services when you use a feature, with one exceptio
 | api.github.com, github.com | Updates, the App Store and its tools (yt-dlp and Node.js for YouTube) |
 | pool.ntp.org | Setting the clock at startup |
 | notatv-stats.notaapp.workers.dev (our own Cloudflare Worker, `server/stats`) | Anonymous usage count: once a day only the version number (e.g. `1.0.27`). No box id, account or settings, and the Worker stores no IP address. Turn it off under *Settings → System → Send anonymous usage count* |
+
+**Viewing statistics (*Settings → System → Your viewing*)** are only kept on the box (`/data/notatv/stats.log`, two years): which app you used for how long, and the title and series/channel of what you played. They are never sent anywhere. Signing out of an app or uninstalling it deletes its lines; *Keep viewing statistics* off deletes everything and stops it.

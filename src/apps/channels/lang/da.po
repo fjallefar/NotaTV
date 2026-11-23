@@ -1,0 +1,70 @@
+# NotaTV app "channels" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "A channel needs at least 8 movies of a genre or decade, or a series with 15 episodes."
+msgstr "En kanal kræver mindst 8 film i en genre eller et årti, eller en serie med 15 afsnit."
+
+msgid "All movies"
+msgstr "Alle film"
+
+msgid "Cancel"
+msgstr "Annuller"
+
+msgid "Channels"
+msgstr "Kanaler"
+
+msgid "Channels are made from your movies and shows in Plex or Jellyfin. Install one of them and sign in."
+msgstr "Kanalerne laves af dine film og serier i Plex eller Jellyfin. Installér en af dem, og log ind."
+
+msgid "%d's movies"
+msgstr "%d'er-film"
+
+msgid "Hide"
+msgstr "Skjul"
+
+msgid "Hide channel"
+msgstr "Skjul kanal"
+
+msgid "Hide %s?"
+msgstr "Skjul %s?"
+
+msgid "It can be shown again at the top of Channels."
+msgstr "Den kan vises igen øverst i Kanaler."
+
+msgid "Making your channels…"
+msgstr "Laver dine kanaler…"
+
+msgid "Next"
+msgstr "Næste"
+
+msgid "No library yet"
+msgstr "Intet bibliotek endnu"
+
+msgid "Not enough for a channel"
+msgstr "Ikke nok til en kanal"
+
+msgid "Show hidden channels"
+msgstr "Vis skjulte kanaler"
+
+msgid "Update channels"
+msgstr "Opdatér kanaler"
+
+msgid "Updating the channels from your library"
+msgstr "Opdaterer kanalerne fra dit bibliotek"
+
+msgid "Your own TV channels from your movies and shows"
+msgstr "Dine egne tv-kanaler af dine film og serier"
+
+msgid "Channels on NotaTV"
+msgstr "Kanaler på NotaTV"
+
+msgid "Your Plex and Jellyfin library as TV channels that are already running"
+msgstr "Dit Plex- og Jellyfin-bibliotek som tv-kanaler, der allerede kører"
+
+msgid "Zap with up and down like in Live TV"
+msgstr "Zap med op og ned som i Live TV"
+
+msgid "Update NotaTV to use this app"
+msgstr "Opdatér NotaTV for at bruge denne app"

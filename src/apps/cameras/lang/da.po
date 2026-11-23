@@ -1,0 +1,88 @@
+# NotaTV app "cameras" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Add camera"
+msgstr "Tilføj kamera"
+
+msgid "Camera added"
+msgstr "Kameraet er tilføjet"
+
+msgid "Camera name"
+msgstr "Kameraets navn"
+
+msgid "Cameras"
+msgstr "Kameraer"
+
+msgid "Cameras from Home Assistant show up here by themselves, or add an RTSP camera with Add camera above."
+msgstr "Kameraer fra Home Assistant dukker selv op her, eller tilføj et RTSP-kamera med Tilføj kamera ovenfor."
+
+msgid "Cancel"
+msgstr "Annuller"
+
+msgid "Doorbell: off"
+msgstr "Dørklokke: fra"
+
+msgid "Doorbell: on"
+msgstr "Dørklokke: til"
+
+msgid "Doorbell set up"
+msgstr "Dørklokken er sat op"
+
+msgid "Doorbell turned off"
+msgstr "Dørklokken er slået fra"
+
+msgid "Doorbell: which sensor turns on when someone rings?"
+msgstr "Dørklokke: hvilken sensor tænder, når nogen ringer?"
+
+msgid "Home Assistant has no cameras"
+msgstr "Home Assistant har ingen kameraer"
+
+msgid "LIVE"
+msgstr "LIVE"
+
+msgid "Live pictures from your cameras and who is at the door"
+msgstr "Live-billeder fra dine kameraer og hvem der står ved døren"
+
+msgid "No cameras yet"
+msgstr "Ingen kameraer endnu"
+
+msgid "No doorbell"
+msgstr "Ingen dørklokke"
+
+msgid "Remove"
+msgstr "Fjern"
+
+msgid "Remove camera"
+msgstr "Fjern kamera"
+
+msgid "Remove %s?"
+msgstr "Fjern %s?"
+
+msgid "RTSP address (rtsp://user:password@192.168.1.20:554/stream1)"
+msgstr "RTSP-adresse (rtsp://bruger:kode@192.168.1.20:554/stream1)"
+
+msgid "Someone is at the door"
+msgstr "Der er nogen ved døren"
+
+msgid "The camera is removed from NotaTV (not from the camera itself)."
+msgstr "Kameraet fjernes fra NotaTV (ikke fra selve kameraet)."
+
+msgid "The doorbell needs the Home Assistant app, signed in"
+msgstr "Dørklokken kræver Home Assistant-appen, logget ind"
+
+msgid "Which camera shows who is there?"
+msgstr "Hvilket kamera viser, hvem der står der?"
+
+msgid "Cameras on NotaTV"
+msgstr "Kameraer på NotaTV"
+
+msgid "Cameras from Home Assistant and your own RTSP cameras"
+msgstr "Kameraer fra Home Assistant og dine egne RTSP-kameraer"
+
+msgid "A small live picture when someone rings the doorbell"
+msgstr "Et lille live-billede, når nogen ringer på"
+
+msgid "Update NotaTV to use this app"
+msgstr "Opdatér NotaTV for at bruge denne app"

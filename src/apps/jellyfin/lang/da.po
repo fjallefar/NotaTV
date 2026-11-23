@@ -264,8 +264,6 @@ msgstr "Afspil, markér som set"
 msgid "Episodes"
 msgstr "Afsnit"
 
-msgid "The subtitle help text points to Settings → Language and subtitles"
-msgstr "Hjælpeteksten om undertekster peger på Indstillinger → Sprog og undertekster"
 
 msgid "Sign in to %s?"
 msgstr "Log ind på %s?"
@@ -279,14 +277,12 @@ msgstr "Dit brugernavn og din adgangskode sendes til denne server. Vælg kun en 
 msgid "Your username and password are sent to this server. Only choose a server you know. The connection on your network is not encrypted (http)."
 msgstr "Dit brugernavn og din adgangskode sendes til denne server. Vælg kun en server, du kender. Forbindelsen på dit netværk er ikke krypteret (http)."
 
-msgid "Passwords are cleared from memory after sign-in"
-msgstr "Adgangskoder slettes fra hukommelsen efter login"
 
-msgid "Asks before your login is sent to a server found on the network"
-msgstr "Spørger, før dit login sendes til en server fundet på netværket"
 
-msgid "Safer sign-in"
-msgstr "Sikrere login"
 
-msgid "Messages on empty screens are centered under their heading"
-msgstr "Beskeder på tomme skærme står centreret under overskriften"
+
+msgid "Your library can become TV channels"
+msgstr "Dit bibliotek kan blive til tv-kanaler"
+
+msgid "The Channels app can make TV channels from your Jellyfin movies and shows"
+msgstr "Kanaler-appen kan lave tv-kanaler af dine film og serier i Jellyfin"

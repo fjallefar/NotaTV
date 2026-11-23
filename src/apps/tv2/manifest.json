@@ -1,6 +1,6 @@
 {
   "id": "tv2",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "api": 2,
   "name": "TV 2 Play",
   "desc": "Streaming from TV 2 Play (Widevine)",
@@ -15,10 +15,9 @@
     "wvserve"
   ],
   "changes": {
-    "summary": "A reserve address for the Widevine download",
+    "summary": "Smoother scrolling",
     "points": [
-      "If Raspberry Pi's main archive is down, Widevine is fetched from their other archive",
-      "Messages on empty screens are centered under their heading"
+      "The background is drawn once instead of every frame, so the Raspberry Pi 4 has more time for scrolling"
     ]
   }
 }

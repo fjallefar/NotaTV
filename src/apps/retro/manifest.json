@@ -1,0 +1,23 @@
+{
+  "id": "retro",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Retro games",
+  "desc": "Play your own NES, Game Boy and PlayStation games",
+  "icon": "star",
+  "c1": [235, 120, 40],
+  "c2": [160, 50, 120],
+  "fg": [255, 255, 255],
+  "order": 82,
+  "default": false,
+  "helpers": [
+    "retroarch"
+  ],
+  "changes": {
+    "summary": "Retro games on NotaTV",
+    "points": [
+      "NES, Game Boy, Game Boy Advance and PlayStation with RetroArch",
+      "Your own games from USB or network drives, with box art"
+    ]
+  }
+}

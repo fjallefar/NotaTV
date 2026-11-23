@@ -1936,11 +1936,30 @@ static void draw_tv2_topbar(const char *title) {
     text_draw(F_SEMI, 34, UI_W - 96, 62, TV2_TEXT, AL_RIGHT, clk);
 }
 
-static void draw_tv2_bg(void) {
+static void paint_tv2_bg(void) {
     fill_rect(0, 0, UI_W, UI_H, TV2_MIDNIGHT);
     fill_circle(150, 40, 520, RGBA(240, 40, 30, 16));
     fill_circle(UI_W - 80, UI_H - 60, 620, RGBA(90, 30, 140, 14));
     fill_rrect_vgrad(0, 0, UI_W, 230, 0, RGBA(0, 5, 35, 220), RGBA(0, 5, 35, 0));
+}
+/* P3: the background never changes, but painting it is ~2.5 screens of blended pixels a frame (two huge faint circles
+   over a full fill) - heavy for the Pi 4's GPU while scrolling. Painted once into a layer, then copied without
+   blending: one screen of pixels. Painted again after the renderer is set up anew or when HDR changes the colors */
+static Layer *bg_layer;
+static int bg_hdr = -1;
+static void draw_tv2_bg(void) {
+    if (!bg_layer) {
+        bg_layer = layer_new(UI_W, UI_H);
+        layer_set_opaque(bg_layer, true);
+    }
+    int hdr = gfx_get_hdr();
+    if ((!layer_valid(bg_layer) || hdr != bg_hdr) && layer_begin(bg_layer)) {
+        paint_tv2_bg();
+        layer_end(bg_layer);
+        bg_hdr = hdr;
+    }
+    if (layer_valid(bg_layer)) layer_draw(bg_layer, 0, 0, 1);
+    else paint_tv2_bg();
 }
 
 static void draw_label_chip(const char *text, const char *hex, float x, float y) {
@@ -2599,6 +2618,8 @@ static void tv2_resume(Screen *s) {
 
 static void tv2_destroy(Screen *s) {
     Tv2 *v = s->st;
+    layer_free(bg_layer); /* 8 MB of GPU memory while TV 2 is closed */
+    bg_layer = NULL;
     clear_hero(v);
     clear_sections(v);
     if (live == v) live = NULL;

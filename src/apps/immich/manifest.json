@@ -1,0 +1,20 @@
+{
+  "id": "immich",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Immich",
+  "desc": "Your photos and videos from your own Immich server",
+  "icon": "star",
+  "c1": [66, 80, 175],
+  "c2": [30, 38, 110],
+  "fg": [255, 255, 255],
+  "order": 88,
+  "default": false,
+  "changes": {
+    "summary": "Immich on NotaTV",
+    "points": [
+      "On this day, recent photos, albums and people",
+      "Slideshow with the Play key"
+    ]
+  }
+}

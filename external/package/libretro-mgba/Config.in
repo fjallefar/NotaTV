@@ -1,0 +1,5 @@
+config BR2_PACKAGE_LIBRETRO_MGBA
+	bool "libretro-mgba"
+	help
+	  mGBA (MPL-2.0) libretro core: Game Boy, Game Boy Color, Game Boy
+	  Advance. For the app "retro".

@@ -1,0 +1,88 @@
+# NotaTV app "immich" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "1 year ago"
+msgstr "For 1 år siden"
+
+msgid "Albums"
+msgstr "Album"
+
+msgid "API key (Immich → Account settings → API keys)"
+msgstr "API-nøgle (Immich → Kontoindstillinger → API-nøgler)"
+
+msgid "Cannot reach the Immich server"
+msgstr "Kan ikke få forbindelse til Immich-serveren"
+
+msgid "Check that the server is on, or sign in again under Settings → Apps → Immich."
+msgstr "Tjek at serveren er tændt, eller log ind igen under Indstillinger → Apps → Immich."
+
+msgid "%d items"
+msgstr "%d elementer"
+
+msgid "%d years ago"
+msgstr "For %d år siden"
+
+msgid "Immich server address (e.g. 192.168.1.10:2283)"
+msgstr "Immich-serverens adresse (fx 192.168.1.10:2283)"
+
+msgid "Nothing from this day"
+msgstr "Intet fra denne dag"
+
+msgid "Nothing here yet"
+msgstr "Intet her endnu"
+
+msgid "On this day"
+msgstr "På denne dag"
+
+msgid "People"
+msgstr "Personer"
+
+msgid "Photos taken on this date in earlier years show up here."
+msgstr "Billeder taget på denne dato i tidligere år vises her."
+
+msgid "Press OK to type the server address and an API key."
+msgstr "Tryk OK for at skrive serverens adresse og en API-nøgle."
+
+msgid "Recent"
+msgstr "Seneste"
+
+msgid "Server"
+msgstr "Server"
+
+msgid "Sign in"
+msgstr "Log ind"
+
+msgid "Sign in to Immich"
+msgstr "Log ind på Immich"
+
+msgid "Sign out of Immich"
+msgstr "Log ud af Immich"
+
+msgid "Slideshow"
+msgstr "Lysbilledshow"
+
+msgid "Slideshow stopped"
+msgstr "Lysbilledshow stoppet"
+
+msgid "The API key was not accepted"
+msgstr "API-nøglen blev ikke godkendt"
+
+msgid "Your photos and videos from your own Immich server"
+msgstr "Dine billeder og videoer fra din egen Immich-server"
+
+msgid "You need your Immich server's address and an API key (Immich → Account settings → API keys). Both can be typed from your phone."
+msgstr "Du skal bruge din Immich-servers adresse og en API-nøgle (Immich → Kontoindstillinger → API-nøgler). Begge kan skrives fra din telefon."
+
+msgid "On this day, recent photos, albums and people"
+msgstr "På denne dag, seneste billeder, album og personer"
+
+msgid "Slideshow with the Play key"
+msgstr "Lysbilledshow med Play-knappen"
+
+msgid "Immich on NotaTV"
+msgstr "Immich på NotaTV"
+
+msgid "Update NotaTV to use this app"
+msgstr "Opdatér NotaTV for at bruge denne app"

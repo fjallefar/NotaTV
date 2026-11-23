@@ -1,0 +1,112 @@
+# NotaTV app "homeassistant" - Danish
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "%.1f° now"
+msgstr "%.1f° nu"
+
+msgid "%.1f° now · set to %.1f°"
+msgstr "%.1f° nu · sat til %.1f°"
+
+msgid "All"
+msgstr "Alle"
+
+msgid "An automation sets the helper input_text.notatv_notify to a text, and the TV shows it"
+msgstr "En automatisering sætter hjælperen input_text.notatv_notify til en tekst, og tv'et viser den"
+
+msgid "Brightness"
+msgstr "Lysstyrke"
+
+msgid "Cannot reach Home Assistant"
+msgstr "Kan ikke få forbindelse til Home Assistant"
+
+msgid "Check that it is on, or sign in again under Settings → Apps → Home Assistant."
+msgstr "Tjek at den er tændt, eller log ind igen under Indstillinger → Apps → Home Assistant."
+
+msgid "Closed"
+msgstr "Lukket"
+
+msgid "Closed / quiet"
+msgstr "Lukket / roligt"
+
+msgid "Connect Home Assistant"
+msgstr "Forbind Home Assistant"
+
+msgid "Home Assistant address (e.g. homeassistant.local:8123)"
+msgstr "Home Assistants adresse (fx homeassistant.local:8123)"
+
+msgid "Lights, heat and scenes in your home - and its messages on the TV"
+msgstr "Lys, varme og scener i dit hjem - og dets beskeder på tv'et"
+
+msgid "Lights, switches, climate, scenes and a few sensors show up here."
+msgstr "Lys, kontakter, klima, scener og nogle sensorer vises her."
+
+msgid "Locked"
+msgstr "Låst"
+
+msgid "Long-lived access token (your profile in Home Assistant → Security)"
+msgstr "Langtids-adgangstoken (din profil i Home Assistant → Sikkerhed)"
+
+msgid "Not available"
+msgstr "Ikke tilgængelig"
+
+msgid "Nothing to show here"
+msgstr "Intet at vise her"
+
+msgid "Notifications on the TV"
+msgstr "Beskeder på tv'et"
+
+msgid "Off"
+msgstr "Slukket"
+
+msgid "On"
+msgstr "Tændt"
+
+msgid "On · %d %%"
+msgstr "Tændt · %d %%"
+
+msgid "Open"
+msgstr "Åben"
+
+msgid "Open / active"
+msgstr "Åben / aktiv"
+
+msgid "Press OK to start"
+msgstr "Tryk OK for at starte"
+
+msgid "Press OK to type the address and an access token."
+msgstr "Tryk OK for at skrive adressen og et adgangstoken."
+
+msgid "Server"
+msgstr "Server"
+
+msgid "Sign in"
+msgstr "Log ind"
+
+msgid "Sign out of Home Assistant"
+msgstr "Log ud af Home Assistant"
+
+msgid "%s started"
+msgstr "%s er startet"
+
+msgid "The access token was not accepted"
+msgstr "Adgangstokenet blev ikke godkendt"
+
+msgid "Unlocked"
+msgstr "Ulåst"
+
+msgid "You need the address of your Home Assistant and a long-lived access token (your profile → Security). Both can be typed from your phone."
+msgstr "Du skal bruge adressen på din Home Assistant og et langtids-adgangstoken (din profil → Sikkerhed). Begge kan skrives fra din telefon."
+
+msgid "Home Assistant on NotaTV"
+msgstr "Home Assistant på NotaTV"
+
+msgid "Lights, switches, climate and scenes by room"
+msgstr "Lys, kontakter, klima og scener pr. rum"
+
+msgid "Messages from your automations on the TV"
+msgstr "Beskeder fra dine automatiseringer på tv'et"
+
+msgid "Update NotaTV to use this app"
+msgstr "Opdatér NotaTV for at bruge denne app"

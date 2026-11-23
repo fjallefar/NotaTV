@@ -9,6 +9,10 @@ TVSHELL_SITE = $(BR2_EXTERNAL_NOTATV_PATH)/../src/shell
 TVSHELL_SITE_METHOD = local
 TVSHELL_LICENSE = MIT
 TVSHELL_DEPENDENCIES = sdl3 libcurl libdrm zlib dbus libupnp host-pkgconf
+# the app "retro" carries RetroArch and the cores (built into staging first)
+TVSHELL_DEPENDENCIES += $(if $(BR2_PACKAGE_RETROARCH),retroarch) $(if $(BR2_PACKAGE_LIBRETRO_FCEUMM),libretro-fceumm) \
+	$(if $(BR2_PACKAGE_LIBRETRO_MGBA),libretro-mgba) $(if $(BR2_PACKAGE_LIBRETRO_PCSX_REARMED),libretro-pcsx-rearmed) \
+	$(if $(BR2_PACKAGE_RETROARCH_JOYPAD_AUTOCONFIG),retroarch-joypad-autoconfig)
 
 define TVSHELL_BUILD_CMDS
 	$(MAKE) -C $(@D) clean
@@ -29,6 +33,7 @@ define TVSHELL_BUILD_CMDS
 		LDFLAGS="$(TARGET_LDFLAGS)" \
 		PKG_CONFIG="$(PKG_CONFIG_HOST_BINARY)" \
 		SHELL_DIR="$(@D)" \
+		RETRO_STAGE="$(STAGING_DIR)/usr/lib/notatv-retro" \
 		SECRETS="$(BR2_EXTERNAL_NOTATV_PATH)/../secrets" \
 		OUT="$(@D)/apps-out"
 endef

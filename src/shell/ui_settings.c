@@ -360,6 +360,8 @@ static void signout_confirmed(void *ud, bool yes) {
     (void)ud;
     if (!yes || !signout_fn) return;
     signout_fn();
+    for (int i = 0; i < app_count(); i++) /* its viewing statistics go too */
+        if (app_at(i)->forget == signout_fn) stats_forget(app_at(i)->id);
     app_toast(T("Signed out of %s"), signout_app);
 }
 void app_ask_signout(const char *app, void (*fn)(void)) {
@@ -538,6 +540,13 @@ static const char *dst_note(void) {
     const char *z = cfg_get("tz_zone", "");
     return *z && !tz_zone_has_dst(z) ? T("This region has no daylight saving time") : "";
 }
+static void act_stats(void) { app_push(stats_screen()); }
+static void stats_toggled(void) { if (!cfg_int("stats_on", 1)) stats_forget_all(); }
+/* the photo choice only when Immich is signed in (there are no photos to show otherwise) */
+static const char *ss_photos_locked(void) {
+    const ImmichIface *im = app_iface("immich");
+    return im && im->signed_in() ? NULL : ITEM_HIDDEN;
+}
 static const char *dst_note_off(void) { return *dst_note() ? NULL : ITEM_HIDDEN; } /* no empty row in the list */
 static void act_tz(void) { tz_pick(NULL, NULL); }
 static void act_setup(void) { app_push(setup_screen()); }
@@ -604,6 +613,8 @@ static const Item sys_items[] = {
      .help = N_("On: the clock switches between summer and winter time by the region's rules. Off: standard time all year")},
     {"", IT_INFO, .value = dst_note, .locked = dst_note_off},
     {N_("Screensaver"), IT_CYCLE, "screensaver_min", "10", ss_o, ss_l},
+    {N_("Photos in the screensaver"), IT_TOGGLE, "screensaver_photos", "1", onoff, .locked = ss_photos_locked,
+     .help = N_("Random photos from Immich instead of the clock on black")},
     {N_("Automatic sleep"), IT_CYCLE, "auto_sleep", "4", as_o, as_l,
      .help = N_("When no key has been pressed for this long, the box and the TV go to sleep (after a warning). Not while music or radio plays")},
     {N_("Update NotaTV"), IT_ACTION, .action = act_update_gh, .help = N_("Looks for a new version on GitHub and installs it")},
@@ -616,6 +627,9 @@ static const Item sys_items[] = {
     {N_("Hardware"), IT_INFO, .info_cmd = "sys hw"},
     {N_("Boot time"), IT_INFO, .info_cmd = "sys boottime"},
     {N_("Uptime"), IT_INFO, .info_cmd = "sys uptime"},
+    {N_("Your viewing"), IT_ACTION, .action = act_stats, .help = N_("Hours watched, time per app and what you watch most. Only saved on this box")},
+    {N_("Keep viewing statistics"), IT_TOGGLE, "stats_on", "1", onoff, .changed = stats_toggled,
+     .help = N_("Off: nothing is saved, and what was saved is deleted")},
     {N_("Get the logs"), IT_ACTION, .action = act_logs, .help = N_("Download them on a phone or computer to send to whoever helps you")},
     {N_("Run the setup guide again"), IT_ACTION, .action = act_setup, .help = N_("Language, country, time, network, name and apps - like the first start")},
     {N_("Sleep"), IT_ACTION, .action = act_sleep},

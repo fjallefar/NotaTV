@@ -109,6 +109,8 @@ void gfx_set_hdr(bool on);
 bool gfx_get_hdr(void);
 void fill_vgrad_dither(float x, float y, float w, float h, Color top, Color bot); /* without banding */
 void gfx_stats(int *geom, int *tex_new, int *imgs);
+void gfx_overdraw(double *solid, double *tex, double *grid); /* painted area / screen since the last call (P3) */
+int gfx_batches(void); /* real GPU draw calls since the last call (P6): texture/clip/target changes */
 void gfx_frame_begin(void); /* start of every drawn frame: uploads the glyphs made last frame */
 void gfx_idle_tick(void);   /* once per frame: makes the learned text sizes' atlases in idle time */
 void gfx_frame_times(double *glyph_ms, double *img_ms, double *mip_ms, int *n_glyph, int *n_img, int *n_mip); /* this frame's texture work (and reset) */
@@ -384,6 +386,9 @@ bool app_video_suspend(void);
 /* moon.c: game streaming via tvmoon (gives up the display meanwhile) */
 int moon_run(char *const *argv, void (*on_line)(const char *line, void *ud), void *ud);
 void moon_inbox(const char *args);
+/* run a program that takes over the display (RetroArch for the app "retro"); Home on the remote, or Back held 2 s,
+   stops it (SIGTERM, so it can save). NotaTV after 1.0.30: check it is not NULL */
+NOTA_NEW int app_run_fullscreen(const char *path, char *const *argv, const char *log);
 void app_video_resume(void);
 void app_quit(void);
 const char *app_ip(void);
@@ -473,6 +478,33 @@ typedef struct { /* "music": Bluetooth playback info from bt.c for "Now playing"
 typedef struct { /* "seerr": IMDb/Rotten Tomatoes ratings (Plex uses them when its server has none) */
     void (*ratings)(bool tv, int tmdb, void (*cb)(void *ud, int rt_critic, int rt_audience, int imdb10), void *ud);
 } SeerrIface;
+typedef struct { /* "immich": photos for the screensaver */
+    bool (*signed_in)(void);
+    /* up to n random photos (preview size, ready for img_get), in the background; cb runs on the main thread and
+       owns nothing: copy what it needs. n_urls 0 = none (no server, no network) */
+    void (*random_photos)(int n, void (*cb)(void *ud, const char *const *urls, int n_urls), void *ud);
+} ImmichIface;
+/* "plex" and "jellyfin": the whole library as a flat list, for Channels (own TV channels). library() blocks (call it
+   from a job) and returns every movie and episode on the enabled servers with a direct play address (login included:
+   keep it in memory only). The caller frees *out */
+typedef struct {
+    char title[160], series[128], genre[64];
+    int year, season, episode;
+    double dur;            /* seconds */
+    bool movie;
+    char url[700];
+} LibItem;
+typedef struct {
+    bool (*signed_in)(void);
+    int (*library)(LibItem **out);
+} LibraryIface;
+typedef struct { /* "homeassistant": the connection, for Cameras (camera entities, the doorbell) */
+    bool (*signed_in)(void);
+    /* a REST call to Home Assistant (path like "/api/states"), in the calling thread (use it from a job):
+       the body as text (free it) and the HTTP status, NULL on failure */
+    char *(*call)(const char *method, const char *path, const char *body, long *status);
+    const char *(*base)(void); /* "http://homeassistant.local:8123" - images with ?token= need no login header */
+} HomeAssistantIface;
 const void *app_iface(const char *id);
 
 int app_count(void);
@@ -638,6 +670,28 @@ void draw_qr(const char *text, float x, float y, float size);
 
 /* Screens of the system (the apps' own screens are in their packages, src/apps) */
 Screen *home_screen(void);
+/* stats.c: viewing statistics, only on this box (Debat 20) */
+typedef struct { char name[160], app[40]; double secs; int count; } StatRow;
+void stats_init(void);
+void stats_app_enter(const char *id);
+void stats_app_leave(void);
+void stats_pause(bool idle); /* the screensaver: the time until a key is pressed again does not count */
+const char *stats_current_app(void);
+void stats_played(const char *title, const char *subtitle, double secs);
+void stats_forget(const char *id);
+void stats_forget_all(void);
+int stats_read(long since, StatRow **apps, int *n_apps, StatRow **groups, int *n_groups, double *total_play);
+Screen *stats_screen(void); /* ui_stats.c */
+/* notify.c: a small notification at the top right for 8 s (also over the screensaver); during video the player's
+   message line. title may be NULL. NotaTV after 1.0.30: check it is not NULL */
+NOTA_NEW void app_notify(const char *title, const char *text);
+void notify_draw(void);
+bool notify_active(void);
+/* screensaver.c (main.c runs it) */
+void screensaver_begin(void);
+void screensaver_end(void);
+bool screensaver_animated(void);
+void screensaver_draw(float a, double t);
 Screen *settings_screen(void);
 void settings_wifi(void);         /* search for and choose Wi-Fi (from Settings) */
 void settings_apply_name(void);   /* device name changed: restart AirPlay/CEC/BT/DLNA */

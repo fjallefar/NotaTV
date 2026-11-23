@@ -1,6 +1,6 @@
 {
   "id": "jellyfin",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "api": 2,
   "name": "Jellyfin",
   "desc": "Movies and shows from your Jellyfin server",
@@ -11,12 +11,9 @@
   "order": 30,
   "default": false,
   "changes": {
-    "summary": "Safer sign-in",
+    "summary": "Your library can become TV channels",
     "points": [
-      "The subtitle help text points to Settings → Language and subtitles",
-      "Asks before your login is sent to a server found on the network",
-      "Passwords are cleared from memory after sign-in",
-      "Messages on empty screens are centered under their heading"
+      "The Channels app can make TV channels from your Jellyfin movies and shows"
     ]
   }
 }

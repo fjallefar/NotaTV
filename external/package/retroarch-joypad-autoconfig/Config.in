@@ -1,0 +1,5 @@
+config BR2_PACKAGE_RETROARCH_JOYPAD_AUTOCONFIG
+	bool "retroarch-joypad-autoconfig"
+	help
+	  RetroArch's controller profiles (MIT) for udev, so controllers
+	  work in the app "retro" without setup. Staging only.

@@ -1971,3 +1971,63 @@ msgstr "Behold"
 
 msgid "Switch back"
 msgstr "Skift tilbage"
+
+msgid "Photos in the screensaver"
+msgstr "Billeder i pauseskærmen"
+
+msgid "Random photos from Immich instead of the clock on black"
+msgstr "Tilfældige billeder fra Immich i stedet for uret på sort"
+
+msgid "Your viewing"
+msgstr "Dit forbrug"
+
+msgid "Hours watched, time per app and what you watch most. Only saved on this box"
+msgstr "Timer set, tid pr. app og hvad du ser mest. Gemmes kun på denne boks"
+
+msgid "Keep viewing statistics"
+msgstr "Gem forbrugsstatistik"
+
+msgid "Off: nothing is saved, and what was saved is deleted"
+msgstr "Fra: intet gemmes, og det gemte slettes"
+
+msgid "This week"
+msgstr "Denne uge"
+
+msgid "This month"
+msgstr "Denne måned"
+
+msgid "This year"
+msgstr "I år"
+
+msgid "All"
+msgstr "Alt"
+
+msgid "Casting and other"
+msgstr "Casting og andet"
+
+msgid "%.1f h"
+msgstr "%.1f t"
+
+msgid "%d min"
+msgstr "%d min"
+
+msgid "Viewing statistics are off"
+msgstr "Forbrugsstatistik er slået fra"
+
+msgid "Turn them on under Settings → System → Keep viewing statistics."
+msgstr "Slå den til under Indstillinger → System → Gem forbrugsstatistik."
+
+msgid "Nothing yet"
+msgstr "Intet endnu"
+
+msgid "What you watch and which apps you use show up here. It is only saved on this box and never sent anywhere."
+msgstr "Hvad du ser, og hvilke apps du bruger, vises her. Det gemmes kun på denne boks og sendes aldrig nogen steder."
+
+msgid "watched"
+msgstr "set"
+
+msgid "Time per app"
+msgstr "Tid pr. app"
+
+msgid "Most watched"
+msgstr "Mest set"

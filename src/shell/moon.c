@@ -123,3 +123,62 @@ void moon_inbox(const char *args) {
     if (n < 2) return;
     moon_run(argv, NULL, NULL);
 }
+
+/* any program that needs the display (the app "retro": RetroArch). It reads controllers/keyboard itself; the remote's
+   Home key (or Back held 2 s) stops it with SIGTERM, so it can save first. stderr goes to log (may be NULL).
+   Returns its exit status, -1 if it could not start. */
+int app_run_fullscreen(const char *path, char *const *argv, const char *log) {
+    audio_bg_take();
+    run_cmd("%s/music pause >/dev/null 2>&1", helper_path());
+    bool video_off = app_video_suspend();
+    pid_t pid = fork();
+    if (pid == 0) {
+        prctl(PR_SET_PDEATHSIG, SIGTERM);
+        int dn = open("/dev/null", O_RDWR);
+        dup2(dn, 0);
+        dup2(dn, 1);
+        int lf = log ? open(log, O_WRONLY | O_CREAT | O_TRUNC, 0600) : dn;
+        if (lf >= 0) dup2(lf, 2);
+        setsid();
+        execv(path, argv);
+        _exit(127);
+    }
+    int status = -1;
+    if (pid > 0) {
+        SDL_Log("fullscreen: %s startet (pid %d)", path, pid);
+        double back_down = -1;
+        for (;;) {
+            struct pollfd p[38];
+            int fds[38];
+            int nf = input_fds(fds, 38);
+            for (int i = 0; i < nf; i++) p[i] = (struct pollfd){fds[i], POLLIN, 0};
+            poll(p, (nfds_t)nf, 200);
+            SDL_Event e;
+            while (SDL_PollEvent(&e)) input_handle_sdl(&e);
+            input_poll();
+            InputEvent ev;
+            bool stop = false;
+            while (input_next(&ev)) {
+                if (ev.a == A_HOME) stop = true;
+                else if (ev.a == A_BACK) {
+                    if (!ev.repeat || back_down < 0) back_down = app_time();
+                    else if (app_time() - back_down > 2) stop = true;
+                }
+            }
+            if (stop) {
+                SDL_Log("fullscreen: stoppet med fjernbetjeningen");
+                moon_kill(pid);
+                status = 0;
+                break;
+            }
+            if (waitpid(pid, &status, WNOHANG) == pid) break;
+        }
+        SDL_Log("fullscreen: sluttede (%d)", WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    }
+    if (video_off) app_video_resume();
+    InputEvent ev;
+    while (input_next(&ev)) {}
+    input_touch();
+    run_cmd("%s/music resume >/dev/null 2>&1", helper_path());
+    return pid > 0 && WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}

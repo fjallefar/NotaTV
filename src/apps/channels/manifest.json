@@ -1,0 +1,20 @@
+{
+  "id": "channels",
+  "version": "1.0.0",
+  "api": 2,
+  "name": "Channels",
+  "desc": "Your own TV channels from your movies and shows",
+  "icon": "tv",
+  "c1": [230, 90, 60],
+  "c2": [150, 40, 30],
+  "fg": [255, 255, 255],
+  "order": 15,
+  "default": false,
+  "changes": {
+    "summary": "Channels on NotaTV",
+    "points": [
+      "Your Plex and Jellyfin library as TV channels that are already running",
+      "Zap with up and down like in Live TV"
+    ]
+  }
+}

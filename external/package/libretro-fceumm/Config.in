@@ -1,0 +1,4 @@
+config BR2_PACKAGE_LIBRETRO_FCEUMM
+	bool "libretro-fceumm"
+	help
+	  FCEUmm (GPL-2.0) libretro core: NES / Famicom. For the app "retro".

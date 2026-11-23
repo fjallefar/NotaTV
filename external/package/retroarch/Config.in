@@ -1,0 +1,10 @@
+config BR2_PACKAGE_RETROARCH
+	bool "retroarch"
+	depends on BR2_PACKAGE_HAS_LIBEGL && BR2_PACKAGE_HAS_LIBGLES
+	select BR2_PACKAGE_ALSA_LIB
+	select BR2_PACKAGE_LIBDRM
+	select BR2_PACKAGE_ZLIB
+	help
+	  RetroArch (GPL-3.0) for the NotaTV app "retro": runs libretro
+	  cores full screen on KMS/DRM with GLES. Installed into staging
+	  only - the app package carries it, the image does not.
