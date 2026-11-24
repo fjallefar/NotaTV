@@ -157,6 +157,10 @@ jobs:
 
       - name: Build (full log in build.log in the build folder)
         shell: bash
+        env:
+          # flutterpi_tool (Peezy) asks GitHub's API for the engine files; without a token the runner's shared IP
+          # hits the 60/hour limit (1.0.31 failed on it). It reads GITHUB_TOKEN itself.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd "$TREE"
           rm -f notatv-rpi4.img notatv-rpi4.img.xz notatv-rpi4-update.tar.gz notatv-rpi4-update.tar.gz.sha256
