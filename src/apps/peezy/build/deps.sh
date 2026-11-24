@@ -20,7 +20,10 @@ sed -e "s|^pkg_config_libdir = '|pkg_config_libdir = '$XPFX/lib/pkgconfig:$XPFX/
 
 fetch() { # name file url
 	f=$W/src/$2
-	[ -f "$f" ] || curl -fsSL -o "$f" "$3"
+	# upstream first, then Buildroot's mirror (bitmath.org's certificate expired 24/11 and failed 1.0.31);
+	# the file is checked against Buildroot's hash below either way
+	[ -f "$f" ] || curl -fsSL -o "$f.part" "$3" || curl -fsSL -o "$f.part" "https://sources.buildroot.net/$1/$2"
+	[ -f "$f" ] || mv "$f.part" "$f"
 	want=$(awk -v f="$2" '$1=="sha256" && $3==f {print $2}' "$BR/package/$1/$1.hash")
 	[ -n "$want" ] || { echo "no hash for $2"; exit 1; }
 	echo "$want  $f" | sha256sum -c --quiet
