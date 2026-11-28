@@ -1002,6 +1002,7 @@ static bool go_back(Dr *v) {
 }
 
 /* ---------- playback ---------- */
+#define MAX_SUBS 3
 typedef struct {
     Blk b;
     char id[24];
@@ -1009,7 +1010,226 @@ typedef struct {
     char *url;
     PlaySkip skip;
     long status;
+    /* direct .mp4 (STATUS 99): set when DR's HLS is one plain .mp4 per quality */
+    char *video, *audio;
+    int hdr, width;
+    int nsub;
+    char *sub_pl[MAX_SUBS], *sub_name[MAX_SUBS], *sub_lang[MAX_SUBS];
 } VodJob;
+
+/* ---------- direct .mp4 instead of HLS (STATUS 99) ----------
+ * DR's VOD is HLS fMP4 where every quality is ONE .mp4 file (segments are byte ranges in it, with a sidx index) and
+ * the sound is a second .mp4. Through ffmpeg's HLS demuxer a seek during playback took 50-90+ s (it reads segment
+ * after segment); the same .mp4 opened directly seeks in under a second (measured 26/11: 0.4-0.6 s, start 1.2 s
+ * instead of 4 s). So: read the playlists, and when the best quality and its sound are each a single unencrypted
+ * .mp4, mpv plays those (--audio-file). Subtitles (many small WebVTT pieces) are joined into one file in the
+ * background and added with sub-add when ready. Anything unexpected = plain HLS as before. */
+static char *url_join(const char *base, const char *rel) {
+    if (strstr(rel, "://")) return str_dup(rel);
+    const char *q = strchr(base, '?');
+    size_t blen = q ? (size_t)(q - base) : strlen(base);
+    if (rel[0] == '/') {
+        const char *h = strstr(base, "://");
+        const char *slash = h ? memchr(h + 3, '/', blen - (size_t)(h + 3 - base)) : NULL;
+        size_t n = slash ? (size_t)(slash - base) : blen;
+        return str_printf("%.*s%s", (int)n, base, rel);
+    }
+    size_t n = blen;
+    while (n && base[n - 1] != '/') n--;
+    return str_printf("%.*s%s", (int)n, base, rel);
+}
+static char *http_text(const char *url) {
+    HttpBuf b;
+    memset(&b, 0, sizeof b);
+    char *out = NULL;
+    if (http_request("GET", url, NULL, NULL, &b, 15) && b.status == 200 && b.data) { out = b.data; b.data = NULL; }
+    http_free(&b);
+    return out;
+}
+/* KEY=value or KEY="value" from an HLS attribute list (malloc'ed, NULL if missing) */
+static char *hls_attr(const char *line, const char *key) {
+    size_t kl = strlen(key);
+    for (const char *p = strchr(line, ':'); p && *p; ) {
+        p++;
+        if (!strncmp(p, key, kl) && p[kl] == '=') {
+            p += kl + 1;
+            if (*p == '"') { const char *e = strchr(p + 1, '"'); return e ? str_printf("%.*s", (int)(e - p - 1), p + 1) : NULL; }
+            size_t n = strcspn(p, ",\r\n");
+            return str_printf("%.*s", (int)n, p);
+        }
+        bool inq = false; /* to the next comma outside quotes */
+        while (*p && (inq || *p != ',') && *p != '\n') { if (*p == '"') inq = !inq; p++; }
+        if (*p != ',') break;
+    }
+    return NULL;
+}
+static bool line_is(const char *l, const char *tag) { return !strncmp(l, tag, strlen(tag)); }
+/* the .mp4 a media playlist is made of, if it is exactly one unencrypted file (malloc'ed URL) */
+static char *single_file(const char *pl_url) {
+    char *txt = http_text(pl_url), *map = NULL, *file = NULL;
+    bool ok = txt && strstr(txt, "#EXT-X-ENDLIST") != NULL, any = false;
+    for (char *l = txt, *nx; ok && l && *l; l = nx) {
+        nx = strchr(l, '\n');
+        if (nx) *nx++ = 0;
+        size_t n = strlen(l);
+        if (n && l[n - 1] == '\r') l[--n] = 0;
+        if (!n) continue;
+        if (line_is(l, "#EXT-X-KEY")) { char *m = hls_attr(l, "METHOD"); ok = m && !strcmp(m, "NONE"); free(m); }
+        else if (line_is(l, "#EXT-X-MAP")) { free(map); map = hls_attr(l, "URI"); ok = map != NULL; }
+        else if (l[0] != '#') {
+            if (!file) file = str_dup(l);
+            ok = !strcmp(file, l) && map && !strcmp(map, l);
+            any = true;
+        }
+    }
+    char *out = ok && any ? url_join(pl_url, file) : NULL;
+    free(txt); free(map); free(file);
+    return out;
+}
+/* the time shift of a WebVTT piece (X-TIMESTAMP-MAP); 0 when it has none */
+static double vtt_shift(const char *t) {
+    const char *m = strstr(t, "X-TIMESTAMP-MAP=");
+    if (!m) return 0;
+    const char *ts = strstr(m, "MPEGTS:"), *lo = strstr(m, "LOCAL:");
+    double mp = ts ? strtod(ts + 7, NULL) / 90000.0 : 0;
+    int hh = 0, mm = 0;
+    double ss = 0;
+    if (lo) sscanf(lo + 6, "%d:%d:%lf", &hh, &mm, &ss);
+    return mp - (hh * 3600 + mm * 60 + ss);
+}
+static void direct_resolve(VodJob *j) {
+    char *txt = http_text(j->url);
+    if (!txt) return;
+    char *best = NULL, *best_audio = NULL, *best_subs = NULL;
+    double best_bw = -1;
+    int hdr = 0, width = 0;
+    char *media[64];
+    int nmedia = 0;
+    for (char *l = txt, *nx; l && *l; l = nx) {
+        nx = strchr(l, '\n');
+        if (nx) *nx++ = 0;
+        size_t n = strlen(l);
+        if (n && l[n - 1] == '\r') l[--n] = 0;
+        if (line_is(l, "#EXT-X-MEDIA:") && nmedia < 64) media[nmedia++] = l;
+        else if (line_is(l, "#EXT-X-STREAM-INF:")) {
+            char *uri = nx; /* the next line that is not a comment */
+            while (uri && (*uri == '#' || *uri == '\r' || *uri == '\n')) { char *e = strchr(uri, '\n'); uri = e ? e + 1 : NULL; }
+            if (!uri) break;
+            char *bw = hls_attr(l, "BANDWIDTH");
+            double b = bw ? atof(bw) : 0;
+            free(bw);
+            if (b > best_bw) {
+                best_bw = b;
+                free(best); free(best_audio); free(best_subs);
+                best = str_printf("%.*s", (int)strcspn(uri, "\r\n"), uri);
+                best_audio = hls_attr(l, "AUDIO");
+                best_subs = hls_attr(l, "SUBTITLES");
+                char *vr = hls_attr(l, "VIDEO-RANGE"), *res = hls_attr(l, "RESOLUTION");
+                hdr = !vr ? 0 : !strcmp(vr, "SDR") ? 1 : 2;
+                width = res ? atoi(res) : 0;
+                free(vr); free(res);
+            }
+        }
+    }
+    char *audio_pl = NULL, *aud_default = NULL;
+    int nsub = 0;
+    char *sub_pl[MAX_SUBS] = {0}, *sub_name[MAX_SUBS] = {0}, *sub_lang[MAX_SUBS] = {0};
+    for (int i = 0; i < nmedia; i++) {
+        char *ty = hls_attr(media[i], "TYPE"), *grp = hls_attr(media[i], "GROUP-ID"), *uri = hls_attr(media[i], "URI");
+        if (ty && grp && uri) {
+            if (!strcmp(ty, "AUDIO") && best_audio && !strcmp(grp, best_audio)) {
+                char *def = hls_attr(media[i], "DEFAULT");
+                bool d = def && !strcmp(def, "YES");
+                free(def);
+                if (!audio_pl || (d && !aud_default)) { free(audio_pl); audio_pl = url_join(j->url, uri); if (d) aud_default = audio_pl; }
+            } else if (!strcmp(ty, "SUBTITLES") && best_subs && !strcmp(grp, best_subs) && nsub < MAX_SUBS) {
+                sub_pl[nsub] = url_join(j->url, uri);
+                sub_name[nsub] = hls_attr(media[i], "NAME");
+                sub_lang[nsub] = hls_attr(media[i], "LANGUAGE");
+                nsub++;
+            }
+        }
+        free(ty); free(grp); free(uri);
+    }
+    char *video = best ? url_join(j->url, best) : NULL;
+    char *vfile = video ? single_file(video) : NULL;
+    char *afile = audio_pl ? single_file(audio_pl) : NULL;
+    bool ok = vfile && (!best_audio || afile);
+    /* subtitles must be plain WebVTT pieces without a time shift, or the joined file would be out of sync */
+    for (int i = 0; ok && i < nsub; i++) {
+        char *pl = http_text(sub_pl[i]), *first = NULL;
+        for (char *l = pl, *nx; l && *l && !first; l = nx) {
+            nx = strchr(l, '\n');
+            if (nx) *nx++ = 0;
+            l[strcspn(l, "\r")] = 0;
+            if (*l && *l != '#') first = url_join(sub_pl[i], l);
+        }
+        char *seg = first ? http_text(first) : NULL;
+        ok = seg && !strncmp(seg, "WEBVTT", 6) && vtt_shift(seg) == 0;
+        free(pl); free(first); free(seg);
+    }
+    if (ok) {
+        j->video = vfile; j->audio = afile; vfile = afile = NULL;
+        j->hdr = hdr; j->width = width;
+        j->nsub = nsub;
+        for (int i = 0; i < nsub; i++) { j->sub_pl[i] = sub_pl[i]; j->sub_name[i] = sub_name[i]; j->sub_lang[i] = sub_lang[i]; sub_pl[i] = sub_name[i] = sub_lang[i] = NULL; }
+    }
+    tlog("drtv: %s", ok ? "afspiller .mp4 direkte (hurtig spoling)" : "afspiller HLS");
+    for (int i = 0; i < nsub; i++) { free(sub_pl[i]); free(sub_name[i]); free(sub_lang[i]); }
+    free(vfile); free(afile); free(video); free(audio_pl); free(best); free(best_audio); free(best_subs); free(txt);
+}
+
+/* subtitles joined in the background: one file per track in /tmp, added during playback from play_tick */
+static SDL_AtomicInt sub_gen;   /* increased when a playback ends: an older job writes nothing */
+static SDL_AtomicInt sub_ready; /* bit i = track i of the current generation is written */
+typedef struct { int gen, n; char *pl[MAX_SUBS]; } SubJob;
+static void sub_path(char *out, size_t n, int gen, int i) { snprintf(out, n, "/tmp/notatv-drtv-sub-%d-%d.vtt", gen, i); }
+static void sub_work(void *arg) {
+    SubJob *s = arg;
+    for (int i = 0; i < s->n; i++) {
+        char *pl = http_text(s->pl[i]);
+        size_t cap = 1 << 16, len = 0;
+        char *out = malloc(cap);
+        bool ok = pl && out;
+        for (char *l = pl, *nx; ok && l && *l; l = nx) {
+            if (SDL_GetAtomicInt(&sub_gen) != s->gen) { ok = false; break; }
+            nx = strchr(l, '\n');
+            if (nx) *nx++ = 0;
+            l[strcspn(l, "\r")] = 0;
+            if (!*l || *l == '#') continue;
+            char *u = url_join(s->pl[i], l), *t = http_text(u);
+            free(u);
+            if (!t) { ok = false; break; }
+            const char *body = t;
+            if (len) { const char *e = strstr(t, "\n\n"); body = e ? e + 2 : ""; } /* only the first piece keeps its header */
+            size_t bl = strlen(body);
+            if (len + bl + 2 > cap) { while (len + bl + 2 > cap) cap *= 2; char *g = realloc(out, cap); if (!g) { ok = false; free(t); break; } out = g; }
+            memcpy(out + len, body, bl);
+            len += bl;
+            if (len && out[len - 1] != '\n') out[len++] = '\n';
+            out[len++] = '\n';
+            free(t);
+        }
+        if (ok && len && SDL_GetAtomicInt(&sub_gen) == s->gen) {
+            char path[64];
+            sub_path(path, sizeof path, s->gen, i);
+            FILE *f = fopen(path, "w");
+            if (f) {
+                bool w = fwrite(out, 1, len, f) == len;
+                if (fclose(f) == 0 && w) SDL_AddAtomicInt(&sub_ready, 1 << i);
+                else unlink(path);
+            }
+        }
+        free(out);
+        free(pl);
+    }
+}
+static void sub_done(void *arg) {
+    SubJob *s = arg;
+    for (int i = 0; i < s->n; i++) free(s->pl[i]);
+    free(s);
+}
+
 static void vod_run(Blk *bb) {
     VodJob *j = (VodJob *)bb;
     char tok[4200], hdr[4300];
@@ -1048,14 +1268,35 @@ static void vod_run(Blk *bb) {
         http_free(&b);
         free(url);
     }
+    if (j->url) direct_resolve(j);
 }
-static void vod_release(Blk *bb) { VodJob *j = (VodJob *)bb; free(j->url); free(j); }
+static void vod_release(Blk *bb) {
+    VodJob *j = (VodJob *)bb;
+    free(j->url); free(j->video); free(j->audio);
+    for (int i = 0; i < j->nsub; i++) { free(j->sub_pl[i]); free(j->sub_name[i]); free(j->sub_lang[i]); }
+    free(j);
+}
 
 typedef struct {
     const DItem *cur;
     PlaySkip skip;
     const DItem *next;
+    const VodJob *job; /* subtitles to add when sub_work has written them */
+    int gen, added;
 } PlayCtx;
+static void play_tick(void *ud) {
+    PlayCtx *c = ud;
+    int ready = SDL_GetAtomicInt(&sub_ready) & ~c->added;
+    for (int i = 0; ready && c->job && i < c->job->nsub; i++) {
+        if (!(ready & (1 << i))) continue;
+        c->added |= 1 << i;
+        char path[64];
+        sub_path(path, sizeof path, c->gen, i);
+        const char *a[] = {"sub-add", path, "auto", c->job->sub_name[i] ? c->job->sub_name[i] : "",
+                           c->job->sub_lang[i] ? c->job->sub_lang[i] : "", NULL};
+        player_cmd(a);
+    }
+}
 static void play_skip_info(void *ud, PlaySkip *out) {
     PlayCtx *c = ud;
     *out = c->skip;
@@ -1097,9 +1338,25 @@ static bool play_vod(Dr *v, const DItem *t, bool from_start) {
         blk_release(&j->b);
         return false;
     }
-    PlayCtx pc = {t, j->skip, next_after(v, t)};
+    PlayCtx pc = {t, j->skip, next_after(v, t), j, SDL_GetAtomicInt(&sub_gen), 0};
     PlayRequest rq = {0};
     rq.url = j->url;
+    char *audio_arg = NULL;
+    const char *extra[2] = {NULL, NULL};
+    SDL_SetAtomicInt(&sub_ready, 0);
+    if (j->video) { /* direct .mp4 (STATUS 99) */
+        rq.url = j->video;
+        if (j->audio) { audio_arg = str_printf("--audio-file=%s", j->audio); extra[0] = audio_arg; rq.extra = extra; }
+        rq.media_hdr = j->hdr;
+        rq.media_w = j->width;
+        rq.tick = play_tick;
+        if (j->nsub) {
+            SubJob *s = calloc(1, sizeof *s);
+            s->gen = pc.gen;
+            for (int i = 0; i < j->nsub; i++) s->pl[s->n++] = str_dup(j->sub_pl[i]);
+            job_submit_q(JQ_SLOW, sub_work, sub_done, s);
+        }
+    }
     rq.title = t->title ? t->title : "DRTV";
     rq.subtitle = t->sub;
     rq.description = t->desc;
@@ -1109,6 +1366,9 @@ static bool play_vod(Dr *v, const DItem *t, bool from_start) {
     rq.skip_info = play_skip_info;
     rq.ud = &pc;
     PlayResult res = player_run(&rq);
+    SDL_AddAtomicInt(&sub_gen, 1); /* a subtitle job still running writes nothing now */
+    for (int i = 0; i < j->nsub; i++) { char path[64]; sub_path(path, sizeof path, pc.gen, i); unlink(path); }
+    free(audio_arg);
     blk_release(&j->b);
     if (!res.cancelled && res.pos > 0) prog_set(t, res.eof ? res.dur : res.pos, res.dur);
     prog_save();

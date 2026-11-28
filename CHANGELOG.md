@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.0.32
+
+> **In short:** A warning when the power supply is too weak, and fast seeking in DRTV.
+> - The box tells you once if it gets too little power (that can cause stutter and crashes)
+> - DRTV: seeking takes under a second instead of a minute or more, and programmes start faster
+
+<!-- tldr:da
+Kort: En advarsel, når strømforsyningen er for svag, og hurtig spoling i DRTV.
+- Boksen siger én gang til, hvis den får for lidt strøm (det kan give hak og nedbrud)
+- DRTV: spoling tager under et sekund i stedet for et minut eller mere, og programmer starter hurtigere
+-->
+
+### System
+
+- **Power supply warning:** when the Raspberry Pi's firmware reports under-voltage, a card in the corner (during video
+  the player's message line) says the power supply is too weak and which one to use - once per start.
+- **Log:** the line about under-voltage in the saved log never appeared (the firmware's value was read as a decimal
+  number). Fixed.
+- **Release build:** the Peezy step uses the workflow's token for GitHub's API and falls back to Buildroot's source
+  mirror when a download site fails.
+
+### Apps
+
+- **DRTV** 1.0.4: DR's programmes are played from their .mp4 files directly instead of through HLS, so seeking takes
+  under a second (it took 50-90 seconds or more) and programmes start faster. Subtitles still work. Live channels
+  are unchanged.
+
 ## 1.0.31
 
 > **In short:** Five new apps, photos in the screensaver, your own viewing statistics, notifications on the TV and a lighter load on the Raspberry Pi 4.

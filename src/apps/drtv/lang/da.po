@@ -204,14 +204,14 @@ msgstr "Menu og søg"
 msgid "Sign-in cancelled"
 msgstr "Login afbrudt"
 
-msgid "Back during sign-in really cancels"
-msgstr "Tilbage under login afbryder helt"
+msgid "Fast seeking"
+msgstr "Hurtig spoling"
 
-msgid "Pressing Back while signing in no longer leaves the box half signed in"
-msgstr "Trykker du Tilbage under login, er boksen ikke længere halvt logget ind"
+msgid "Seeking in programmes takes under a second instead of a minute or more"
+msgstr "Spoling i programmer tager under et sekund i stedet for et minut eller mere"
 
 msgid "Try again"
 msgstr "Prøv igen"
 
-msgid "Errors are centered and have Try again"
-msgstr "Fejl står centreret og har Prøv igen"
+msgid "Programmes start faster"
+msgstr "Programmer starter hurtigere"

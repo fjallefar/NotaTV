@@ -898,6 +898,7 @@ void app_background_tick(bool playing) {
     cfg_reap(); /* old tokens and passwords are zeroed a minute after they were replaced (PV3) */
     soft_sleep_wake(); /* a key press ends soft sleep - also during playback (remote key stops it) */
     idle_sleep_tick(playing); /* automatic sleep - also while a video plays ("Are you still watching?") */
+    power_warn_tick(); /* too weak power supply: one notification per start (also during video) */
     if (playing) return;
     dlna_tick();
     mirror_tick();

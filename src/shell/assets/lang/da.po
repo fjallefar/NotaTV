@@ -2031,3 +2031,12 @@ msgstr "Tid pr. app"
 
 msgid "Most watched"
 msgstr "Mest set"
+
+msgid "The power supply is too weak"
+msgstr "Strømforsyningen er for svag"
+
+msgid "The box gets too little power. Use the official 5 V/5 A power supply."
+msgstr "Boksen får for lidt strøm. Brug den officielle strømforsyning på 5 V/5 A."
+
+msgid "The box gets too little power. Use the official 5.1 V/3 A power supply."
+msgstr "Boksen får for lidt strøm. Brug den officielle strømforsyning på 5,1 V/3 A."
